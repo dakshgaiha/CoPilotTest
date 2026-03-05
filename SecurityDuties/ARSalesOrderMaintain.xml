@@ -1,9 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Security Duty: ARSalesOrderMaintain
+  =====================================
+  Purpose : Bundles the privileges required to maintain (view, create, update,
+            and delete) sales orders in the Accounts Receivable (AR) module of
+            D365 Finance and Operations.
+
+  Included Privileges:
+    - ARSalesOrderFormAccess : Full CRUD access to the Sales Order form and
+                               list page, plus the ability to create new orders.
+
+  Usage  : Assign this duty to a security role (e.g. ARSalesOrderUser) rather
+           than assigning the raw privilege directly to a role.  This keeps the
+           role–duty–privilege hierarchy intact and makes future changes easier.
+
+  Change log:
+    - Initial creation: groups ARSalesOrderFormAccess under a single duty.
+-->
 <AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
   <Name>ARSalesOrderMaintain</Name>
   <Label>Maintain Sales Orders</Label>
-  <Description>Enables users to view, create, update, and delete sales orders in the Accounts Receivable module</Description>
+  <Description>Bundles the privileges needed to view, create, update, and delete sales orders in the Accounts Receivable module. Assign this duty to a role rather than adding the privilege directly.</Description>
   <Privileges>
+    <!-- Privilege: grants CRUD access to the Sales Order form and list page -->
     <AxSecurityDutyPrivilegeReference>
       <PrivilegeName>ARSalesOrderFormAccess</PrivilegeName>
     </AxSecurityDutyPrivilegeReference>
