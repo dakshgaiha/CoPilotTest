@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.35229.62
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FC65038C-1B2F-41E1-A629-BED71D161FFF}") = "KJP_SM_0087WholesalerInboundDataControl (VAR) [KJP_Japan]", "KJP_SM_0087WholesalerInboundDataControl\KJP_SM_0087WholesalerInboundDataControl.rnrproj", "{9CAEE628-AFD3-4F27-8047-C48F53C00E16}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9CAEE628-AFD3-4F27-8047-C48F53C00E16}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CAEE628-AFD3-4F27-8047-C48F53C00E16}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D08617B5-E1CF-4BFC-B892-F6BF4056348E}
+	EndGlobalSection
+	GlobalSection(TeamFoundationVersionControl) = preSolution
+		SccNumberOfProjects = 2
+		SccEnterpriseProvider = {4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}
+		SccTeamFoundationServer = https://dev.azure.com/kkc-global-project
+		SccProjectUniqueName0 = KJP_SM_0087WholesalerInboundDataControl\\KJP_SM_0087WholesalerInboundDataControl.rnrproj
+		SccProjectName0 = KJP_SM_0087WholesalerInboundDataControl
+		SccLocalPath0 = KJP_SM_0087WholesalerInboundDataControl
+		SccLocalPath1 = .
+	EndGlobalSection
+EndGlobal

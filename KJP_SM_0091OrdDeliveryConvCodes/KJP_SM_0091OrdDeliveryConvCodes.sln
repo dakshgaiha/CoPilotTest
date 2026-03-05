@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.35229.62
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FC65038C-1B2F-41E1-A629-BED71D161FFF}") = "KJP_SM_0091OrdDeliveryConvCodes (VAR) [KJP_Japan]", "KJP_SM_0091OrdDeliveryConvCodes\KJP_SM_0091OrdDeliveryConvCodes.rnrproj", "{0406A876-916C-4993-BF52-969EC870383E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0406A876-916C-4993-BF52-969EC870383E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0406A876-916C-4993-BF52-969EC870383E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E339E560-596C-4537-A29F-4007C6FFB8BC}
+	EndGlobalSection
+	GlobalSection(TeamFoundationVersionControl) = preSolution
+		SccNumberOfProjects = 2
+		SccEnterpriseProvider = {4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}
+		SccTeamFoundationServer = https://dev.azure.com/kkc-global-project
+		SccLocalPath0 = .
+		SccProjectUniqueName1 = KJP_SM_0091OrdDeliveryConvCodes\\KJP_SM_0091OrdDeliveryConvCodes.rnrproj
+		SccProjectName1 = KJP_SM_0091OrdDeliveryConvCodes
+		SccLocalPath1 = KJP_SM_0091OrdDeliveryConvCodes
+	EndGlobalSection
+EndGlobal

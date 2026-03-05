@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <BuildTasksDirectory Condition=" '$(BuildTasksDirectory)' == ''">$(MSBuildProgramFiles32)\MSBuild\Microsoft\Dynamics\AX</BuildTasksDirectory>
+    <Model>KJP_Japan</Model>
+    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
+    <OutputPath>bin</OutputPath>
+    <SchemaVersion>2.0</SchemaVersion>
+    <GenerateCrossReferences>True</GenerateCrossReferences>
+    <RunAppCheckerRules>False</RunAppCheckerRules>
+    <LogAppcheckerDiagsAsErrors>False</LogAppcheckerDiagsAsErrors>
+    <DeployOnline>False</DeployOnline>
+    <ProjectGuid>{fad13d12-0387-41c8-b50e-585d873b0a71}</ProjectGuid>
+    <Name>KJP_SM_0132SalesOrderFromJDNET</Name>
+    <RootNamespace>KJP_SM_0132SalesOrderFromJDNET</RootNamespace>
+    <StartupType>Class</StartupType>
+    <SccProjectName>SAK</SccProjectName>
+    <SccProvider>SAK</SccProvider>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <Configuration>Debug</Configuration>
+    <DBSyncInBuild>False</DBSyncInBuild>
+    <GenerateFormAdaptors>False</GenerateFormAdaptors>
+    <Company>
+    </Company>
+    <Partition>initial</Partition>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DataEntityExpandParentChildRelations>False</DataEntityExpandParentChildRelations>
+    <DataEntityUseLabelTextAsFieldName>False</DataEntityUseLabelTextAsFieldName>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="Action Menu Items\" />
+    <Folder Include="Classes\" />
+    <Folder Include="Views\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="AxClass\KJP_CM_ConstantHelper">
+      <SubType>Content</SubType>
+      <Name>KJP_CM_ConstantHelper</Name>
+      <Link>Classes\KJP_CM_ConstantHelper</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_JDNETCommonClass">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETCommonClass</Name>
+      <Link>Classes\KJP_SM_JDNETCommonClass</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_JDNETImportService">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETImportService</Name>
+      <Link>Classes\KJP_SM_JDNETImportService</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_JDNETReImportContract">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETReImportContract</Name>
+      <Link>Classes\KJP_SM_JDNETReImportContract</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_JDNETReImportController">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETReImportController</Name>
+      <Link>Classes\KJP_SM_JDNETReImportController</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_JDNETReImportService">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETReImportService</Name>
+      <Link>Classes\KJP_SM_JDNETReImportService</Link>
+    </Content>
+    <Content Include="AxMenuItemAction\KJP_SM_JDNETReImport">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETReImport</Name>
+      <Link>Action Menu Items\KJP_SM_JDNETReImport</Link>
+    </Content>
+    <Content Include="AxView\KJP_SM_InventTableConcatenateView">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_InventTableConcatenateView</Name>
+      <Link>Views\KJP_SM_InventTableConcatenateView</Link>
+    </Content>
+    <Content Include="AxView\KJP_SM_JDNETInboundSortingOrderView">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETInboundSortingOrderView</Name>
+      <Link>Views\KJP_SM_JDNETInboundSortingOrderView</Link>
+    </Content>
+    <Content Include="AxView\KJP_SM_JDNETReImportSortingOrderView">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETReImportSortingOrderView</Name>
+      <Link>Views\KJP_SM_JDNETReImportSortingOrderView</Link>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.Common.targets" />
+  <Import Project="$(BuildTasksDirectory)\Microsoft.Dynamics.Framework.Tools.BuildTasks.17.0.targets" />
+</Project>

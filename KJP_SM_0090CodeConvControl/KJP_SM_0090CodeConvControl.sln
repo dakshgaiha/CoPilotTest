@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.35229.62
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FC65038C-1B2F-41E1-A629-BED71D161FFF}") = "KJP_SM_0090CodeConvControl (VAR) [KJP_Japan]", "KJP_SM_0090CodeConvControl\KJP_SM_0090CodeConvControl.rnrproj", "{CBB0B05A-B22C-49FA-A713-9FB3AF6DB491}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CBB0B05A-B22C-49FA-A713-9FB3AF6DB491}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CBB0B05A-B22C-49FA-A713-9FB3AF6DB491}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {097EBC60-A977-4176-88BF-4C38E01ED925}
+	EndGlobalSection
+	GlobalSection(TeamFoundationVersionControl) = preSolution
+		SccNumberOfProjects = 2
+		SccEnterpriseProvider = {4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}
+		SccTeamFoundationServer = https://dev.azure.com/kkc-global-project
+		SccLocalPath0 = .
+		SccProjectUniqueName1 = KJP_SM_0090CodeConvControl\\KJP_SM_0090CodeConvControl.rnrproj
+		SccProjectName1 = KJP_SM_0090CodeConvControl
+		SccLocalPath1 = KJP_SM_0090CodeConvControl
+	EndGlobalSection
+EndGlobal

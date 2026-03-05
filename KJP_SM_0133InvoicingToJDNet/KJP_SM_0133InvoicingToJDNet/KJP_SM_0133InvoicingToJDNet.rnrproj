@@ -1,0 +1,81 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <BuildTasksDirectory Condition=" '$(BuildTasksDirectory)' == ''">$(MSBuildProgramFiles32)\MSBuild\Microsoft\Dynamics\AX</BuildTasksDirectory>
+    <Model>KJP_Japan</Model>
+    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
+    <OutputPath>bin</OutputPath>
+    <SchemaVersion>2.0</SchemaVersion>
+    <GenerateCrossReferences>True</GenerateCrossReferences>
+    <RunAppCheckerRules>False</RunAppCheckerRules>
+    <LogAppcheckerDiagsAsErrors>False</LogAppcheckerDiagsAsErrors>
+    <DeployOnline>False</DeployOnline>
+    <ProjectGuid>{cc12f203-6fee-4f55-b4f4-7278a7727832}</ProjectGuid>
+    <Name>KJP_SM_0133InvoicingToJDNet</Name>
+    <RootNamespace>KJP_SMS_0133InvoicingToJDNet</RootNamespace>
+    <StartupType>
+    </StartupType>
+    <SccProjectName>SAK</SccProjectName>
+    <SccProvider>SAK</SccProvider>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+    <StartupObject>
+    </StartupObject>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <Configuration>Debug</Configuration>
+    <DBSyncInBuild>False</DBSyncInBuild>
+    <GenerateFormAdaptors>False</GenerateFormAdaptors>
+    <Company>
+    </Company>
+    <Partition>initial</Partition>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DataEntityExpandParentChildRelations>False</DataEntityExpandParentChildRelations>
+    <DataEntityUseLabelTextAsFieldName>False</DataEntityUseLabelTextAsFieldName>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="Classes\" />
+    <Folder Include="Simple Queries\" />
+    <Folder Include="Tables\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="AxClass\KJP_CM_ConstantHelper">
+      <SubType>Content</SubType>
+      <Name>KJP_CM_ConstantHelper</Name>
+      <Link>Classes\KJP_CM_ConstantHelper</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_OutboundInvoicingJDNetService">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_OutboundInvoicingJDNetService</Name>
+      <Link>Classes\KJP_SM_OutboundInvoicingJDNetService</Link>
+    </Content>
+    <Content Include="AxQuery\KJP_SM_OutboundInvoicingServiceJDNet">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_OutboundInvoicingServiceJDNet</Name>
+      <Link>Simple Queries\KJP_SM_OutboundInvoicingServiceJDNet</Link>
+    </Content>
+    <Content Include="AxTable\KJP_SM_JDNETInvoiceDRecordIfTable">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETInvoiceDRecordIfTable</Name>
+      <Link>Tables\KJP_SM_JDNETInvoiceDRecordIfTable</Link>
+    </Content>
+    <Content Include="AxTable\KJP_SM_JDNETInvoiceERecordIfTable">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETInvoiceERecordIfTable</Name>
+      <Link>Tables\KJP_SM_JDNETInvoiceERecordIfTable</Link>
+    </Content>
+    <Content Include="AxTable\KJP_SM_JDNETInvoiceSRecordIfTable">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETInvoiceSRecordIfTable</Name>
+      <Link>Tables\KJP_SM_JDNETInvoiceSRecordIfTable</Link>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.Common.targets" />
+  <Import Project="$(BuildTasksDirectory)\Microsoft.Dynamics.Framework.Tools.BuildTasks.17.0.targets" />
+</Project>

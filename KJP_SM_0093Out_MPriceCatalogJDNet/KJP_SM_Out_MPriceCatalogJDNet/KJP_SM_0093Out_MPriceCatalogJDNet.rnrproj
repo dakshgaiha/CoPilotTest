@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <BuildTasksDirectory Condition=" '$(BuildTasksDirectory)' == ''">$(MSBuildProgramFiles32)\MSBuild\Microsoft\Dynamics\AX</BuildTasksDirectory>
+    <Model>KJP_Japan</Model>
+    <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
+    <OutputPath>bin</OutputPath>
+    <SchemaVersion>2.0</SchemaVersion>
+    <GenerateCrossReferences>True</GenerateCrossReferences>
+    <RunAppCheckerRules>False</RunAppCheckerRules>
+    <LogAppcheckerDiagsAsErrors>False</LogAppcheckerDiagsAsErrors>
+    <DeployOnline>False</DeployOnline>
+    <ProjectGuid>{ca0d915f-9746-4c7f-a6f5-de6dfae236b3}</ProjectGuid>
+    <Name>KJP_SM_0093Out_MPriceCatalogJDNet</Name>
+    <RootNamespace>KJP_SM_Out_MPriceCatalogJDNet</RootNamespace>
+    <StartupType>Class</StartupType>
+    <SccProjectName>SAK</SccProjectName>
+    <SccProvider>SAK</SccProvider>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccLocalPath>SAK</SccLocalPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <Configuration>Debug</Configuration>
+    <DBSyncInBuild>False</DBSyncInBuild>
+    <GenerateFormAdaptors>False</GenerateFormAdaptors>
+    <Company>
+    </Company>
+    <Partition>initial</Partition>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DataEntityExpandParentChildRelations>False</DataEntityExpandParentChildRelations>
+    <DataEntityUseLabelTextAsFieldName>False</DataEntityUseLabelTextAsFieldName>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <DebugSymbols>true</DebugSymbols>
+    <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
+  </PropertyGroup>
+  <ItemGroup>
+    <Folder Include="Classes\" />
+    <Folder Include="Tables\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="AxClass\KJP_CM_ConstantHelper">
+      <SubType>Content</SubType>
+      <Name>KJP_CM_ConstantHelper</Name>
+      <Link>Classes\KJP_CM_ConstantHelper</Link>
+    </Content>
+    <Content Include="AxClass\KJP_SM_JDNetPriceCatalogService">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNetPriceCatalogService</Name>
+      <Link>Classes\KJP_SM_JDNetPriceCatalogService</Link>
+    </Content>
+    <Content Include="AxTable\KJP_SM_JDNETPriceSendDRecordIfTable">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETPriceSendDRecordIfTable</Name>
+      <Link>Tables\KJP_SM_JDNETPriceSendDRecordIfTable</Link>
+    </Content>
+    <Content Include="AxTable\KJP_SM_JDNETPriceSendERecordIfTable">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETPriceSendERecordIfTable</Name>
+      <Link>Tables\KJP_SM_JDNETPriceSendERecordIfTable</Link>
+    </Content>
+    <Content Include="AxTable\KJP_SM_JDNETPriceSendSRecordIfTable">
+      <SubType>Content</SubType>
+      <Name>KJP_SM_JDNETPriceSendSRecordIfTable</Name>
+      <Link>Tables\KJP_SM_JDNETPriceSendSRecordIfTable</Link>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.Common.targets" />
+  <Import Project="$(BuildTasksDirectory)\Microsoft.Dynamics.Framework.Tools.BuildTasks.17.0.targets" />
+</Project>
