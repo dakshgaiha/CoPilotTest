@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventLocationExtendedFormControlEventHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+internal final class KJP_SM_InventLocationExtendedFormControlEventHandler
+{
+    
+    
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>InventLocation_KJPFIJP_DepartmentStr_OnLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// KJPFIJP_DepartmentStr Lookup EventHandler
+    /// </summary>
+    /// <param name="sender"></param>
+    /// <param name="e"></param>
+    [FormControlEventHandler(formControlStr(InventLocation, InventLocation_KJPFIJP_DepartmentStr), FormControlEventType::Lookup)]
+    public static void InventLocation_KJPFIJP_DepartmentStr_OnLookup(FormControl sender, FormControlEventArgs e)
+    {
+        FormControlCancelableSuperEventArgs args = e as FormControlCancelableSuperEventArgs;
+        args.CancelSuperCall();
+
+        DimensionValueLookupHelper::lookupDimensionValues(
+            DimensionAttribute::findByName(
+                KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::jpDepartment_FI_Key, KJP_CM_ConstantHelper::origCodeJpDepartment_FI).DestinationCode
+            ),
+            sender);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>InventLocation_KJPSMJurisdictionDepartment_OnLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// KJPSMJurisdictionDepartment Lookup EventHandler
+    /// </summary>
+    /// <param name="sender"></param>
+    /// <param name="e"></param>
+    [FormControlEventHandler(formControlStr(InventLocation, InventLocation_KJPSMJurisdictionDepartment), FormControlEventType::Lookup)]
+    public static void InventLocation_KJPSMJurisdictionDepartment_OnLookup(FormControl sender, FormControlEventArgs e)
+    {
+        FormStringControl ctrl = sender as FormStringControl;
+        FormControlCancelableSuperEventArgs args = e as FormControlCancelableSuperEventArgs;
+        args.CancelSuperCall();
+
+        // Set up lookup to use IndustryUnitMaster table
+        SysTableLookup sysTableLookup = SysTableLookup::newParameters(tableNum(KJP_FI_IndustryUnitMaster), ctrl);
+
+        // Add display fields
+        sysTableLookup.addLookupfield(fieldNum(KJP_FI_IndustryUnitMaster, IndustryUnitCode));         // コード
+        sysTableLookup.addLookupfield(fieldNum(KJP_FI_IndustryUnitMaster, IndustryUnitAbbreviation)); // 略称
+        sysTableLookup.addLookupfield(fieldNum(KJP_FI_IndustryUnitMaster, IndustryUnitName));         // 名称
+        sysTableLookup.addLookupfield(fieldNum(KJP_FI_IndustryUnitMaster, RecordStartDate));          // 開始日
+        sysTableLookup.addLookupfield(fieldNum(KJP_FI_IndustryUnitMaster, RecordEndDate));            // 終了日
+
+        // Build query without filter, sorted by IndustryUnitCode (ascending)
+        Query query = new Query();
+        QueryBuildDataSource qbds = query.addDataSource(tableNum(KJP_FI_IndustryUnitMaster));
+        qbds.addSortField(fieldNum(KJP_FI_IndustryUnitMaster, IndustryUnitCode), SortOrder::Ascending);
+
+        // Apply the query to the lookup
+        sysTableLookup.parmQuery(query);
+        sysTableLookup.performFormLookup();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

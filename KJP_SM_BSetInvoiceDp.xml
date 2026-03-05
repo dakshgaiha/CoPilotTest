@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_BSetInvoiceDp</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///  Report data provider class for B set invoice Report
+/// </summary>
+[
+    SRSReportQueryAttribute(queryStr(KJP_SM_BSetInvoiceReportQuery)),
+    SRSReportParameterAttribute(classStr(KJP_SM_BSetInvoiceContract))
+]
+public class KJP_SM_BSetInvoiceDP extends SrsReportDataProviderPreProcessTempDb
+{
+    KJP_SM_BSetInvoiceTemp bSetInvoiceTemp;
+    str                    lastAccountNum, lastCategoryCode, lastInvoiceAccnt, lastInvBusSiteCode, lastAccBusSiteCode;
+    int                    serialCounter = KJP_CM_ConstantHelper::numberZero;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getKJP_SM_BSetInvoiceTemp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get temp table buffer
+    /// </summary>
+    /// <returns>KJP_SM_BSetInvoiceTemp table</returns>
+    [SRSReportDataSetAttribute(tablestr(KJP_SM_BSetInvoiceTemp))]
+    public KJP_SM_BSetInvoiceTemp getKJP_SM_BSetInvoiceTemp()
+    {
+        select bSetInvoiceTemp;
+        return bSetInvoiceTemp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// process report
+    /// </summary>
+    public void processReport()
+    {
+        KJP_SM_BSetInvoiceContract contract;
+        List                       slectedRecords;
+        ListEnumerator             listEnumerator;
+        QueryRun                   qrRun;
+        QueryBuildDataSource       qbdsCustInvJour, qbdsEcoResProTrans, qbdsUnitOfMeasureTrans;
+        LanguageId                 languageId = currentUserLanguage();
+        CustInvoiceJour            custInvoiceJourLoc;
+        InvoiceId                  previousInvoiceId = KJP_CM_ConstantHelper::blankValue;
+
+        ttsbegin;
+
+        contract = this.parmDataContract() as KJP_SM_BSetInvoiceContract;
+
+        slectedRecords = contract.parmRecId();
+        listEnumerator = slectedRecords.getEnumerator();
+        
+        while (listEnumerator.moveNext())
+        {
+            RecId invoiceRecId = listEnumerator.current();
+            custInvoiceJourLoc = CustInvoiceJour::findRecId(invoiceRecId);
+
+            qrRun = new QueryRun(this.parmQuery());
+
+            qbdsCustInvJour = SysQuery::findOrCreateDataSource(qrRun.query(), tableNum(CustInvoiceJour));
+            qbdsCustInvJour.addRange(fieldNum(CustInvoiceJour, RecId)).value(SysQuery::value(invoiceRecId));
+            qbdsEcoResProTrans = SysQuery::findOrCreateDataSource(qrRun.query(), tableNum(EcoResProductTranslation));
+            qbdsEcoResProTrans.addRange(fieldNum(EcoResProductTranslation, LanguageId)).value(SysQuery::value(languageId));
+            qbdsUnitOfMeasureTrans = SysQuery::findOrCreateDataSource(qrRun.query(), tableNum(UnitOfMeasureTranslation));
+            qbdsUnitOfMeasureTrans.addRange(fieldNum(UnitOfMeasureTranslation, LanguageId)).value(SysQuery::value(languageId));
+            
+            this.insertBSetInvoiceReportTempTable(qrRun);
+
+            // Update status after processing
+            if (custInvoiceJourLoc.InvoiceId != previousInvoiceId)
+            {
+                custInvoiceJourLoc.selectForUpdate(true);
+                custInvoiceJourLoc.KJPSMBSetInvoiceOutput = NoYes::Yes;
+                custInvoiceJourLoc.doUpdate();
+
+                previousInvoiceId = custInvoiceJourLoc.InvoiceId;
+            }
+        }
+
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertBSetInvoiceReportTempTable</Name>
+				<Source><![CDATA[
+    private void insertBSetInvoiceReportTempTable(QueryRun _qRun)
+    {
+        CustInvoiceJour                  custInvoiceJour, custInvoiceJourOriginalVoucher;
+        CustInvoiceTrans                 custInvoiceTrans, custInvoiceTransOriginalVoucher;
+        DimensionAttributeValue          dimAttributeValue;
+        InventTable                      inventTable;
+        SalesTable                       salesTable;
+        SalesLine                        saleLine;
+        KJP_SM_CustInvoiceTransBreakdown custInvoiceTransBreakdown;
+        KJP_FI_BusinessSiteMaster        businessSiteMaster;
+        KJP_CM_GeneralPurposeMaster      transactionCategoryConversion, biologicalTypes, businessSiteAdd, businessSitePhone;
+        CustTable                        custTableInvoice, custTableAccounting, custTableDelivery;
+        LogisticsEntityPostalAddressView logPostalAddressAccntPrimary, logPostalAddressAccntInvoice,
+                                         logPostalAddDelPrimary, logPostalAddDelDelivery;
+        DirPartyTable                    dirPartyTableAccntng, dirPartyTableDelivery;
+        DirPartyLocation                 dirPartyLocationAccntng, dirPartyLocDelivery;
+        DirPartyLocationRole             dirPartyLocRoleAccntng, dirPartyLocRoleDel;
+        LogisticsLocationRole            logisticsLocRoleDel, logisticsLocRoleAccnt;
+        LogisticsElectronicAddress       logElectronicAddressAccntng, logElectronicAddressDelivery;
+        EcoResProductTranslation         ecoResProductTranslation;
+        UnitOfMeasureTranslation         unitOfMeasureTranslation;
+        UnitOfMeasure                    unitOfMeasure;
+        WMSOrderTrans                    wmsOrderTrans;
+        WMSPickingRoute                  wmsPickingRoute;
+        str                              blgTypMark;
+        container                        blgTypeBio;
+        int                              sortOrder = KJP_CM_ConstantHelper::numberZero;
+        DictEnum                         dictEnum;
+        int                              enumValue;
+        KJP_SM_CorrectionMark            correctionMark;
+        KJP_SM_MakerCode                 makerCode;
+        str                              voucherExt = '-00';
+        int                              currentCount;
+        Map                              voucherRowCountMap = new Map(Types::String, Types::Integer);
+        utcdatetime                      searchBaseTime = DateTimeUtil::getSystemDateTime();
+
+
+        blgTypMark = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::InvoiceConstantKey, KJP_CM_ConstantHelper::origCodeInvoiceConstantKey_BlgTypMark).DestinationCode;
+            
+        while select DestinationCode from biologicalTypes
+            where biologicalTypes.Key == KJP_CM_ConstantHelper::Biological_BlgTypeKey
+        {
+            blgTypeBio += biologicalTypes.DestinationCode;
+        }
+
+        correctionMark = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::BsetInvoiceConstantKey, KJP_CM_ConstantHelper::origCodeBsetInvoiceConstantKey_CorrectionMark).DestinationCode;
+        makerCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_UnifiedEnterpriseCodeKey, KJP_CM_ConstantHelper::origCode_UnifiedEnterpriseCode).DestinationCode;
+
+        while (_qRun.next())
+        {
+            custInvoiceTransBreakdown     = _qRun.get(tableNum(KJP_SM_CustInvoiceTransBreakdown));
+            custInvoiceTrans              = _qRun.get(tableNum(CustInvoiceTrans));
+            custInvoiceJour               = _qRun.get(tableNum(CustInvoiceJour));
+            dimAttributeValue             = _qRun.get(tableNum(DimensionAttributeValue));
+            inventTable                   = _qRun.get(tableNum(InventTable));
+            salesTable                    = _qRun.get(tableNum(SalesTable));
+            saleLine                      = _qRun.get(tableNum(SalesLine));
+            businessSiteMaster            = _qRun.get(tableNum(KJP_FI_BusinessSiteMaster));
+            custTableInvoice              = _qRun.get(tableNum(CustTable), 1);
+            custTableDelivery             = _qRun.get(tableNum(CustTable), 2);
+            custTableAccounting           = _qRun.get(tableNum(CustTable), 3);
+            dirPartyTableAccntng          = _qRun.get(tableNum(DirPartyTable), 2);
+            dirPartyTableDelivery         = _qRun.get(tableNum(DirPartyTable), 1);
+            unitOfMeasureTranslation      = _qRun.get(tableNum(UnitOfMeasureTranslation));
+            unitOfMeasure                 = _qRun.get(tableNum(UnitOfMeasure));
+            ecoResProductTranslation      = _qRun.get(tableNum(EcoResProductTranslation));
+            transactionCategoryConversion = _qRun.get(tableNum(KJP_CM_GeneralPurposeMaster), 1);
+            businessSiteAdd               = _qRun.get(tableNum(KJP_CM_GeneralPurposeMaster), 2);
+            businessSitePhone             = _qRun.get(tableNum(KJP_CM_GeneralPurposeMaster), 3);
+           
+            
+            bSetInvoiceTemp.clear();
+            sortOrder++;
+            dictEnum = new DictEnum(enumNum(KJP_SM_TransactionCategoryForMonthlyInvoice));
+            enumValue = str2int(transactionCategoryConversion.DestinationCode);
+            if (dictEnum && dictEnum.value2Label(enumValue))
+            {
+                bSetInvoiceTemp.TransactionCategory = SysLabel::labelId2String(dictEnum.index2LabelId(enumValue), KJP_CM_ConstantHelper::LanguageId_ja);
+            }
+
+            if (salesTable.SalesType == SalesType::Sales && saleLine.InventTransIdReturn)
+            {
+                bSetInvoiceTemp.CorrectionMark = correctionMark;
+            }
+
+            bSetInvoiceTemp.IssueDateYear = strFmt('%1', year(CustInvoiceJour.InvoiceDate));
+            bSetInvoiceTemp.IssueDateMonth = strRFix(int2str(mthOfYr(CustInvoiceJour.InvoiceDate)), 2, KJP_CM_ConstantHelper::stringZero);
+            bSetInvoiceTemp.IssueDateDay = strRFix(int2str(dayOfMth(CustInvoiceJour.InvoiceDate)), 2, KJP_CM_ConstantHelper::stringZero);
+            bSetInvoiceTemp.VoucherNumber = custInvoiceJour.KJPSMAgentVoucherNumber;
+            bSetInvoiceTemp.TransactionType1 = subStr(custInvoiceJour.KJPSMTradeType, 1, 1);
+            bSetInvoiceTemp.TransactionType2 = subStr(custInvoiceJour.KJPSMTradeType, 2, 1);
+            bSetInvoiceTemp.TransactionType3 = subStr(custInvoiceJour.KJPSMTradeType, 3, 1);
+            bSetInvoiceTemp.MakerCode = makerCode;
+            bSetInvoiceTemp.BusinessSiteName = businessSiteMaster.BusinessSiteName;
+            bSetInvoiceTemp.BusinessSiteAddress1 = businessSiteAdd.DestinationCode;
+            bSetInvoiceTemp.BusinessSiteAddress2 = businessSiteAdd.Description;
+            bSetInvoiceTemp.BusinessSitePhone = businessSitePhone.DestinationCode;
+
+            select firstonly logPostalAddressAccntInvoice
+                where logPostalAddressAccntInvoice.EntityType == LogisticsLocationEntityType::Party
+                    && logPostalAddressAccntInvoice.Entity == dirPartyTableAccntng.RecId
+                    && logPostalAddressAccntInvoice.ValidFrom <= searchBaseTime
+                    && logPostalAddressAccntInvoice.ValidTo >= searchBaseTime
+                join firstonly dirPartyLocationAccntng
+                    where dirPartyLocationAccntng.Party == logPostalAddressAccntInvoice.Entity
+                    && dirPartyLocationAccntng.Location == logPostalAddressAccntInvoice.Location
+                join firstonly dirPartyLocRoleAccntng
+                    where dirPartyLocRoleAccntng.PartyLocation == dirPartyLocationAccntng.RecId
+                join firstonly logisticsLocRoleAccnt
+                    where logisticsLocRoleAccnt.RecId == dirPartyLocRoleAccntng.LocationRole
+                && logisticsLocRoleAccnt.Type == LogisticsLocationRoleType::Invoice;
+
+            select firstonly logPostalAddressAccntPrimary
+                where logPostalAddressAccntPrimary.EntityType == LogisticsLocationEntityType::Party
+                    && logPostalAddressAccntPrimary.IsPrimary == NoYes::Yes
+                    && logPostalAddressAccntPrimary.Entity == dirPartyTableAccntng.RecId
+                    && logPostalAddressAccntPrimary.ValidFrom <= searchBaseTime
+                    && logPostalAddressAccntPrimary.ValidTo >= searchBaseTime;
+
+            if (logPostalAddressAccntInvoice)
+            {
+                bSetInvoiceTemp.AccountingCustomerZipCode = logPostalAddressAccntInvoice.ZipCode;
+                bSetInvoiceTemp.AccountingCustomerAddress = logPostalAddressAccntInvoice.Address;
+            }
+            else if (logPostalAddressAccntPrimary)
+            {
+                bSetInvoiceTemp.AccountingCustomerZipCode = logPostalAddressAccntPrimary.ZipCode;
+                bSetInvoiceTemp.AccountingCustomerAddress = logPostalAddressAccntPrimary.Address;
+            }
+
+            bSetInvoiceTemp.AccountingCustomerName = dirPartyTableAccntng.Name;
+
+            select firstonly Locator from logElectronicAddressAccntng
+                where logElectronicAddressAccntng.RecId == dirPartyTableAccntng.PrimaryContactPhone;
+
+            bSetInvoiceTemp.AccountingCustomerPhone = logElectronicAddressAccntng.Locator;
+
+            select firstonly logPostalAddDelDelivery
+                where logPostalAddDelDelivery.EntityType == LogisticsLocationEntityType::Party
+                    && logPostalAddDelDelivery.Entity == dirPartyTableDelivery.RecId
+                    && logPostalAddDelDelivery.ValidFrom <= searchBaseTime
+                    && logPostalAddDelDelivery.ValidTo >= searchBaseTime
+                join firstonly dirPartyLocDelivery
+                    where dirPartyLocDelivery.Party == logPostalAddDelDelivery.Entity
+                    && dirPartyLocDelivery.Location == logPostalAddDelDelivery.Location
+                join firstonly dirPartyLocRoleDel
+                    where dirPartyLocRoleDel.PartyLocation == dirPartyLocDelivery.RecId
+                join firstonly logisticsLocRoleDel
+                    where logisticsLocRoleDel.RecId == dirPartyLocRoleDel.LocationRole
+                && logisticsLocRoleDel.Type == LogisticsLocationRoleType::Delivery;
+
+            select firstonly logPostalAddDelPrimary
+                where logPostalAddDelPrimary.EntityType == LogisticsLocationEntityType::Party
+                    && logPostalAddDelPrimary.IsPrimary == NoYes::Yes
+                    && logPostalAddDelPrimary.Entity == dirPartyTableDelivery.RecId
+                    && logPostalAddDelPrimary.ValidFrom <= searchBaseTime
+                    && logPostalAddDelPrimary.ValidTo >= searchBaseTime;
+
+            if (logPostalAddDelDelivery)
+            {
+                bSetInvoiceTemp.DeliveryCustomerZipCode = logPostalAddDelDelivery.ZipCode;
+                bSetInvoiceTemp.DeliveryCustomerAddress = logPostalAddDelDelivery.Address;
+            }
+            else if (logPostalAddDelPrimary)
+            {
+                bSetInvoiceTemp.DeliveryCustomerZipCode = logPostalAddDelPrimary.ZipCode;
+                bSetInvoiceTemp.DeliveryCustomerAddress = logPostalAddDelPrimary.Address;
+            }
+
+            select firstonly Locator from logElectronicAddressDelivery
+                where logElectronicAddressDelivery.RecId == dirPartyTableDelivery.PrimaryContactPhone;
+
+            bSetInvoiceTemp.DeliveryCustomerName = dirPartyTableDelivery.Name;
+            bSetInvoiceTemp.DeliveryCustomerPhone = logElectronicAddressDelivery.Locator;
+            bSetInvoiceTemp.ItemId = custInvoiceTrans.ItemId;
+            bSetInvoiceTemp.ItemName = ecoResProductTranslation.Name;
+            bSetInvoiceTemp.Quantity = custInvoiceTransBreakdown.Qty;
+            bSetInvoiceTemp.SalesUnitName = unitOfMeasureTranslation.Description;
+            bSetInvoiceTemp.UnitPrice = custInvoiceTransBreakdown.UnitPrice;
+            bSetInvoiceTemp.Amount = custInvoiceTransBreakdown.LineAmount;
+
+            if (conFind(blgTypeBio, inventTable.KJPCMBlgTyp))
+            {
+                bSetInvoiceTemp.BlgTyp = blgTypMark;
+            }
+
+            bSetInvoiceTemp.BatchNumber = custInvoiceTransBreakdown.BatchNumber;
+
+            if (salesTable.SalesType == SalesType::Sales && saleLine.InventTransIdReturn)
+            {
+                select firstOnly InvoiceId, InvoiceDate from custInvoiceTransOriginalVoucher
+                    where custInvoiceTransOriginalVoucher.InventTransId == saleLine.InventTransIdReturn;
+ 
+                if (custInvoiceTransOriginalVoucher.RecId)
+                {
+                    select firstOnly KJPSMAgentVoucherNumber, RecId from custInvoiceJourOriginalVoucher
+                        where custInvoiceJourOriginalVoucher.InvoiceId == custInvoiceTransOriginalVoucher.InvoiceId
+                            && custInvoiceJourOriginalVoucher.InvoiceDate == custInvoiceTransOriginalVoucher.InvoiceDate;
+ 
+                    if (custInvoiceJourOriginalVoucher.RecId)
+                    {
+                        bSetInvoiceTemp.OriginalVoucherNumber = strFmt('%1%2', custInvoiceJourOriginalVoucher.KJPSMAgentVoucherNumber, voucherExt);
+                    }
+                }
+            }
+
+            select firstonly routeId from wmsorderTrans
+                where wmsorderTrans.inventTransId == custInvoiceTrans.InventTransId
+                    && wmsorderTrans.fullPallet == 0
+                join firstonly KJPSMSlipRemarks from wmsPickingRoute
+                    where wmsPickingRoute.pickingRouteID == wmsorderTrans.routeId;
+
+            if (wmsPickingRoute.KJPSMSlipRemarks)
+            {
+                bSetInvoiceTemp.Remarks = wmsPickingRoute.KJPSMSlipRemarks;
+            }
+
+            else if (salesTable.KJPSMSlipRemarks)
+            {
+                bSetInvoiceTemp.Remarks = salesTable.KJPSMSlipRemarks;
+            }
+            bSetInvoiceTemp.InvoiceYM = strFmt('%1%2', year(custInvoiceJour.InvoiceDate), strRFix(int2str(mthOfYr(custInvoiceJour.InvoiceDate)), 2, KJP_CM_ConstantHelper::stringZero));
+            bSetInvoiceTemp.DepartmentCode = custTableAccounting.KJPCMBusinessPartnerUseDepartment;
+            bSetInvoiceTemp.SortOrder = sortOrder;
+
+            if (custTableAccounting.AccountNum != lastAccountNum || transactionCategoryConversion.DestinationCode != lastCategoryCode ||  custInvoiceJour.InvoiceAccount != lastInvoiceAccnt 
+                || custTableInvoice.KJPCMMainBusinessSiteCode != lastInvBusSiteCode || custTableAccounting.KJPCMMainBusinessSiteCode != lastAccBusSiteCode)
+            {
+                serialCounter = 0;
+            }
+            bSetInvoiceTemp.Sequence = strFmt('%1', strRFix(int2str(serialCounter), 2, KJP_CM_ConstantHelper::stringZero));
+
+            bSetInvoiceTemp.insert();
+
+            lastAccountNum = custTableAccounting.AccountNum;
+            lastCategoryCode = transactionCategoryConversion.DestinationCode;
+            lastInvBusSiteCode = custTableInvoice.KJPCMMainBusinessSiteCode;
+            lastInvoiceAccnt = custInvoiceJour.InvoiceAccount;
+            lastAccBusSiteCode = custTableAccounting.KJPCMMainBusinessSiteCode;
+
+            currentCount = voucherRowCountMap.exists(bSetInvoiceTemp.VoucherNumber) ? voucherRowCountMap.lookup(bSetInvoiceTemp.VoucherNumber) : 0;
+            voucherRowCountMap.insert(bSetInvoiceTemp.VoucherNumber, currentCount + 1);
+
+            if (currentCount == 0)
+            {
+                serialCounter++;
+            }
+        }
+
+        MapEnumerator voucherEnum = voucherRowCountMap.getEnumerator();
+        while (voucherEnum.moveNext())
+        {
+            str voucher = voucherEnum.currentKey();
+            int counter = voucherEnum.currentValue();
+            int dummyCount = 5 - counter;
+
+            for (int i = 1; i <= dummyCount; i++)
+            {
+                bSetInvoiceTemp.clear();
+                bSetInvoiceTemp.VoucherNumber = voucher;
+                bSetInvoiceTemp.insert();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

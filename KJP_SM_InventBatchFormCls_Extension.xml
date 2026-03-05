@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventBatchFormCls_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// extension of InventBatch class
+/// </summary>
+[ExtensionOf(formDataSourceStr(InventBatch,InventBatch))]
+internal final class KJP_SM_InventBatchFormCls_Extension
+{
+    private const str BatchStatus = 'BatchStatus';
+    private const str GQPQuarantine = 'GQPQuarantine';
+    private const str QCQuarantine = 'QCQuarantine';
+    private const str QCPass = 'QCPass';
+    private const str QCFail = 'QCFail';
+    private const str GMPQuarantine = 'GMPQuarantine';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>active</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// record active invent
+    /// </summary>
+    /// <returns>active result</returns>
+    public int active()
+    {
+        PdsDispositionCode pdsGQPQuarantine = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GQPQuarantine).DestinationCode;
+        PdsDispositionCode pdsQCQuarantine = KJP_CM_GeneralPurposeMaster::find(BatchStatus, QCQuarantine).DestinationCode;
+        PdsDispositionCode pdsQCPass = KJP_CM_GeneralPurposeMaster::find(BatchStatus, QCPass).DestinationCode;
+        PdsDispositionCode pdsQCFail = KJP_CM_GeneralPurposeMaster::find(BatchStatus, QCFail).DestinationCode;
+        PdsDispositionCode pdsGMPQuarantine = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPQuarantine).DestinationCode;
+
+        int ret = next active();
+
+        FormRun formRun = this.formRun();
+
+        FormControl menuItemGQP = formRun.design().controlName(formControlStr(InventBatch, KJP_SM_GQPJudgementResultEntry));
+        FormControl menuItemSUQ = formRun.design().controlName(formControlStr(InventBatch, KJP_SM_SUQJudgementResultEntry));
+
+        FormDataSource inventBatch_ds = formRun.dataSource(formDataSourceStr(InventBatch, InventBatch));
+        InventBatch inventBatch = inventBatch_ds.cursor() as InventBatch;
+
+        menuItemGQP.enabled(inventBatch.PdsDispositionCode == pdsGQPQuarantine);
+        menuItemSUQ.enabled(inventBatch.PdsDispositionCode == pdsQCQuarantine ||
+                            inventBatch.PdsDispositionCode == pdsQCPass ||
+                            inventBatch.PdsDispositionCode == pdsQCFail ||
+                            inventBatch.PdsDispositionCode == pdsGMPQuarantine);
+
+        FormRealControl standardCoefficient = formRun.design().controlName(formControlStr(InventBatch, InventBatch_KJPSMStandardCoefficient));
+        standardCoefficient.allowEdit(false);
+
+        FormRealControl actualCoefficient = formRun.design().controlName(formControlStr(InventBatch, InventBatch_KJPSMActualCoefficient));
+        actualCoefficient.allowEdit(false);
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

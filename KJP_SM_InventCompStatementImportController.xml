@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompStatementImportController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>KJP_SM_InventCompStatementImportController</c> imports data from csv for inventory compensation statement.
+/// </summary>
+public class KJP_SM_InventCompStatementImportController extends SysOperationServiceController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main entry point for the logic of file import.
+    /// </summary>
+    /// <param name = "_args">
+    /// Caller arguments.
+    /// </param>
+    public static void main(Args _args)
+    {
+        SysOperationServiceController controller = new KJP_SM_InventCompStatementImportController(
+            classStr(KJP_SM_InventCompStatementImportService),
+            methodStr(KJP_SM_InventCompStatementImportService, process),
+            SysOperationExecutionMode::Synchronous);
+
+        KJP_SM_InventCompStatementImportController::runMain(_args, controller);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runMain</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to set additional run-time properties of the controller.
+    /// </summary>
+    /// <param name = "_args">
+    /// Caller arguments.
+    /// </param>
+    /// <param name = "_controller">
+    /// The target controller instance.
+    /// </param>
+    private static void runMain(Args _args, SysOperationServiceController _controller)
+    {
+        _controller.parmDialogCaption("@KJP:KJP103656");
+        _controller.parmArgs(_args);
+        _controller.parmLoadFromSysLastValue(false);
+        _controller.showBatchTab(false);
+        _controller.startOperation();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

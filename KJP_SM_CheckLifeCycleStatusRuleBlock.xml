@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CheckLifeCycleStatusRuleBlock</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+internal final class KJP_SM_CheckLifeCycleStatusRuleBlock
+{
+    EcoResProductLifecycleState             lifecycleState;
+    EngChgEcoResProductLifeCycleStateRule   lifecycleStateRule;
+    str                                     errorMsg;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>ruleName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Property method for rule name
+    /// </summary>
+    /// <returns>The name of the rule</returns>
+    public str ruleName()
+    {
+        return "@SYS106787";
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmErrorMsg</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get or set error message
+    /// </summary>
+    /// <param name = "_errorMsg">_errorMsg</param>
+    /// <returns>message</returns>
+    public str parmErrorMsg(str _errorMsg = errorMsg)
+    {
+        errorMsg = _errorMsg;
+        return errorMsg;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ruleType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Property method for rule type
+    /// </summary>
+    /// <returns>Rule type</returns>
+    public EngChgEcoResStateRuleType ruleType()
+    {
+        return EngChgEcoResStateRuleType::ItemForecast;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isBlocked</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// check life cycle status
+    /// </summary>
+    /// <param name = "_itemId">ItemId</param>
+    /// <param name = "_inventDimId">InventDimId</param>
+    /// <param name = "_startDate">TransDate</param>
+    /// <returns>true/false</returns>
+    public boolean isBlocked(ItemId _itemId, InventDimId _inventDimId, TransDate _startDate)
+    {
+        InventTable masterProduct = InventTable::find(_itemId, false);
+        boolean ret = this.isLifeCycleStatusRuleBlock(masterProduct.ProductLifecycleStateId, _itemId);
+
+        if (!ret)
+        {
+            InventDistinctProduct   distinctProduct = InventDistinctProduct::find(_itemId, _inventDimId);
+
+            //Not all product dimensions are set, the distinct product could not be found - no need for checking
+            if (!distinctProduct.RecId)
+            {
+                return false;
+            }
+            
+            //If transactions are allowed, continue the check for the engineering variant
+            ret = this.isLifeCycleStatusRuleBlock(distinctProduct.ProductLifecycleStateId, _itemId);
+        
+            if (!ret)
+            {
+                //If transactions are allowed, continue the check for the engineering version
+                ret = this.isEngineeringVersionBlocked(distinctProduct, _itemId, _startDate);
+            }
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isLifeCycleStatusRuleBlock</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// the check for the engineering variant
+    /// </summary>
+    /// <param name = "_lifecycleState">_lifecycleState</param>
+    /// <param name = "_itemId">_itemId</param>
+    /// <returns>true/false</returns>
+    private boolean isLifeCycleStatusRuleBlock(EcoResProductLifecycleStateId _lifecycleState, ItemId _itemId)
+    {
+        boolean ret = false;
+
+        lifecycleState     = EcoResProductLifecycleState::find(_lifecycleState);
+        lifecycleStateRule = EngChgEcoResProductLifeCycleStateRule::find(lifecycleState.StateId, this.ruleType());
+
+        if (lifecycleStateRule.Blocked == EngChgEcoResStateBlockRule::Error)
+        {
+            ret = true;
+            errorMsg = strFmt("@ENG:LifecycleStateProcessRuleBlockedMsg",
+                _itemId,
+                lifecycleState.StateId,
+                this.ruleName());
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isEngineeringVersionBlocked</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// the check for the engineering version
+    /// </summary>
+    /// <param name = "_distinctProduct">_distinctProduct</param>
+    /// <param name = "_itemId">_itemId</param>
+    /// <param name = "_startDate">_startDate</param>
+    /// <returns>true/false</returns>
+    private boolean isEngineeringVersionBlocked(InventDistinctProduct _distinctProduct, ItemId _itemId, TransDate _startDate)
+    {
+        EngChgProductVersion       engChgProductVersion;
+        EngChgReleasedProductVersion   engReleasedProductVersion;
+        TransDate           checkDate;
+        boolean             ret = false;
+
+        if (EcoResProduct::engChgisEngineeringControlled(_distinctProduct.Product))
+        {
+            checkDate = _startDate;
+            boolean allowInactiveVersion = this.allowInactiveVersion();
+
+            engChgProductVersion = EngChgProductVersion::findByItemInventDim(_distinctProduct.ItemId, InventDim::find(_distinctProduct.InventDimId), checkDate);
+
+            // If "Allow inactive versions" is set to Yes, look for the latest non-effective version
+            if(!engChgProductVersion
+                && allowInactiveVersion)
+            {
+                engChgProductVersion = EngChgProductVersion::findByItemInventDim(_distinctProduct.ItemId, InventDim::find(_distinctProduct.InventDimId));
+            }
+
+            if(!engChgProductVersion)
+            {
+                errorMsg = strFmt("@ENG7724", _itemId, checkDate);
+                return true;
+            }
+
+            engReleasedProductVersion = engChgProductVersion.getReleasedProductVersion();
+        
+            if(engReleasedProductVersion.Active == NoYes::No && !allowInactiveVersion)
+            {
+                errorMsg = strFmt("@ENG966", _itemId);
+                ret = true;
+            }
+            if(!ret)
+            {
+                ret = this.isLifeCycleStatusRuleBlock(engReleasedProductVersion.ProductLifecycleStateId, _itemId);
+            }
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>allowInactiveVersion</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checks whether inactive versions are allowed for this rule.
+    /// </summary>
+    /// <returns>
+    /// true if inactive versions are allowed, false otherwise.
+    /// </returns>
+    public boolean allowInactiveVersion()
+    {
+        return EngChgProductParameters::find().AllowInActiveVersion;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

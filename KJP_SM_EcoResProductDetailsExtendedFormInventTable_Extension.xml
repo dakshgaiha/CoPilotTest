@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_EcoResProductDetailsExtendedFormInventTable_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension DataSource class for EcoResProductDetailsExtended
+/// </summary>
+[ExtensionOf(formDataSourceStr(EcoResProductDetailsExtended, InventTable))]
+final class KJP_SM_EcoResProductDetailsExtendedFormInventTable_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>displayComponentUnit1</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// display method ComponentUnit
+    /// </summary>
+    /// <returns>UnitOfMeasureSymbol</returns>
+    [SysClientCacheDataMethodAttribute(true)]
+    display static UnitOfMeasureSymbol displayComponentUnit1(InventTable _inventTable)
+    {
+        FormDataSource inventTable_ds = _inventTable.datasource();
+        InventTable inventTable = inventTable_ds.formRun().dataSource(tableStr(InventTable)).cursor();      
+        return inventTable.displayKJPComponentUnit1();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayComponentUnit2</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// display method ComponentUnit
+    /// </summary>
+    /// <returns>UnitOfMeasureSymbol</returns>
+    [SysClientCacheDataMethodAttribute(true)]
+    display static UnitOfMeasureSymbol displayComponentUnit2(InventTable _inventTable)
+    {  
+        FormDataSource inventTable_ds = _inventTable.datasource();
+        InventTable inventTable = inventTable_ds.formRun().dataSource(tableStr(InventTable)).cursor();     
+        return inventTable.displayKJPComponentUnit2();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

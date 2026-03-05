@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompStatementImportContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Import data contract for <c>KJP_SM_InventCompStatementImportController</c>.
+/// </summary>
+[
+    DataContractAttribute,
+    SysOperationContractProcessingAttribute(classStr(KJP_SM_InventCompStatementImportUIBuilder))
+]
+public class KJP_SM_InventCompStatementImportContract
+{
+    System.IO.Stream            stream;
+    Filename                    filename;
+    str                         uploadedFileId;
+    
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmStream</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to get and set the file input-output stream.
+    /// </summary>
+    /// <param name = "_stream">
+    /// Source parameter to set the file input-output stream.
+    /// </param>
+    /// <returns>
+    /// The file input-output stream.
+    /// </returns>
+    [Hookable(false)]
+    public System.IO.Stream parmStream(System.IO.Stream _stream = stream)
+    {
+        stream = _stream;
+        return stream;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmFilename</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to get and set the file name.
+    /// </summary>
+    /// <param name = "_filename">
+    /// Source parameter to set the file name.
+    /// </param>
+    /// <returns>
+    /// The file name.
+    /// </returns>
+    [Hookable(false)]
+    public Filename parmFilename(Filename _filename = filename)
+    {
+        filename = _filename;
+        return filename;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getAllowedFileType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to get the acceptable file extensions/types.
+    /// </summary>
+    /// <returns>
+    /// The acceptable file extensions/types.
+    /// </returns>
+    [Hookable(false)]
+    public str getAllowedFileType()
+    {
+        return KJP_CM_ConstantHelper::inventCompStatementImportFileType;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ASetSlipReportContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Contract class for ASetSlip report - KJP_FI_ASetSlipReport
+/// </summary>
+[DataContractAttribute]
+public class KJP_SM_ASetSlipReportContract
+{
+    InventTransferId transferId;
+    str menuItemName;
+    str routeIds;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmTransferId</Name>
+				<Source><![CDATA[
+    [
+        DataMemberAttribute(identifierStr(InventTransferId)),
+        SysOperationLabel(literalStr("@SYS78239")),
+        SysOperationDisplayOrderAttribute("1")
+    ]
+    public InventTransferId parmTransferId(InventTransferId _transferId = transferId)
+    {
+        transferId = _transferId;
+        return transferId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmMenuItemName</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute]
+
+    public str parmMenuItemName(str _menuItemName = menuItemName)
+    {
+        menuItemName = _menuItemName;
+        return menuItemName;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPickingRouteId</Name>
+				<Source><![CDATA[
+    [DataMemberAttribute]
+    public str parmPickingRouteId(str _routeIds = routeIds)
+    {
+        routeIds = _routeIds;
+        return routeIds;
+
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventLocationTbl_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// To check InventLocation.KJPSMDomesticShipmentEnableFlag value
+/// </summary>
+[ExtensionOf(tableStr(InventLocation))]
+internal final class KJP_SM_InventLocationTbl_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>kjp_SM_checkDomesticShipmentEnableFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// To check InventLocation.KJPSMDomesticShipmentEnableFlag value
+    /// </summary>
+    /// <param name = "_inventLocationId">InventLocationId</param>
+    /// <returns>boolean</returns>
+    public boolean kjp_SM_checkDomesticShipmentEnableFlag(InventLocationId _inventLocationId)
+    {
+        InventLocation inventLocation;
+        boolean        ret = false;
+
+        select firstonly KJPSMDomesticShipmentEnableFlag, InventLocationId from inventLocation
+            where inventLocation.InventLocationId == _inventLocationId;
+
+        if (inventLocation.KJPSMDomesticShipmentEnableFlag)
+        {
+            ret = true;
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

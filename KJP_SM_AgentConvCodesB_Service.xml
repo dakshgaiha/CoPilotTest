@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AgentConvCodesB_Service</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// service class to insert records from IF table to Master table and capture error message in Error log table.
+/// </summary>
+class KJP_SM_AgentConvCodesB_Service extends KJP_CM_IFBatchBase
+{
+    
+    date currentDate;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Process to validate IF table, insert records from IF table to Master table and capture error message in Error log table
+    /// </summary>
+    void processRun()
+    {
+        changecompany(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::companyCodeKey,KJP_CM_ConstantHelper::origCompanyCode_KKC).DestinationCode)
+        {
+            try
+            {
+                currentDate = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+                ttsbegin;
+                if (this.validate())
+                {
+                    this.insertIntoAgentConversionCodesBMaster();
+                }
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                error(any2Str(Exception::Error));
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate IF table records
+    /// </summary>
+    /// <returns>boolean</returns>
+    protected boolean validate()
+    {
+        boolean                               ret = true;
+        KJP_SM_AgentConversionCodesBIfTable   agentConversionCodesBIfTable;
+
+        select firstonly RecId from agentConversionCodesBIfTable;
+
+        if (!agentConversionCodesBIfTable.RecId)
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500062", "@KJP:KJP100551"));
+        }
+
+        if (ret)
+        {
+            agentConversionCodesBIfTable.clear();
+            
+            while select count(RecId), UniversalWholesaleCodeFlagStr, WholesaleCode, WholesaleSubCode, TargetBusinessClassification, 
+                           DataExchangeClassification, MakerCode, AgentIdentifyValue from agentConversionCodesBIfTable
+                group by UniversalWholesaleCodeFlagStr, WholesaleCode, WholesaleSubCode, TargetBusinessClassification, DataExchangeClassification, MakerCode, AgentIdentifyValue
+                where agentConversionCodesBIfTable.RecordStartDate <= currentDate &&
+                agentConversionCodesBIfTable.RecordEndDate >= currentDate
+            {
+                if (agentConversionCodesBIfTable.RecId > 1)
+                {
+                
+                    ret = checkFailed(strFmt("@KJP:KJP500019", "@KJP:KJP100589", agentConversionCodesBIfTable.UniversalWholesaleCodeFlagStr, "@KJP:KJP100590", AgentConversionCodesBIfTable.WholesaleCode,
+                                             "@KJP:KJP100595", agentConversionCodesBIfTable.WholesaleSubCode, "@KJP:KJP100600", agentConversionCodesBIfTable.TargetBusinessClassification, "@KJP:KJP100601", AgentConversionCodesBIfTable
+                                             .DataExchangeClassification, "@KJP:KJP100614", agentConversionCodesBIfTable.MakerCode, "@KJP:KJP100615", agentConversionCodesBIfTable.AgentIdentifyValue));
+                }
+            }
+        }
+        
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertIntoAgentConversionCodesBMaster</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Delete complete records from Master table, insert records from IF table to Master table and capture error message in Error log table
+    /// </summary>
+    protected void insertIntoAgentConversionCodesBMaster()
+    {
+        KJP_SM_AgentConversionCodesBIfTable  agentConversionCodesBIfTable;
+        KJP_SM_AgentConversionCodesBMaster   agentConversionCodesBMaster;
+        RecordInsertList                     agentConversionCodesBMasterList = new RecordInsertList(tableNum(KJP_SM_AgentConversionCodesBMaster));
+
+        delete_from agentConversionCodesBMaster;
+
+        while select agentConversionCodesBIfTable
+            where agentConversionCodesBIfTable.RecordStartDate <= currentDate &&
+                  agentConversionCodesBIfTable.RecordEndDate >= currentDate
+        {
+            agentConversionCodesBMaster.UniversalWholesaleCodeFlag   = any2Enum(agentConversionCodesBIfTable.UniversalWholesaleCodeFlagStr);
+            agentConversionCodesBMaster.WholesaleCode                = agentConversionCodesBIfTable.WholesaleCode;
+            agentConversionCodesBMaster.WholesaleSubCode             = agentConversionCodesBIfTable.WholesaleSubCode;
+            agentConversionCodesBMaster.TargetBusinessClassification = agentConversionCodesBIfTable.TargetBusinessClassification;
+            agentConversionCodesBMaster.DataExchangeClassification   = agentConversionCodesBIfTable.DataExchangeClassification;
+            agentConversionCodesBMaster.MakerCode                    = agentConversionCodesBIfTable.MakerCode;
+            agentConversionCodesBMaster.AgentIdentifyValue           = agentConversionCodesBIfTable.AgentIdentifyValue;
+            agentConversionCodesBMaster.RecordStartDate              = agentConversionCodesBIfTable.RecordStartDate;
+            agentConversionCodesBMaster.RecordEndDate                = agentConversionCodesBIfTable.RecordEndDate;
+            agentConversionCodesBMaster.AgentCode                    = agentConversionCodesBIfTable.AgentCode;
+            agentConversionCodesBMaster.ApplyStartDate               = agentConversionCodesBIfTable.ApplyStartDate;
+            agentConversionCodesBMaster.OldAgentCode                 = agentConversionCodesBIfTable.OldAgentCode;
+            agentConversionCodesBMaster.OldApplyStartDate            = agentConversionCodesBIfTable.OldApplyStartDate;
+
+            agentConversionCodesBMasterList.add(agentConversionCodesBMaster);
+        }
+
+        agentConversionCodesBMasterList.insertDatabase();
+
+        select count(RecId) from agentConversionCodesBMaster;
+        numberOfSuccess = agentConversionCodesBMaster.RecId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

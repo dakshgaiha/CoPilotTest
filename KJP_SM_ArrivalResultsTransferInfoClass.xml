@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ArrivalResultsTransferInfoClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// For storing the Transfer order info which retrieved and transform from the IF table.
+/// </summary>
+class KJP_SM_ArrivalResultsTransferInfoClass
+{
+    private InventTransferLine          inventTransferLine;
+    private InventTransferId            transferId;
+    private LineNum                     lineNum;
+    private InventTransferQty           qtyTransfer;
+    private InventTransferReceiveDate   receiveDate;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Contructor for current class
+    /// </summary>
+    /// <returns>Instance of current class</returns>
+    public static KJP_SM_ArrivalResultsTransferInfoClass construct()
+    {
+        return new KJP_SM_ArrivalResultsTransferInfoClass();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getTransferInfo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get the transfer line info from business table base on InventTransferId and LineNum retrieved from the IF table.
+    /// </summary>
+    public void getTransferInfo()
+    {
+        UnitOfMeasureSymbol     salesUnit;
+        UnitOfMeasureSymbol     inventUnit;
+
+        inventTransferLine  = InventTransferLine::find(transferId, lineNum);
+
+        salesUnit           = InventTableModule::getUnitIdByModuleType(inventTransferLine.ItemId, ModuleInventPurchSales::Sales);
+        inventUnit          = InventTableModule::getUnitIdByModuleType(inventTransferLine.ItemId, ModuleInventPurchSales::Invent);
+
+        qtyTransfer         = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                inventTransferLine.ItemId,
+                                inventTransferLine.InventDimId,
+                                qtyTransfer,
+                                salesUnit,
+                                inventUnit);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventTransferLine</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the Transfer Line
+    /// </summary>
+    /// <returns>InventTransferLine</returns>
+    public InventTransferLine parmInventTransferLine()
+    {
+        return inventTransferLine;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventTransIdReceive</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the InventTransIdReceive of Transfer Line
+    /// </summary>
+    /// <returns>InventTransIdReceive</returns>
+    public InventTransIdReceive parmInventTransIdReceive()
+    {
+        return this.parmInventTransferLine().InventTransIdReceive;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventTransIdTransitFrom</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the InventTransIdTransitFrom of Transfer Line
+    /// </summary>
+    /// <returns>InventTransIdTransitFrom</returns>
+    public InventTransIdReceiveTransit parmInventTransIdTransitFrom()
+    {
+        return this.parmInventTransferLine().InventTransIdTransitFrom;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmTransferId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// VoucherNumber - Transfer Id
+    /// </summary>
+    /// <param name = "_transferId">Transfer Id</param>
+    /// <returns>Transfer Id</returns>
+    public InventTransferId parmTransferId(InventTransferId _transferId = transferId)
+    {
+        transferId = _transferId;
+
+        return transferId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineNum</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// LineNo - Line Num
+    /// </summary>
+    /// <param name = "_lineNum">Line Num</param>
+    /// <returns>Line Num</returns>
+    public LineNum parmLineNum(LineNum _lineNum = lineNum)
+    {
+        lineNum = _lineNum;
+
+        return lineNum;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmQtyTransfer</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ArrivalTotalNumber - Qty Transfer
+    /// </summary>
+    /// <param name = "_qtyTransfer">Qty Transfer</param>
+    /// <returns>Qty Transfer</returns>
+    public InventTransferQty parmQtyTransfer(InventTransferQty _qtyTransfer = qtyTransfer)
+    {
+        qtyTransfer = _qtyTransfer;
+
+        return qtyTransfer;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReceiveDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ReceiptDate - Receive Date
+    /// </summary>
+    /// <param name = "_receiveDate">Receive Date</param>
+    /// <returns>Receive Date</returns>
+    public InventTransferReceiveDate parmReceiveDate(InventTransferReceiveDate _receiveDate = receiveDate)
+    {
+        receiveDate = _receiveDate;
+
+        return receiveDate;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventOnhandItemForm_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[ExtensionOf(formStr(InventOnhandItem))]
+final class KJP_SM_InventOnhandItemForm_Extension
+{
+ }
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>refreshDisplay</Name>
+				<Source><![CDATA[
+    public void refreshDisplay()
+    {
+        next refreshDisplay();
+ 
+        if (!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            return;
+        }
+ 
+        InventTable_DS_PropertyId.visible(true);
+        InventTable_DS_KJPCMSupervisingDepartment.visible(true);
+ 
+        if (this.inventDimSetupObject().parmDimParmVisibleGrid().InventBatchIdFlag == NoYes::No)
+        {
+            InventBatch_KJPSMReservationControlFlag.visible(false);
+        }
+        else
+        {
+            InventBatch_KJPSMReservationControlFlag.visible(true);
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

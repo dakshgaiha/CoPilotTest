@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventoryStandardAndWeekCalculation</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Inventory Standard And Inventory Week Calculation
+/// </summary>
+internal final class KJP_SM_InventoryStandardAndWeekCalculation
+{
+    const str Blank                         = '';
+    const str Colon                         = ':';
+
+    // KJP_CM_GeneralPurposeMaster destinationCode
+    private KJP_CM_DestinationCode destinationCodeSafetyInventory;
+    private KJP_CM_DestinationCode destinationCodePSIType14;
+    private KJP_CM_DestinationCode destinationCodePSIType15;
+    private KJP_CM_DestinationCode destinationCodeErrorValue;
+    private KJP_CM_DestinationCode destinationCodeCategoryHierarchy;
+    private KJP_CM_DestinationCode cCurrentMonth;
+
+
+    PropertyId                      cITProperty;
+    EcoResCategoryCommodityCode     cERCParentCode;
+    EcoResCategoryCommodityCode     cERCCode;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// main
+    /// </summary>
+    public void main()
+    {
+        // Get KJP_CM_GeneralPurposeMaster
+        this.getGeneralPurposeMaster();
+
+        // Insert Shipping Table Tmp
+        KJP_SM_PSIReportMonthEndInventoryTemp pSIRMEITShippingTmpTable = this.insertShippingTmpTable();
+
+        // Insert SafetyStockMonthlyDataRegistration
+        this.insertPSIByMonthlyQuantitySummaryTable(pSIRMEITShippingTmpTable);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getGeneralPurposeMaster</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get KJP_CM_GeneralPurposeMaster
+    /// </summary>
+    private void getGeneralPurposeMaster()
+    {
+        // SafetyInventory
+        destinationCodeSafetyInventory = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSISetMonthsKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSISetMonthsKey_SafetyInventory
+            ).DestinationCode;
+
+        // PSIType14
+        destinationCodePSIType14 = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSITypeKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType14
+            ).DestinationCode;
+
+        // PSIType15
+        destinationCodePSIType15 = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSITypeKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType15
+            ).DestinationCode;
+
+        // ErrorValue
+        destinationCodeErrorValue = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_MOC_ErrorValueKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_MOC_ErrorValueKey_MOC_ErrorValue
+            ).DestinationCode;
+
+        // CategoryHierarchy
+        destinationCodeCategoryHierarchy = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_CategoryHierarchyKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_CategoryHierarchyKey_CategoryHierarchy
+            ).DestinationCode;
+
+        // CurrentMonth
+        cCurrentMonth = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_ExecutionMonthKey,
+            KJP_CM_ConstantHelper::origCodeKJP_SM_ExecutionMonthKey_CurrentMonth
+            ).DestinationCode;
+
+        return;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertShippingTmpTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert Shipping Table Tmp
+    /// </summary>
+    /// <returns>KJP_SM_PSIReportMonthEndInventoryTemp</returns>
+    public KJP_SM_PSIReportMonthEndInventoryTemp insertShippingTmpTable()
+    {
+        KJP_SM_PSIReportMonthEndInventoryTemp pSIReportMonthEndInventoryTemp;
+        KJP_SM_PSIReportMonthEndInventoryTemp pSIReportMonthEndInventoryTempGroup;
+        InventTable inventTable;
+        EcoResProductCategory ecoResProductCategory;
+        EcoResCategoryHierarchy ecoResCategoryHierarchy;
+        EcoResCategory ecoResCategory;
+        EcoResCategory ecoResCategoryParent;
+        KJP_SM_PSIByMonthlyQuantitySummaryTable pSIByMonthlyQuantitySummaryTable;
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster;
+
+        while select ItemId, YearAndMonth, ProductionGroup, PSIType, Quantity
+            from pSIByMonthlyQuantitySummaryTable
+            where pSIByMonthlyQuantitySummaryTable.ExecutionMonth == cCurrentMonth
+            join ItemId, PropertyId, Product
+            from inventTable
+            where inventTable.ItemId == pSIByMonthlyQuantitySummaryTable.ItemId
+               && ((inventTable.PropertyId == cITProperty
+               && cITProperty != Blank)
+               || cITProperty == Blank)
+            join Product, CategoryHierarchy, Category
+            from ecoResProductCategory
+            where ecoResProductCategory.Product == inventTable.Product
+            join RecId, Name
+            from ecoResCategoryHierarchy
+            where ecoResCategoryHierarchy.RecId == ecoResProductCategory.CategoryHierarchy
+               && ecoResCategoryHierarchy.Name == destinationCodeCategoryHierarchy
+            join RecId, Code, ParentCategory
+            from ecoResCategory
+            where ecoResCategory.RecId == ecoResProductCategory.Category
+               && ((ecoResCategory.Code == cERCCode
+               && cERCCode != Blank)
+               || cERCCode == Blank)
+            join RecId, Code
+            from ecoResCategoryParent
+            where ecoResCategoryParent.RecId == ecoResCategory.ParentCategory
+               && ((ecoResCategoryParent.Code == cERCParentCode
+               && cERCParentCode != Blank)
+               || cERCParentCode == Blank)
+            exists join Key, OriginalCode, DestinationCode
+            from generalPurposeMaster
+            where generalPurposeMaster.Key == KJP_CM_ConstantHelper::KJP_SM_PSITypeKey
+               && (generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType9
+               || generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType11
+               || generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType12)
+               && generalPurposeMaster.DestinationCode == pSIByMonthlyQuantitySummaryTable.PSIType
+        {
+            // set field
+            pSIReportMonthEndInventoryTemp.ItemId = pSIByMonthlyQuantitySummaryTable.ItemId;
+            pSIReportMonthEndInventoryTemp.YearAndMonth = pSIByMonthlyQuantitySummaryTable.YearAndMonth;
+            pSIReportMonthEndInventoryTemp.Quantity = pSIByMonthlyQuantitySummaryTable.Quantity;
+            pSIReportMonthEndInventoryTemp.insert();
+        }
+
+        if(pSIReportMonthEndInventoryTemp)
+        {
+            while select ItemId, YearAndMonth, sum(Quantity)
+                from pSIReportMonthEndInventoryTemp
+                group by ItemId, YearAndMonth
+            {
+                pSIReportMonthEndInventoryTempGroup.ItemId = pSIReportMonthEndInventoryTemp.ItemId;
+                pSIReportMonthEndInventoryTempGroup.YearAndMonth = pSIReportMonthEndInventoryTemp.YearAndMonth;
+                pSIReportMonthEndInventoryTempGroup.Quantity = pSIReportMonthEndInventoryTemp.Quantity;
+                pSIReportMonthEndInventoryTempGroup.insert();
+            }
+        }
+
+        return pSIReportMonthEndInventoryTempGroup;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertPSIByMonthlyQuantitySummaryTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert SafetyStockMonthlyDataRegistration
+    /// </summary>
+    /// <param name = "_PSIReportMonthEndInventoryTempShip">KJP_SM_PSIReportMonthEndInventoryTemp</param>
+    private void insertPSIByMonthlyQuantitySummaryTable(KJP_SM_PSIReportMonthEndInventoryTemp _PSIReportMonthEndInventoryTempShip)
+    {
+        KJP_SM_PSIByMonthlyQuantitySummaryTable pSIByMonthlyQuantitySummaryTablePrimary;
+        Qty safetyStockMonths;
+        InventTable inventTable;
+        EcoResProductCategory ecoResProductCategory;
+        EcoResCategoryHierarchy ecoResCategoryHierarchy;
+        EcoResCategory ecoResCategory;
+        EcoResCategory ecoResCategoryParent;
+        RecordInsertList pSIByMonthlyQuantitySummaryTableList = new RecordInsertList(tableNum(KJP_SM_PSIByMonthlyQuantitySummaryTable));
+
+        while select PSIReportKey, PSIType, ProductionGroup, ItemId, ItemName, ItemNameStd, ItemDispName, Category,
+            Property, CompanyCode, CompanyName, YearAndMonth, UnitId, Quantity
+            from pSIByMonthlyQuantitySummaryTablePrimary
+            order by pSIByMonthlyQuantitySummaryTablePrimary.ItemId, pSIByMonthlyQuantitySummaryTablePrimary.YearAndMonth
+            where pSIByMonthlyQuantitySummaryTablePrimary.PSIType == destinationCodePSIType15
+               && pSIByMonthlyQuantitySummaryTablePrimary.ExecutionMonth == cCurrentMonth
+            join ItemId, PropertyId, Product
+            from inventTable
+            where inventTable.ItemId == pSIByMonthlyQuantitySummaryTablePrimary.ItemId
+               && ((inventTable.PropertyId == cITProperty
+               && cITProperty != Blank)
+               || cITProperty == Blank)
+            join Product, CategoryHierarchy, Category
+            from ecoResProductCategory
+            where ecoResProductCategory.Product == inventTable.Product
+            join RecId, Name
+            from ecoResCategoryHierarchy
+            where ecoResCategoryHierarchy.RecId == ecoResProductCategory.CategoryHierarchy
+               && ecoResCategoryHierarchy.Name == destinationCodeCategoryHierarchy
+            join RecId, Code, ParentCategory
+            from ecoResCategory
+            where ecoResCategory.RecId == ecoResProductCategory.Category
+               && ((ecoResCategory.Code == cERCCode
+               && cERCCode != Blank)
+               || cERCCode == Blank)
+            join RecId, Code
+            from ecoResCategoryParent
+            where ecoResCategoryParent.RecId == ecoResCategory.ParentCategory
+               && ((ecoResCategoryParent.Code == cERCParentCode
+               && cERCParentCode != Blank)
+               || cERCParentCode == Blank)
+        {
+            if(pSIByMonthlyQuantitySummaryTablePrimary.Quantity <= 0)
+            {
+                safetyStockMonths = 0;
+            }
+            else
+            {
+                // get SafetyStockMonth
+                safetyStockMonths = this.getSafetyStockMonth(pSIByMonthlyQuantitySummaryTablePrimary, _PSIReportMonthEndInventoryTempShip);
+            }
+           
+
+            pSIByMonthlyQuantitySummaryTableList.add(this.setSafetyStockMonthlyDataRegistration(pSIByMonthlyQuantitySummaryTablePrimary, safetyStockMonths));
+        }
+
+        pSIByMonthlyQuantitySummaryTableList.insertDatabase();
+
+        return;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getSafetyStockMonth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get SafetyStockMonth
+    /// </summary>
+    /// <param name = "_pSIByMonthlyQuantitySummaryTablePrimary">KJP_SM_PSIByMonthlyQuantitySummaryTable</param>
+    /// <param name = "_PSIReportMonthEndInventoryTempShip">KJP_SM_PSIReportMonthEndInventoryTemp</param>
+    /// <returns>safetyStockMonths</returns>
+    private Qty getSafetyStockMonth(KJP_SM_PSIByMonthlyQuantitySummaryTable _pSIByMonthlyQuantitySummaryTablePrimary, KJP_SM_PSIReportMonthEndInventoryTemp _PSIReportMonthEndInventoryTempShip)
+    {
+
+        KJP_SM_PSIByMonthlyQuantitySummaryTable pSIByMonthlyQuantitySummaryTableMain;
+
+        // initialization
+        Qty stockQuantity = _pSIByMonthlyQuantitySummaryTablePrimary.Quantity;
+        int shippingMonths = 0;
+        Qty summaryShipments = 0;
+        boolean inventoryNegativeFlag = false;
+        Qty safetyStockMonths = 0;
+
+        while select ItemId, YearAndMonth, Quantity
+            from pSIByMonthlyQuantitySummaryTableMain
+            order by pSIByMonthlyQuantitySummaryTableMain.YearAndMonth
+            where pSIByMonthlyQuantitySummaryTableMain.ItemId == _pSIByMonthlyQuantitySummaryTablePrimary.ItemId
+               && pSIByMonthlyQuantitySummaryTableMain.YearAndMonth > _pSIByMonthlyQuantitySummaryTablePrimary.YearAndMonth
+               && pSIByMonthlyQuantitySummaryTableMain.ExecutionMonth == cCurrentMonth
+               && pSIByMonthlyQuantitySummaryTableMain.PSIType == destinationCodePSIType15
+            outer join ItemId, YearAndMonth, Quantity
+            from _PSIReportMonthEndInventoryTempShip
+            where _PSIReportMonthEndInventoryTempShip.ItemId == pSIByMonthlyQuantitySummaryTableMain.ItemId
+               && _PSIReportMonthEndInventoryTempShip.YearAndMonth == pSIByMonthlyQuantitySummaryTableMain.YearAndMonth
+        {
+            stockQuantity = stockQuantity - _PSIReportMonthEndInventoryTempShip.Quantity;
+            shippingMonths = shippingMonths + 1;
+            summaryShipments = summaryShipments + _PSIReportMonthEndInventoryTempShip.Quantity;
+
+            if(stockQuantity < 0)
+            {
+                inventoryNegativeFlag = true;
+                break;
+            }
+
+            if(shippingMonths >= str2Int(destinationCodeSafetyInventory))
+            {
+                break;
+            }
+
+        }
+
+        if(inventoryNegativeFlag && summaryShipments != 0)
+        {
+            safetyStockMonths = shippingMonths - (stockQuantity * (-1) / summaryShipments);
+        }
+        else
+        {
+            safetyStockMonths = str2Int(destinationCodeErrorValue);
+        }
+
+        // Rounding to two decimal places
+        safetyStockMonths = decRound(safetyStockMonths, 2);
+
+        if(safetyStockMonths < 0)
+        {
+            safetyStockMonths = 0;
+        }
+        return safetyStockMonths;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setSafetyStockMonthlyDataRegistration</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set SafetyStockMonthlyDataRegistration
+    /// </summary>
+    /// <param name = "_pSIByMonthlyQuantitySummaryTablePrimary">KJP_SM_PSIByMonthlyQuantitySummaryTable</param>
+    /// <param name = "_safetyStockMonths">safetyStockMonths</param>
+    /// <returns>KJP_SM_PSIByMonthlyQuantitySummaryTable</returns>
+    private KJP_SM_PSIByMonthlyQuantitySummaryTable setSafetyStockMonthlyDataRegistration(KJP_SM_PSIByMonthlyQuantitySummaryTable _pSIByMonthlyQuantitySummaryTablePrimary, Qty _safetyStockMonths)
+    {
+        KJP_SM_PSIByMonthlyQuantitySummaryTable pSIByMonthlyQuantitySummaryTable;
+        
+        pSIByMonthlyQuantitySummaryTable.PSIReportKey = destinationCodePSIType14 + Colon + _pSIByMonthlyQuantitySummaryTablePrimary.ItemId + Colon +_pSIByMonthlyQuantitySummaryTablePrimary.YearAndMonth;
+        pSIByMonthlyQuantitySummaryTable.PSIType = destinationCodePSIType14;
+        pSIByMonthlyQuantitySummaryTable.ProductionGroup = _pSIByMonthlyQuantitySummaryTablePrimary.ProductionGroup;
+        pSIByMonthlyQuantitySummaryTable.ItemId = _pSIByMonthlyQuantitySummaryTablePrimary.ItemId;
+        pSIByMonthlyQuantitySummaryTable.ItemName = _pSIByMonthlyQuantitySummaryTablePrimary.ItemName;
+        pSIByMonthlyQuantitySummaryTable.ItemDispName = _pSIByMonthlyQuantitySummaryTablePrimary.ItemDispName;
+        pSIByMonthlyQuantitySummaryTable.ItemNameStd = _pSIByMonthlyQuantitySummaryTablePrimary.ItemNameStd;
+        pSIByMonthlyQuantitySummaryTable.Category = _pSIByMonthlyQuantitySummaryTablePrimary.Category;
+        pSIByMonthlyQuantitySummaryTable.Property = _pSIByMonthlyQuantitySummaryTablePrimary.Property;
+        pSIByMonthlyQuantitySummaryTable.CompanyCode = _pSIByMonthlyQuantitySummaryTablePrimary.CompanyCode;
+        pSIByMonthlyQuantitySummaryTable.CompanyName = _pSIByMonthlyQuantitySummaryTablePrimary.CompanyName;
+        pSIByMonthlyQuantitySummaryTable.YearAndMonth = _pSIByMonthlyQuantitySummaryTablePrimary.YearAndMonth;
+        pSIByMonthlyQuantitySummaryTable.UnitId = _pSIByMonthlyQuantitySummaryTablePrimary.UnitId;
+        pSIByMonthlyQuantitySummaryTable.Quantity = _safetyStockMonths;
+        pSIByMonthlyQuantitySummaryTable.ExecutionMonth = cCurrentMonth;
+
+        return pSIByMonthlyQuantitySummaryTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Execution parameters
+    /// </summary>
+    /// <param name = "_ITProperty">Property</param>
+    /// <param name = "_ERCParentCode">Brand</param>
+    /// <param name = "_ERCCode">Specifications by Product Name</param>
+    public void new(PropertyId _ITProperty, EcoResCategoryCommodityCode _ERCParentCode, EcoResCategoryCommodityCode _ERCCode)
+    {
+        cITProperty     =   _ITProperty;
+        cERCParentCode  =   _ERCParentCode;
+        cERCCode        =   _ERCCode;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

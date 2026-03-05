@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ArrivalResultsPurchInfoClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// For storing the Purchase order info which retrieved and transform from the IF table.
+/// </summary>
+class KJP_SM_ArrivalResultsPurchInfoClass
+{
+    private PurchLine                       purchLine;
+    private PurchIdBase                     purchId;
+    private TradeLineNumber                 lineNumber;
+    private PurchOrderedQty                 purchQty;
+    private PurchLineConfirmedReceiptDate   confirmedDlv;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Constructor for current class
+    /// </summary>
+    /// <returns>Instance of current class</returns>
+    public static KJP_SM_ArrivalResultsPurchInfoClass construct()
+    {
+        return new KJP_SM_ArrivalResultsPurchInfoClass();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getPurchInfo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get the purchase line info from business table base on PurchId and LineNumber retrieved from the IF table.
+    /// </summary>
+    /// <returns>true if the purchase order line is OK; otherwise, false.</returns>
+    public boolean getPurchInfo()
+    {
+        UnitOfMeasureSymbol salesUnit;
+        UnitOfMeasureSymbol inventUnit;
+        boolean ret = true;
+
+        purchLine       = PurchLine::find(purchId, lineNumber);
+
+        // If purchase order line is not an open order line, skip
+        if (!purchLine.isOpenOrder())
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500635", purchId, lineNumber));
+            return ret;
+        }
+
+        salesUnit       = InventTableModule::getUnitIdByModuleType(purchLine.ItemId, ModuleInventPurchSales::Sales);
+        inventUnit      = InventTableModule::getUnitIdByModuleType(purchLine.ItemId, ModuleInventPurchSales::Invent);
+
+        purchQty        = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                            purchLine.ItemId,
+                            purchLine.InventDimId,
+                            purchQty,
+                            salesUnit,
+                            inventUnit);
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchLine</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the Purchase Line
+    /// </summary>
+    /// <returns>PurchLine</returns>
+    public PurchLine parmPurchLine()
+    {
+        return purchLine;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventTransId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the InventTransId of Purchase Line
+    /// </summary>
+    /// <returns>TradeInventTransId</returns>
+    public TradeInventTransId parmInventTransId()
+    {
+        return this.parmPurchLine().InventTransId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the ItemId of Purchase Line
+    /// </summary>
+    /// <returns>ItemId</returns>
+    public ItemId parmItemId()
+    {
+        return this.parmPurchLine().ItemId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmInventDimId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Parameterized the InventDimId of Purchase Line
+    /// </summary>
+    /// <returns>InventDimId</returns>
+    public InventDimId parmInventDimId()
+    {
+        return this.parmPurchLine().InventDimId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// VoucherNumber - Purch Id
+    /// </summary>
+    /// <param name = "_purchId">Purch Id</param>
+    /// <returns>Purch Id</returns>
+    public PurchIdBase parmPurchId(PurchIdBase _purchId = purchId)
+    {
+        purchId = _purchId;
+
+        return purchId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmLineNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// LineNo - Line Number
+    /// </summary>
+    /// <param name = "_lineNumber">Line Number</param>
+    /// <returns>Line Number</returns>
+    public TradeLineNumber parmLineNumber(TradeLineNumber _lineNumber = lineNumber)
+    {
+        lineNumber = _lineNumber;
+
+        return lineNumber;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchQty</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ArrivalTotalNumber - Purch Qty
+    /// </summary>
+    /// <param name = "_purchQty">Purch Qty</param>
+    /// <returns>Purch Qty</returns>
+    public PurchOrderedQty parmPurchQty(PurchOrderedQty _purchQty = purchQty)
+    {
+        purchQty = _purchQty;
+
+        return purchQty;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmConfirmedDlv</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ReceiptDate - Confirmed Delivery date
+    /// </summary>
+    /// <param name = "_confirmedDlv">Confirmed Delivery Date</param>
+    /// <returns>Confirmed Delivery Date</returns>
+    public PurchLineConfirmedReceiptDate parmConfirmedDlv(PurchLineConfirmedReceiptDate _confirmedDlv = confirmedDlv)
+    {
+        confirmedDlv = _confirmedDlv;
+
+        return confirmedDlv;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

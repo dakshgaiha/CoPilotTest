@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompensationStmtDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>KJP_SM_InventCompensationStmtDP</c> class is the data provider for the <c>KJP_SM_InventCompensationStmtReport</c> SSRS report.
+/// </summary>
+[
+    SRSReportParameterAttribute(classStr(KJP_SM_InventCompensationStmtContract))
+]
+public class KJP_SM_InventCompensationStmtDP extends SRSReportDataProviderPreProcessTempDB
+{
+    KJP_SM_InventorycompensationTemp    inventoryCompensationTmp;
+    KJP_SM_InventorycompensationTemp    inventoryCompensationTmpDraft;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getInventoryCompensationTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///     Gets the temporary table for the report data provider.
+    /// </summary>
+    /// <returns>
+    ///     The temporary table for the report data provider.
+    /// </returns>
+    [SRSReportDataSet(tableStr(KJP_SM_InventoryCompensationTemp))]
+    public KJP_SM_InventoryCompensationTemp getInventoryCompensationTmp()
+    {
+        select inventoryCompensationTmp;
+        return inventoryCompensationTmp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Processes the report business logic.
+    /// </summary>
+    /// <remarks>
+    /// Provides the ability to write the report business logic. This method will be called by SSRS at
+    /// runtime. The method should compute data and populate the data tables that will be returned to SSRS.
+    /// </remarks>
+    public void processReport()
+    {
+        KJP_SM_InventCompensationStmtContract   contract = this.parmDataContract() as KJP_SM_InventCompensationStmtContract;
+        ListEnumerator                          inventCompensationStmtRecIdListEnumerator = contract.parmInventCompensationStmtRecIdList().getEnumerator();
+            
+        while (inventCompensationStmtRecIdListEnumerator.moveNext())
+        {
+            this.insertInventoryCompensationTmpDraft(inventCompensationStmtRecIdListEnumerator.current());
+        }
+
+        this.insertInventoryCompensationTmp(inventoryCompensationTmpDraft);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventoryCompensationTmp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to insert the data in temporary table.
+    /// </summary>
+    /// <param name = "_inventoryCompensationTmpDraft">
+    /// Temporary table buffer which containe draft data without sorting.
+    /// </param>
+    protected void insertInventoryCompensationTmp(KJP_SM_InventorycompensationTemp  _inventoryCompensationTmpDraft)
+    {
+        KJP_SM_InventoryCompensationHeaderTable             headerTable;
+        
+        while select headerTable
+            order by headerTable.FileUploadDateTime desc, headerTable.FileName asc, _inventoryCompensationTmpDraft.RowNumberOfCSVFile asc
+            join _inventoryCompensationTmpDraft
+                where _inventoryCompensationTmpDraft.InventHeaderReferenceRecId == headerTable.RecId
+        {
+            inventoryCompensationTmp.data(_inventoryCompensationTmpDraft);
+            inventoryCompensationTmp.insert();
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventoryCompensationTmpDraft</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to insert the data in temporary table.
+    /// </summary>
+    /// <param name = "_inventoryCompensationHeaderTableRecId">
+    /// Record id of the header table.
+    /// </param>
+    protected void insertInventoryCompensationTmpDraft(RefRecId _inventoryCompensationHeaderTableRecId)
+    {
+        KJP_SM_InventoryCompensationHeaderTable             headerTable;
+        KJP_SM_InventoryCompensationLinesTable              lineTable;
+        
+        LogisticsDescription curtCompanyPostalLocationDescription = LogisticsLocation::find(CompanyInfo::find().postalAddress().Location).Description;
+
+        while select Locations, InvoiceAccount, InvoiceAccountName, YearOfCreation, MonthOfCreation, 
+            DayOfCreation, YearOfCompensation, MonthOfCompensation, DayOfCompensation, RecId from headerTable
+            order by lineTable.RecId asc
+            where headerTable.RecId  == _inventoryCompensationHeaderTableRecId
+            join CompanyName, UnifiedProductCD, ItemName3Abbreviation, CurrentMonthTheoreticalInventoryQuantity, 
+            PayoutUnit, NewUnitPrice, OldUnitPrice, DifferenceUnitPrice, DifferenceUnitPricelInventoryQuantity from lineTable
+                where lineTable.InventHeaderReferenceRecId == headerTable.RecId
+        {
+            inventoryCompensationTmpDraft.clear();
+            inventoryCompensationTmpDraft.initValue();
+            inventoryCompensationTmpDraft.Locations                     = headerTable.Locations;
+            inventoryCompensationTmpDraft.InvoiceAccount                = headerTable.InvoiceAccount;
+            inventoryCompensationTmpDraft.InvoiceAccountName            = headerTable.InvoiceAccountName;
+            inventoryCompensationTmpDraft.YearOfCreation                = headerTable.YearOfCreation;
+            inventoryCompensationTmpDraft.MonthOfCreation               = headerTable.MonthOfCreation;
+            inventoryCompensationTmpDraft.DayOfCreation                 = headerTable.DayOfCreation;
+            inventoryCompensationTmpDraft.YearOfCompensation            = headerTable.YearOfCompensation;
+            inventoryCompensationTmpDraft.MonthOfCompensation           = headerTable.MonthOfCompensation;
+            inventoryCompensationTmpDraft.DayOfCompensation             = headerTable.DayOfCompensation;
+            inventoryCompensationTmpDraft.InventHeaderReferenceRecId    = headerTable.RecId;
+            inventoryCompensationTmpDraft.CompanyName                   = curtCompanyPostalLocationDescription;
+            inventoryCompensationTmpDraft.UnifiedProductCD              = lineTable.UnifiedProductCD;
+            inventoryCompensationTmpDraft.ItemName3Abbreviation         = lineTable.ItemName3Abbreviation;
+            inventoryCompensationTmpDraft.Qty                           = lineTable.CurrentMonthTheoreticalInventoryQuantity;
+            inventoryCompensationTmpDraft.PayoutUnit                    = lineTable.PayoutUnit;
+            inventoryCompensationTmpDraft.NewUnitPrice                  = lineTable.NewUnitPrice;
+            inventoryCompensationTmpDraft.OldUnitPrice                  = lineTable.OldUnitPrice;
+            inventoryCompensationTmpDraft.DifferenceUnitPrice           = lineTable.DifferenceUnitPrice;
+            inventoryCompensationTmpDraft.DifferencePrice               = lineTable.DifferenceUnitPricelInventoryQuantity;
+            inventoryCompensationTmpDraft.RowNumberOfCSVFile            = str2Int(lineTable.RowNumberOfCSVFile);
+            inventoryCompensationTmpDraft.insert();
+        }   
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

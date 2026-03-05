@@ -1,0 +1,424 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ArrivalResultsInfoFromSDClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFI-MFG-0137_IF#108 Arrival Results Information From S.D. COLLABO via ACMS Service
+/// </summary>
+class KJP_SM_ArrivalResultsInfoFromSDClass extends KJP_CM_IFBatchBase
+{
+    private Map                     purchDataMap;
+    private Map                     transferDataMap;
+
+    private KJP_CM_DestinationCode  prefixPurchNO;
+    private KJP_CM_DestinationCode  prefixInventNO;
+
+    private container               purchIdConversionContainer;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            this.getVoucherNumberPrefix();
+
+            this.getSDCArrivalResultsInfoDataIFTable();
+
+            this.postSDCArrivalResultsInfoData();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getVoucherNumberPrefix</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get the voucher number prefix string
+    /// </summary>
+    private void getVoucherNumberPrefix()
+    {
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster;
+
+        prefixPurchNO   = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::SDCArrivalResultsVoucherNOKey,
+            KJP_CM_ConstantHelper::origCodeSDCArrivalResultsVoucherNOKey_SDCArrivalResultsPurchNO
+        ).DestinationCode;
+
+        prefixInventNO  = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::SDCArrivalResultsVoucherNOKey,
+            KJP_CM_ConstantHelper::origCodeSDCArrivalResultsVoucherNOKey_SDCArrivalResultsInventNO
+        ).DestinationCode;
+
+        while select generalPurposeMaster where generalPurposeMaster.Key == KJP_CM_ConstantHelper::KJP_SM_SDC_PurchIdConversionKey
+            && (generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_SDC_PurchIdConversionKey_WestSP
+             || generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_SDC_PurchIdConversionKey_EastSP)
+        {
+            purchIdConversionContainer += generalPurposeMaster.DestinationCode;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getSDCArrivalResultsInfoDataIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get the Arrival Results Information From data IF table
+    /// </summary>
+    private void getSDCArrivalResultsInfoDataIFTable()
+    {
+        KJP_SM_SDCArrivalResultsInfoDataIFTable sdcArrivalResultsInfoDataIFTable;
+
+        while select
+            VoucherNumber,
+            LineNo,
+            ReceiptDate,
+            ArrivalTotalNumber
+        from
+            sdcArrivalResultsInfoDataIFTable
+        order by
+            sdcArrivalResultsInfoDataIFTable.VoucherNumber asc,
+            sdcArrivalResultsInfoDataIFTable.LineNo asc
+        where sdcArrivalResultsInfoDataIFTable.JobId == jobId
+            && sdcArrivalResultsInfoDataIFTable.ExecutionDateTime == executionDateTime
+        {
+            this.preSDCArrivalResultsInfo(
+                sdcArrivalResultsInfoDataIFTable.VoucherNumber,
+                sdcArrivalResultsInfoDataIFTable.LineNo,
+                sdcArrivalResultsInfoDataIFTable.ReceiptDate,
+                sdcArrivalResultsInfoDataIFTable.ArrivalTotalNumber);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>preSDCArrivalResultsInfo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Preprocess Arrival Results Information From data IF table
+    /// </summary>
+    /// <param name = "_voucherNumber">A purchase/transfer order No</param>
+    /// <param name = "_lineNo">A purchase/transfer order line No</param>
+    /// <param name = "_receiptDate">Receipt date</param>
+    /// <param name = "_arrivalTotalNumber">Qty of arrival total number</param>
+    private void preSDCArrivalResultsInfo(
+        KJP_SM_VoucherNumber _voucherNumber,
+        KJP_SM_LineNo _lineNo,
+        KJP_SM_ReceiptDate _receiptDate,
+        KJP_SM_ArrivalTotalNumber _arrivalTotalNumber)
+    {
+        TransDate transDate;
+        real qty;
+        str prefixDigit;
+        PurchId purchId;
+
+        transDate = KJP_CM_Utils::converStr2Date(_receiptDate);
+        qty = str2Num(_arrivalTotalNumber);
+
+        // The first digit of the voucher number conversion to ‘P’
+        prefixDigit = subStr(_voucherNumber, 1, 1);
+        if (conFind(purchIdConversionContainer, prefixDigit))
+        {
+            purchId = strPoke(_voucherNumber, prefixPurchNO, 1);
+
+            if (PurchLine::exist(purchId, str2Int64(_lineNo)))
+            {
+                this.prePurchInfo(purchId, str2Int64(_lineNo), transDate, qty);
+            }
+
+            return;
+        }
+
+        // If the first digit of the voucher number is ‘T’
+        if (KJP_SM_ArrivalResultsInfoFromSDClass::checkPrefix(_voucherNumber, prefixInventNO))
+        {
+            if (InventTransferLine::exist(_voucherNumber, any2Real(str2Int(_lineNo))))
+            {
+                this.preTransferInfo(_voucherNumber, any2Real(str2Int(_lineNo)), transDate, qty);
+            }
+
+            return;
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>prePurchInfo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Preprocess purchase info
+    /// </summary>
+    /// <param name = "_purchId">A purchase order No</param>
+    /// <param name = "_lineNumber">A purchase order line No</param>
+    /// <param name = "_confirmedDlv">Receipt date</param>
+    /// <param name = "_purchQty">Qty of receipt</param>
+    private void prePurchInfo(PurchIdBase _purchId, TradeLineNumber _lineNumber, PurchLineConfirmedReceiptDate _confirmedDlv, PurchOrderedQty _purchQty)
+    {
+        KJP_SM_ArrivalResultsPurchInfoClass purchInfo;
+
+        purchInfo = KJP_SM_ArrivalResultsPurchInfoClass::construct();
+
+        purchInfo.parmPurchId(_purchId);
+        purchInfo.parmLineNumber(_lineNumber);
+        purchInfo.parmConfirmedDlv(_confirmedDlv);
+        purchInfo.parmPurchQty(_purchQty);
+
+        // If current purchchase line is valid., skip
+        if (!purchInfo.getPurchInfo())
+        {
+            return;
+        }
+
+        this.addPurchInfoToMap(_purchId, purchInfo);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>preTransferInfo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Preprocess transfer info
+    /// </summary>
+    /// <param name = "_transferId">A transfer order No</param>
+    /// <param name = "_lineNum">A transfer order line No</param>
+    /// <param name = "_receiveDate">Receipt date</param>
+    /// <param name = "_qtyTransfer">Qty of receipt</param>
+    private void preTransferInfo(InventTransferId _transferId, LineNum _lineNum, InventTransferReceiveDate _receiveDate, InventTransferQty _qtyTransfer)
+    {
+        KJP_SM_ArrivalResultsTransferInfoClass transferInfo;
+
+        transferInfo = KJP_SM_ArrivalResultsTransferInfoClass::construct();
+
+        transferInfo.parmTransferId(_transferId);
+        transferInfo.parmLineNum(_lineNum);
+        transferInfo.parmReceiveDate(_receiveDate);
+        transferInfo.parmQtyTransfer(_qtyTransfer);
+
+        transferInfo.getTransferInfo();
+
+        this.addTransferInfoToMap(_transferId, transferInfo);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addPurchInfoToMap</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Add purchase info to Map(PurchId, List(KJP_SM_ArrivalResultsPurchInfo)).
+    /// </summary>
+    /// <param name = "_purchId">A purchase order No</param>
+    /// <param name = "_purchInfo">A purchase order line object</param>
+    private void addPurchInfoToMap(PurchIdBase _purchId, KJP_SM_ArrivalResultsPurchInfoClass _purchInfo)
+    {
+        List purchList;
+
+        if (!purchDataMap)
+        {
+            purchDataMap = new Map(Types::String, Types::Class);
+        }
+
+        if (purchDataMap.exists(_purchId))
+        {
+            purchList = purchDataMap.lookup(_purchId);
+        }
+        else
+        {
+            purchList = new List(Types::Class);
+        }
+
+        purchList.addEnd(_purchInfo);
+
+        purchDataMap.insert(_purchId, purchList);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addTransferInfoToMap</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Add transfer info to Map(InventTransferId, List(KJP_SM_ArrivalResultsTransferInfo)).
+    /// </summary>
+    /// <param name = "_transferId">A transfer order No</param>
+    /// <param name = "_transferInfo">A transfer order line object</param>
+    private void addTransferInfoToMap(InventTransferId _transferId, KJP_SM_ArrivalResultsTransferInfoClass _transferInfo)
+    {
+        List transferList;
+
+        if (!transferDataMap)
+        {
+            transferDataMap = new Map(Types::String, Types::Class);
+        }
+
+        if (transferDataMap.exists(_transferId))
+        {
+            transferList = transferDataMap.lookup(_transferId);
+        }
+        else
+        {
+            transferList = new List(Types::Class);
+        }
+
+        transferList.addEnd(_transferInfo);
+
+        transferDataMap.insert(_transferId, transferList);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postSDCArrivalResultsInfoData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Post Arrival Results Information From data IF table
+    /// </summary>
+    private void postSDCArrivalResultsInfoData()
+    {
+        MapEnumerator                           purchDataMapEnumerator;
+        MapEnumerator                           transferDataMapEnumerator;
+        List                                    purchList;
+        List                                    transferList;
+        ListEnumerator                          purchListEnumerator;
+        ListEnumerator                          transferListEnumerator;
+        KJP_SM_ArrivalResultsPurchInfoClass     purchInfo;
+        KJP_SM_ArrivalResultsTransferInfoClass  transferInfo;
+        PurchIdBase                             purchId;
+        InventTransferId                        transferId;
+        TransDate                               transDate;
+        InventTransferParmTable                 inventTransferParmTable;
+        boolean                                 ret;
+
+        // post purchase order receipt
+        if (purchDataMap && !purchDataMap.empty())
+        {
+            purchDataMapEnumerator = purchDataMap.getEnumerator();
+
+            while (purchDataMapEnumerator.moveNext())
+            {
+                transDate = dateNull();
+
+                purchId = purchDataMapEnumerator.currentKey();
+                purchList = purchDataMapEnumerator.currentValue();
+
+                purchListEnumerator = purchList.getEnumerator();
+
+                try
+                {
+                    ret = true;
+
+                    ttsbegin;
+
+                    while (purchListEnumerator.moveNext())
+                    {
+                        purchInfo = purchListEnumerator.current();
+                        if (!transDate)
+                        {
+                            transDate = purchInfo.parmConfirmedDlv();
+                        }
+                        // purchase order receipt creation process
+                        if (!KJP_SM_ArrivalResultsPurchReceiptClass::registerProductReceipt(purchInfo))
+                        {
+                            ret = false;
+                            break;
+                        }
+                    }
+
+                    if (!ret)
+                    {
+                        throw Exception::Error;
+                    }
+                    // product receipt post
+                    KJP_SM_ArrivalResultsPurchReceiptClass::postProductReceipt(purchId, transDate);
+                    numberOfSuccess += purchList.elements();
+
+                    ttscommit;
+                }
+                catch(Exception::Error)
+                {
+                    continue;
+                }
+            }
+        }
+
+        // post transfer order receipt
+        if (transferDataMap && !transferDataMap.empty())
+        {
+            transferDataMapEnumerator = transferDataMap.getEnumerator();
+
+            while (transferDataMapEnumerator.moveNext())
+            {
+                transDate = dateNull();
+
+                transferId = transferDataMapEnumerator.currentKey();
+                transferList = transferDataMapEnumerator.currentValue();
+
+                transferListEnumerator = transferList.getEnumerator();
+
+                try
+                {
+                    ttsbegin;
+                    // register InventTransferParmTable
+                    inventTransferParmTable = KJP_SM_ArrivalResultsTransferReceiptClass::initInventTransferParmTable(transferId, dateNull());
+                    while(transferListEnumerator.moveNext())
+                    {
+                        transferInfo = transferListEnumerator.current();
+                        if (!transDate)
+                        {
+                            transDate = transferInfo.parmReceiveDate();
+                        }
+                        // register InventTransferParmLine
+                        KJP_SM_ArrivalResultsTransferReceiptClass::initInventTransferParmLine(inventTransferParmTable, transferInfo);
+                    }
+
+                    inventTransferParmTable.TransDate = transDate;
+                    // post transfer order receive process
+                    KJP_SM_ArrivalResultsTransferReceiptClass::postTransferOrderReceive(inventTransferParmTable);
+
+                    numberOfSuccess += transferList.elements();
+
+                    ttscommit;
+                }
+                catch(Exception::Error)
+                {
+                    continue;
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkPrefix</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check if a text string start with another string
+    /// </summary>
+    /// <param name = "_text">The string to search in</param>
+    /// <param name = "_target">The string to find.</param>
+    /// <returns>The specified string was found return true; otherwise false</returns>
+    private static boolean checkPrefix(str _text, str _target)
+    {
+        return strScan(_text, _target, 1, strLen(_target)) ? true : false;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,1150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_IFArrivalResultsFromMESService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFI-MFG-0688
+/// </summary>
+class KJP_SM_IFArrivalResultsFromMESService extends KJP_CM_IFBatchBase
+{
+    private const str LikeKeyWord = '*';
+    private const str SingalZero = '0';
+    private const str DoubleZero = '00';
+    private const str SpaceString = '';
+    private KJP_CM_DestinationCode receiptPaymentClassification;
+    private KJP_CM_DestinationCode prefixPurchNO;
+    private KJP_CM_DestinationCode prefixInventNO;
+    private KJP_CM_DestinationCode cmoPdsDispositionCode;
+    private KJP_CM_DestinationCode inventJournalNameITRF;
+    private str purchFilter;
+    private str transferFilter;
+    private Map headerMap = new Map(Types::String, Types::Container);
+    private Map lineMap = new Map(Types::String, Types::Container);
+    private Map errorTransferOrderMap = new Map(Types::String, Types::Integer);
+    // defect #128339
+    private Map errorUnitCheckMap = new Map(Types::String, Types::Integer);
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster = 
+            KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::companyCodeKey, 
+            KJP_CM_ConstantHelper::origCompanyCode_KKC);
+        if(!generalPurposeMaster)
+        {
+            error(strFmt("@KJP:KJP500107", KJP_CM_ConstantHelper::companyCodeKey, KJP_CM_ConstantHelper::origCompanyCode_KKC));
+            return;
+        }
+        str companyCode = generalPurposeMaster.DestinationCode;
+        if(generalPurposeMaster && companyCode)
+        {
+            changecompany(companyCode)
+            {
+                // preProcess
+                if(!this.preProcess())
+                {
+                    return;
+                }
+                // build DataStruct for TO and PO
+                this.buildDataStructForTransfer();
+                this.buildDataStructForPurch();
+                this.validateTransferOrder();
+                // defect #128339
+                this.validatePurchOrder();
+                // defect #128339
+                // main process
+                this.doArrivalResultsProcess();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateTransferOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  validate TransferOrder
+    /// </summary>
+    private void validateTransferOrder()
+    {
+        MapEnumerator mapEnumerator = headerMap.getEnumerator();
+        ;
+        while (mapEnumerator.moveNext())
+        {
+            str voucherIdStr = mapEnumerator.currentKey();
+            ;
+            if(this.checkPrefix(voucherIdStr, prefixInventNO))
+            {
+                if(!this.validateTransferLineRemainingShippedQuantity(voucherIdStr)
+                        || !this.validateTransferLineCount(voucherIdStr))
+                {
+                    errorTransferOrderMap.insert(voucherIdStr, 0);
+                }
+                // defect #128339
+                if(!this.validatePOAndTOUnit(voucherIdStr, NoYes::Yes))
+                {
+                    errorUnitCheckMap.insert(voucherIdStr, 0);
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>doArrivalResultsProcess</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// do Process for every voucher(TO/PO)
+    /// </summary>
+    private void doArrivalResultsProcess()
+    {  
+        MapEnumerator mapEnumerator = headerMap.getEnumerator();
+        ;
+        while (mapEnumerator.moveNext())
+        {
+            str voucherIdStr = mapEnumerator.currentKey();
+            ;
+            if(errorTransferOrderMap.exists(voucherIdStr))
+            {
+                continue;
+            }
+            // defect #128339
+            if(errorUnitCheckMap.exists(voucherIdStr))
+            {
+                continue;
+            }
+            try
+            {
+                ttsbegin;
+                // TO
+                if(this.checkPrefix(voucherIdStr, prefixInventNO))
+                {            
+                    this.postUpdateTransferOrder(voucherIdStr);
+                    this.processInventBatchForTransferOrder(voucherIdStr);
+                    this.postInsertInventJournal(voucherIdStr);    
+                }
+                // PO
+                if(this.checkPrefix(voucherIdStr, prefixPurchNO))
+                {
+                    this.processInventBatchForPurch(voucherIdStr);
+                    this.registerAndPostPackingSlip(voucherIdStr);
+                }
+                this.updateSnapshotTable(voucherIdStr);
+                numberOfSuccess++;
+                ttscommit;
+            }
+            catch(Exception::Error)
+            {
+                error(strFmt("@KJP:KJP500523", voucherIdStr));
+                continue;
+            }           
+        } 
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateSnapshotTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update KJP_SM_MESArrivalPlanSnapshotTable Table set ReceiptFlag to Yes
+    /// </summary>
+    /// <param name = "_voucherIdStr">str</param>
+    private void updateSnapshotTable(str _voucherIdStr)
+    {
+        // Line
+        container linesCon = lineMap.lookup(_voucherIdStr);
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);
+            KJP_SM_MESArrivalPlanSnapshotTable snapshotTable;
+            snapshotTable.selectForUpdate(true);
+            select firstonly snapshotTable
+                    where snapshotTable.DocItemID == conpeek(lineCon, 12);
+            if(snapshotTable)
+            {
+                snapshotTable.ReceiptFlag = NoYes::Yes;
+                snapshotTable.update();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>preProcess</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// pre process to get value fron Purpose Master
+    /// </summary>
+    /// <returns>boolean</returns>
+    private boolean preProcess()
+    {
+        boolean res = true;
+        ;
+        KJP_CM_GeneralPurposeMaster receiptPaymentClassificationGeneral;
+        KJP_CM_OriginalCode originalCode;
+        // Takasaki
+        if (functionId == KJP_CM_FunctionIdConst::dfiMfg0688_001)
+        {
+            receiptPaymentClassificationGeneral 
+                = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::keyReceiptPaymentClassification,
+                                                    KJP_CM_ConstantHelper::origCodekeyReceiptPaymentClassification_ArrivalResultsFromTakasaki);
+            originalCode = KJP_CM_ConstantHelper::origCodekeyReceiptPaymentClassification_ArrivalResultsFromTakasaki;
+        }
+        // Ube
+        if (functionId == KJP_CM_FunctionIdConst::dfiMfg0688_002)
+        {
+            receiptPaymentClassificationGeneral
+                = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::keyReceiptPaymentClassification,
+                                                    KJP_CM_ConstantHelper::origCodekeyReceiptPaymentClassification_ArrivalResultsFromUbe);
+            originalCode = KJP_CM_ConstantHelper::origCodekeyReceiptPaymentClassification_ArrivalResultsFromUbe;
+        }
+        if(receiptPaymentClassificationGeneral)
+        {
+            receiptPaymentClassification = receiptPaymentClassificationGeneral.DestinationCode;
+        }
+        else
+        {
+            error(strFmt("@KJP:KJP500107", KJP_CM_ConstantHelper::keyReceiptPaymentClassification, originalCode));
+            res = false;
+        }
+        KJP_CM_GeneralPurposeMaster prefixPurchNOGeneral
+            = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::SDCArrivalResultsVoucherNOKey,
+            KJP_CM_ConstantHelper::origCodeSDCArrivalResultsVoucherNOKey_SDCArrivalResultsPurchNO);
+        if(prefixPurchNOGeneral)
+        {
+            prefixPurchNO = prefixPurchNOGeneral.DestinationCode;
+        }
+        else
+        {
+            error(strFmt("@KJP:KJP500107", KJP_CM_ConstantHelper::SDCArrivalResultsVoucherNOKey, KJP_CM_ConstantHelper::origCodeSDCArrivalResultsVoucherNOKey_SDCArrivalResultsPurchNO));
+            res = false;
+        }
+        KJP_CM_GeneralPurposeMaster prefixInventNOGeneral
+            = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::SDCArrivalResultsVoucherNOKey,
+            KJP_CM_ConstantHelper::origCodeSDCArrivalResultsVoucherNOKey_SDCArrivalResultsInventNO);
+        if(prefixInventNOGeneral)
+        {
+            prefixInventNO = prefixInventNOGeneral.DestinationCode;
+        }
+        else
+        {
+            error(strFmt("@KJP:KJP500107", KJP_CM_ConstantHelper::SDCArrivalResultsVoucherNOKey, KJP_CM_ConstantHelper::origCodeSDCArrivalResultsVoucherNOKey_SDCArrivalResultsInventNO));
+            res = false;
+        }
+        KJP_CM_GeneralPurposeMaster cmoPdsDispositionCodeGeneral
+            = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::BatchStatusKey,
+            KJP_CM_ConstantHelper::origcodeBatchStatus_Discon);
+        if(cmoPdsDispositionCodeGeneral)
+        {
+            cmoPdsDispositionCode = cmoPdsDispositionCodeGeneral.DestinationCode;
+        }
+        else
+        {
+            error(strFmt("@KJP:KJP500107", KJP_CM_ConstantHelper::BatchStatusKey, KJP_CM_ConstantHelper::origcodeBatchStatus_Discon));
+            res = false;
+        }
+        KJP_CM_GeneralPurposeMaster inventJournalNameITRFGeneral
+            = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::JournalNameKey,
+            KJP_CM_ConstantHelper::origCodeKJP_SM_Transfer);
+        if(inventJournalNameITRFGeneral)
+        {
+            inventJournalNameITRF = inventJournalNameITRFGeneral.DestinationCode;
+        }
+        else
+        {
+            error(strFmt("@KJP:KJP500107", KJP_CM_ConstantHelper::JournalNameKey, KJP_CM_ConstantHelper::origCodeKJP_SM_Transfer));
+            res = false;
+        }
+        purchFilter = prefixPurchNO + LikeKeyWord;
+        transferFilter = prefixInventNO + LikeKeyWord;
+        return res;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkPrefix</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// check TO/PO start with P or T
+    /// </summary>
+    /// <param name = "_text">str</param>
+    /// <param name = "_target">str</param>
+    /// <returns>boolean</returns>
+    private boolean checkPrefix(str _text, str _target)
+    {
+        return strScan(_text, _target, 1, strLen(_target)) ? true : false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseTransferOrderOrPurchOrderNo</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// parse TO/PO No
+    /// </summary>
+    /// <param name = "_instructionNo">str</param>
+    /// <returns>str</returns>
+    private str parseTransferOrderOrPurchOrderNo(str _instructionNo)
+    {
+        return subStr(_instructionNo, 1, strLen(_instructionNo) - 3);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parseLineNum</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// parse Line number
+    /// </summary>
+    /// <param name = "_instructionNo">str</param>
+    /// <returns>LineNum</returns>
+    private LineNum parseLineNum(str _instructionNo)
+    {
+        return str2Num(subStr(_instructionNo, strLen(_instructionNo), -3));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>convertToDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// convert str To Date
+    /// </summary>
+    /// <param name = "_dateStr">str</param>
+    /// <returns>date</returns>
+    private date convertToDate(str _dateStr)
+    {
+        return str2Date(subStr(_dateStr, 1, 8), 321);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateTransferLineRemainingShippedQuantity</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate TransferOrderLine QtyRemainReceive
+    /// </summary>
+    /// <param name = "_transferIdStr">str</param>
+    /// <returns>boolean</returns>
+    private boolean validateTransferLineRemainingShippedQuantity(str _transferIdStr)
+    {
+        // InventTransferLine
+        container linesCon = lineMap.lookup(_transferIdStr);
+        ;
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);         
+            LineNum lineNum = conpeek(lineCon, 1);
+            InventTransferLine inventTransferLine = InventTransferLine::find(_transferIdStr, lineNum);
+            ;
+            if(inventTransferLine && inventTransferLine.QtyRemainReceive != conpeek(lineCon, 3))
+            {
+                error(strFmt("@KJP:KJP500463", _transferIdStr));
+                return false;
+            }
+        }
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateTransferLineCount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate TransferOrderLine Count
+    /// </summary>
+    /// <param name = "_transferIdStr">str</param>
+    /// <returns>boolean</returns>
+    private boolean validateTransferLineCount(str _transferIdStr)
+    {
+        // InventTransferLine
+        container linesCon = lineMap.lookup(_transferIdStr);
+        ;
+        if(InventTransferTable::find(_transferIdStr).numOfLines() != conlen(linesCon))
+        {
+            error(strFmt("@KJP:KJP500522", _transferIdStr));
+            return false;
+        }
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildDataStructForTransfer</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// convert IF table record To Map(TransferOrder)
+    /// </summary>
+    private void buildDataStructForTransfer()
+    {
+        KJP_SM_ReceiptAndPaymentResultIfTable receiptAndPaymentResultIfTable;
+        ;
+        while select receiptAndPaymentResultIfTable
+            order by receiptAndPaymentResultIfTable.InstructionNo asc
+            where receiptAndPaymentResultIfTable.JobId == subStr(jobId, 1, 9)
+            && receiptAndPaymentResultIfTable.ExecutionDateTime == executionDateTime
+            && receiptAndPaymentResultIfTable.ReceiptPaymentClassification == receiptPaymentClassification
+            && receiptAndPaymentResultIfTable.InstructionNo like transferFilter
+        {
+            str instructionNoStr = this.parseTransferOrderOrPurchOrderNo(receiptAndPaymentResultIfTable.InstructionNo);
+            LineNum lineNum = this.parseLineNum(receiptAndPaymentResultIfTable.InstructionNo);
+            InventTransferTable inventTransferTable;
+            InventTransferLine inventTransferLine;
+            container linesCon;
+            container lineCon;
+            InventDim inventDim;
+            ;
+            inventTransferLine = InventTransferLine::find(instructionNoStr, lineNum);
+            // TransferOrder Table
+            if(!headerMap.exists(instructionNoStr))
+            {
+                container tableCon = conNull();
+                headerMap.insert(instructionNoStr, tableCon);
+            }
+            // TransferOrder lines
+            if(!lineMap.exists(instructionNoStr))
+            {
+                linesCon = conNull();     
+            }
+            else
+            {
+                linesCon = lineMap.lookup(instructionNoStr);
+            }
+            lineCon = conNull();
+            lineCon += lineNum;//[1]
+            lineCon += receiptAndPaymentResultIfTable.itemCD;//[2]
+            lineCon += receiptAndPaymentResultIfTable.Quantity;//[3]
+            lineCon += receiptAndPaymentResultIfTable.ActualDateAndTimeStr;//[4]
+            lineCon += receiptAndPaymentResultIfTable.LotNo;//[5] KKC LOT
+            lineCon += receiptAndPaymentResultIfTable.ManufacturingDateStr;//[6] 
+            lineCon += receiptAndPaymentResultIfTable.ExpirationDateStr;//[7] 
+            lineCon += receiptAndPaymentResultIfTable.Remarks;//[8] 
+            inventDim = inventTransferLine.inventDim();
+            lineCon += inventDim.InventSiteId;//[9]
+            inventTransferTable = inventTransferLine.inventTransferTable();
+            lineCon += inventTransferTable.InventLocationIdTo;//[10];
+            lineCon += inventDim.inventBatchId;//[11] CMO LOT
+            lineCon += receiptAndPaymentResultIfTable.InstructionNo;//[12]
+            lineCon += receiptAndPaymentResultIfTable.UnitCD;//[13] 
+
+            linesCon += [lineCon];
+            lineMap.insert(instructionNoStr, linesCon);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postUpdateTransferOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post Transfer Order to receive
+    /// </summary>
+    /// <param name = "_transferIdStr">str</param>
+    private void postUpdateTransferOrder(str _transferIdStr)
+    {
+        date postDate;        
+        // InventTransferLine
+        container linesCon = lineMap.lookup(_transferIdStr);
+        container lineCon = conpeek(linesCon, 1);
+        postDate = this.convertToDate(conpeek(lineCon, 4));
+        this.postTransferOrder(_transferIdStr, postDate);      
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postTransferOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post TransferOrder call the stander method
+    /// </summary>
+    /// <param name = "_transferId">str</param>
+    /// <param name = "_transDate">str</param>
+    private void postTransferOrder(str _transferId, TransDate _transDate)
+    {
+        InventTransferUpd    invTranUpd;
+        InventTransferParmTable invTransParmTbl_Receive;
+        ;
+        invTransParmTbl_Receive.TransferId = _transferId;
+        invTransParmTbl_Receive.EditLines = false;
+        invTransParmTbl_Receive.AutoReceiveQty = false;
+        invTransParmTbl_Receive.UpdateType = InventTransferUpdateType::Receive;
+        invTransParmTbl_Receive.ReceiveUpdateQty = InventTransferReceiveUpdateQty::Shipment;
+        invTransParmTbl_Receive.TransDate = _transDate;
+        if(this.findCancelInventTransferJour(_transferId))
+        {
+            invTransParmTbl_Receive.VoucherShipmentId = this.getLastInventTransferJour(_transferId).VoucherId;
+        }
+        invTranUpd = InventTransferUpdReceive::newParmBuffer(invTransParmTbl_Receive);
+        invTranUpd.run();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findCancelInventTransferJour</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// find Cancel InventTransferJour
+    /// </summary>
+    /// <param name = "_transferId">str</param>
+    /// <returns>InventTransferJour</returns>
+    private InventTransferJour findCancelInventTransferJour(str _transferId)
+    {
+        InventTransferJour inventTransferJour;
+        ;
+        select firstonly RecId from inventTransferJour
+            where inventTransferJour.TransferId == _transferId
+            && inventTransferJour.UpdateType == InventTransferUpdateType::Shipment 
+            && inventTransferJour.CanceledShipment == NoYes::Yes;
+        return inventTransferJour;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getLastInventTransferJour</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get Last InventTransferJour
+    /// </summary>
+    /// <param name = "_transferId">str</param>
+    /// <returns>InventTransferJour</returns>
+    private InventTransferJour getLastInventTransferJour(str _transferId)
+    {
+        InventTransferJour inventTransferJour;
+        ;
+        select firstonly VoucherId from inventTransferJour
+            order by inventTransferJour.CreatedDateTime desc
+            where inventTransferJour.TransferId == _transferId 
+            && inventTransferJour.UpdateType == InventTransferUpdateType::Shipment 
+            && inventTransferJour.CanceledShipment == NoYes::No;
+        return inventTransferJour;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processInventBatchForTransferOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// create batch master record for TO
+    /// </summary>
+    /// <param name = "_transferIdStr">str</param>
+    private void processInventBatchForTransferOrder(str _transferIdStr)
+    {
+        // InventTransferLine
+        container linesCon = lineMap.lookup(_transferIdStr);
+        ;
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);
+            this.insertInventBatchForTransferOrder(lineCon);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventBatchForTransferOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// create batch master record for TO
+    /// </summary>
+    /// <param name = "_lineCon">container</param>
+    private void insertInventBatchForTransferOrder(container _lineCon)
+    {
+        str itemId = conpeek(_lineCon, 2);
+        str kkcInventBatchId = conpeek(_lineCon, 5);
+        str cmoInventBatchId = conpeek(_lineCon, 11);
+        str remarks = conpeek(_lineCon, 8);     
+        date kkcManufactureDate;
+        date kkcExpDate;
+        date kkcBestBeforeDate;
+        KJP_SM_ActualCoefficient actualCoefficient;
+        KJP_SM_ActualCoefficient standardCoefficient;
+        InventTable inventTable;
+        InventBatch kkcInventBatch;
+        InventBatch cmoInventBatch;
+        KPJ_SM_BatchImportCommonFunction  function;
+        ;
+        // Update InventBatch
+        if(InventBatch::find(kkcInventBatchId, itemId))
+        {
+            return ;
+        }
+        
+        cmoInventBatch = InventBatch::find(cmoInventBatchId, itemId);
+        // prodDate
+        if(conpeek(_lineCon, 6))
+        {
+            kkcManufactureDate = this.convertToDate(conpeek(_lineCon, 6));
+        }
+        else
+        {
+            kkcManufactureDate = dateNull();
+        }
+        // ExpDate
+        if(conpeek(_lineCon, 7))
+        {         
+            kkcExpDate = this.convertToDate(conpeek(_lineCon, 7));
+        }
+        else
+        {
+            kkcExpDate = dateNull();
+        }
+        // BestBeforeDate
+        kkcBestBeforeDate = dateNull();
+       
+        if(remarks && str2numOK(remarks))
+        {
+            actualCoefficient = any2Real(remarks);
+        }
+        else
+        {
+            actualCoefficient = 0;
+        }
+
+        function = new KPJ_SM_BatchImportCommonFunction();
+        function.InventBatchCommonFunction(itemId,
+            kkcInventBatchId,
+            kkcManufactureDate,
+            actualCoefficient,
+            kkcExpDate,
+            kkcBestBeforeDate);
+        // Update InventBatch
+        if(cmoInventBatch.KJPSMStandardCoefficient)
+        {
+            standardCoefficient = cmoInventBatch.KJPSMStandardCoefficient;
+        }
+        else
+        {
+            inventTable = InventTable::find(itemId);
+            standardCoefficient = inventTable.KJPSMStandardCoefficient;
+        }
+        kkcInventBatch = InventBatch::find(kkcInventBatchId, itemId, true);
+        if(cmoInventBatch.PdsDispositionCode)
+        {
+            kkcInventBatch.PdsDispositionCode = cmoInventBatch.PdsDispositionCode;
+        }
+        kkcInventBatch.KJPSMStandardCoefficient = standardCoefficient;
+        kkcInventBatch.update();
+
+        cmoInventBatch.selectForUpdate(true);
+        cmoInventBatch.PdsDispositionCode = cmoPdsDispositionCode;
+        cmoInventBatch.update();    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postInsertInventJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post InventJournal for TO
+    /// </summary>
+    /// <param name = "_transferIdStr">str</param>
+    private void postInsertInventJournal(str _transferIdStr)
+    {
+        InventJournalTable inventJournalTable = this.insertInventJournalTable();
+        ;
+        // InventTransferLine
+        container linesCon = lineMap.lookup(_transferIdStr);
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);
+            this.insertInventJournalTrans(inventJournalTable, lineCon);
+        }
+        InventJournalTable::initTotal(inventJournalTable);
+        inventJournalTable.selectForUpdate(true);
+        inventJournalTable.update();
+        // post
+        this.postInventJournal(inventJournalTable);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventJournalTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post InventJournal for TO
+    /// </summary>
+    /// <returns>InventJournalTable</returns>
+    private InventJournalTable insertInventJournalTable()
+    {
+        InventJournalTable  inventJournalTable;
+        ;
+        inventJournalTable.clear();
+        inventJournalTable.initFromInventJournalName(InventJournalName::find(inventJournalNameITRF));
+        inventJournalTable.insert();
+        return inventJournalTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventJournalTrans</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// insert InventJournalTrans
+    /// </summary>
+    /// <param name = "_inventJournalTable">InventJournalTable</param>
+    /// <param name = "_lineCon">container</param>
+    private void insertInventJournalTrans(InventJournalTable _inventJournalTable, container _lineCon)
+    {
+        InventJournalTrans  inventJournalTrans;
+        InventDim           fromInventDim, toInventDim;
+        str itemId = conpeek(_lineCon, 2);
+        real qtyReal = conpeek(_lineCon, 3);
+        TransDate postDate = this.convertToDate(conpeek(_lineCon, 4));
+        str siteIdStr = conpeek(_lineCon, 9);
+        str locationIdStr = conpeek(_lineCon, 10);
+        str cmoBatchId = conpeek(_lineCon, 11);
+        str kkcBatchId = conpeek(_lineCon, 5);
+        ;
+        inventJournalTrans.clear();
+        inventJournalTrans.initFromInventJournalTable(_inventJournalTable);
+        inventJournalTrans.initFromInventTable(InventTable::find(itemId));
+        inventJournalTrans.initValue();
+        inventJournalTrans.Qty  = -qtyReal;
+        inventJournalTrans.modifiedField(fieldNum(InventJournalTrans, Qty));
+        inventJournalTrans.TransDate = postDate;
+        // From
+        fromInventDim.InventSiteId = siteIdStr;
+        fromInventDim.InventLocationId = locationIdStr;
+        fromInventDim.inventBatchId = cmoBatchId;
+        inventJournalTrans.InventDimId = InventDim::findOrCreate(fromInventDim).inventDimId;
+        // To
+        toInventDim.InventSiteId = siteIdStr;
+        toInventDim.InventLocationId = locationIdStr;
+        toInventDim.inventBatchId = kkcBatchId;
+        inventJournalTrans.ToInventDimId = InventDim::findOrCreate(toInventDim).inventDimId;
+        inventJournalTrans.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postInventJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post InventJournal
+    /// </summary>
+    /// <param name = "_inventJournalTable">InventJournalTable</param>
+    private void postInventJournal(InventJournalTable _inventJournalTable)
+    {
+        JournalCheckPost  journalCheckPost = InventJournalCheckPost::construct(_inventJournalTable);
+        if (journalCheckPost)
+        {
+            journalCheckPost.initializeJournalCheckPost(true, false, JournalCheckPostType::Post, _inventJournalTable.TableId, _inventJournalTable.JournalId);
+            journalCheckPost.parmThrowCheckFailed(true);
+        }
+        journalCheckPost.runOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>buildDataStructForPurch</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// create IF Table record to Map(purch)
+    /// </summary>
+    private void buildDataStructForPurch()
+    {
+        KJP_SM_ReceiptAndPaymentResultIfTable receiptAndPaymentResultIfTable;
+        ;
+        while select receiptAndPaymentResultIfTable
+            order by receiptAndPaymentResultIfTable.InstructionNo asc
+            where receiptAndPaymentResultIfTable.JobId == subStr(jobId, 1, 9)
+            && receiptAndPaymentResultIfTable.ExecutionDateTime == executionDateTime
+            && receiptAndPaymentResultIfTable.ReceiptPaymentClassification == receiptPaymentClassification
+            && receiptAndPaymentResultIfTable.InstructionNo like purchFilter
+        {
+            str instructionNoStr = this.parseTransferOrderOrPurchOrderNo(receiptAndPaymentResultIfTable.InstructionNo);
+            LineNum lineNum = this.parseLineNum(receiptAndPaymentResultIfTable.InstructionNo);
+            PurchLine purchLine;
+            container linesCon;
+            container lineCon;
+            InventDim inventDim
+            ;
+            purchLine = PurchLine::find(instructionNoStr, any2Int64(lineNum));
+            // purchTableMap Table
+            if(!headerMap.exists(instructionNoStr))
+            {
+                container tableCon = conNull();
+                headerMap.insert(instructionNoStr, tableCon);
+            }
+            // purchTableMap lines
+            if(!lineMap.exists(instructionNoStr))
+            {
+                linesCon = conNull();
+            }
+            else
+            {
+                linesCon = lineMap.lookup(instructionNoStr);
+            }
+            lineCon = conNull();
+            lineCon += lineNum;//[1]
+            lineCon += receiptAndPaymentResultIfTable.itemCD;//[2]
+            lineCon += receiptAndPaymentResultIfTable.Quantity;//[3]
+            lineCon += receiptAndPaymentResultIfTable.ActualDateAndTimeStr;//[4]
+            lineCon += receiptAndPaymentResultIfTable.LotNo;//[5] KKC LOT
+            lineCon += receiptAndPaymentResultIfTable.ManufacturingDateStr;//[6]
+            lineCon += receiptAndPaymentResultIfTable.ExpirationDateStr;//[7]
+            lineCon += receiptAndPaymentResultIfTable.Remarks;//[8]
+            inventDim = purchLine.inventDim();
+            lineCon += inventDim.InventSiteId;//[9]
+            lineCon += inventDim.InventLocationId;//[10];
+            lineCon += inventDim.inventBatchId;//[11] create Purch LOT
+            lineCon += receiptAndPaymentResultIfTable.InstructionNo;//[12]
+            lineCon += receiptAndPaymentResultIfTable.EditionNo;//[13] for Purch
+            lineCon += receiptAndPaymentResultIfTable.OrderLotNumber;//[14] for Purch
+            lineCon += receiptAndPaymentResultIfTable.UnitCD;//[15] for Purch
+            linesCon += [lineCon];
+            lineMap.insert(instructionNoStr, linesCon);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerAndPostPackingSlip</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// process for PackingSlip
+    /// </summary>
+    /// <param name = "_purchIdStr">str</param>
+    private void registerAndPostPackingSlip(str _purchIdStr)
+    {
+        date postDate;
+        // register purchLine
+        container linesCon = lineMap.lookup(_purchIdStr);
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);
+            if(i == 1)
+            {
+                postDate = this.convertToDate(conpeek(lineCon, 4));
+            }
+            if(!this.registerInventTransWMS(_purchIdStr, lineCon))
+            {
+                throw Exception::Error;
+            }
+        }
+        this.postPackingSlip(_purchIdStr, postDate);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerInventTransWMS</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// register InventTrans WMS
+    /// </summary>
+    /// <param name = "_purchIdStr">str</param>
+    /// <param name = "_lineCon">container</param>
+    /// <returns>boolean</returns>
+    private boolean registerInventTransWMS(str _purchIdStr, container _lineCon)
+    {       
+        PurchLine               upPurchLine;
+        InventTrans             inventTrans;
+        InventTransWMS_Register inventTransWMS_register;
+        TmpInventTransWMS       tmpInventTransWMS;
+        InventDim               regInventDim;
+        ;
+        upPurchLine = PurchLine::find(_purchIdStr, conpeek(_lineCon, 1));
+        inventTransWMS_Register = InventTransWMS_Register::newStandard(tmpInventTransWMS);
+        inventTrans = InventTrans::findTransId(upPurchLine.InventTransId);
+
+        tmpInventTransWMS.initFromInventTrans(inventTrans);
+        tmpInventTransWMS.InventQty = conpeek(_lineCon, 3);// Qty
+        tmpInventTransWMS.LineNum = int642int(upPurchLine.LineNumber);
+
+        regInventDim.clear();
+        regInventDim.InventSiteId = conpeek(_lineCon, 9);
+        regInventDim.InventLocationId = conpeek(_lineCon, 10);
+        regInventDim.inventBatchId = conpeek(_lineCon, 5);// actural batch id 
+        regInventDim = InventDim::findOrCreate(regInventDim);
+
+        tmpInventTransWMS.ItemId = upPurchLine.ItemId;
+        tmpInventTransWMS.InventDimId = regInventDim.InventDimId;
+        tmpInventTransWMS.insert();
+        //発注書明細行登録前処理
+        // tmpInventTransWMS: 登録処理ために登録レコード
+        // inventTrans: 発注書明細行の在庫トランザクション
+        // InventDim::find(tmpInventTransWMS.InventDimId): 在庫分析コード情報（サイト、倉庫、バッチ番号関連情報）
+        // defect No.125935
+        if(!inventTransWMS_Register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, InventDim::find(tmpInventTransWMS.InventDimId)))
+        {
+            return false;
+        }
+        // defect No.125935
+        return inventTransWMS_Register.updateInvent(upPurchLine);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postPackingSlip</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post PackingSlip
+    /// </summary>
+    /// <param name = "_purchIdStr">str</param>
+    /// <param name = "_postDate">date</param>
+    private void postPackingSlip(str _purchIdStr, date _postDate)
+    {
+        PurchFormLetter purchFormLetter;
+        PurchTable purchTable;
+        ;
+        purchTable = PurchTable::find(_purchIdStr);  
+        // DocumentStatus::PackingSlip    Document status to be updated　転記タイプ表す：製品受領書転記
+        purchFormLetter = purchFormLetter::construct(DocumentStatus::PackingSlip);
+        // PurchTable  発注書
+        // 製品受領書番号
+        // 梱包転記日付
+        // PurchUpdate::Recorded　登録済数量として転記
+        purchFormLetter.update(purchTable, this.createOrFindPackingSlipId(_purchIdStr), _postDate, PurchUpdate::Recorded);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createOrFindPackingSlipId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// process to create PackingSlip Id
+    /// </summary>
+    /// <param name = "_purchIdStr">str</param>
+    /// <returns>ProductReceiptId</returns>
+    private ProductReceiptId createOrFindPackingSlipId(str _purchIdStr)
+    {
+        VendPackingSlipJour vendPackingSlipJour;
+        str packingSlipIdSeqStr;
+        int addAfterSeq;
+        ;
+        select firstonly maxof(PackingSlipId) from vendPackingSlipJour
+            where vendPackingSlipJour.PurchId == _purchIdStr;
+        if(!vendPackingSlipJour)
+        {
+            return _purchIdStr + DoubleZero;
+        }
+        packingSlipIdSeqStr = subStr(vendPackingSlipJour.PackingSlipId, strLen(vendPackingSlipJour.PackingSlipId), -2);
+        addAfterSeq = any2Int(packingSlipIdSeqStr) + 1;
+        if(addAfterSeq < 10)
+        {        
+            return _purchIdStr + SingalZero + any2Str(addAfterSeq);
+        }    
+        return _purchIdStr + any2Str(addAfterSeq);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processInventBatchForPurch</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// create batch master record For Purch
+    /// </summary>
+    /// <param name = "_purchIdStr">str</param>
+    private void processInventBatchForPurch(str _purchIdStr)
+    {
+        // PurchLine
+        container linesCon = lineMap.lookup(_purchIdStr);
+        ;
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);
+            this.insertAndUpdateInventBatchForPurch(lineCon);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertAndUpdateInventBatchForPurch</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// create batch master record For Purch
+    /// </summary>
+    /// <param name = "_lineCon">container</param>
+    private void insertAndUpdateInventBatchForPurch(container _lineCon)
+    {
+        str itemId = conpeek(_lineCon, 2);
+        str kkcInventBatchId = conpeek(_lineCon, 5);
+        str remarks = conpeek(_lineCon, 8);
+        date kkcManufactureDate;
+        date kkcExpDate;
+        date kkcBestBeforeDate;
+        KJP_SM_ActualCoefficient actualCoefficient;
+        KJP_SM_ActualCoefficient standardCoefficient;
+        InventTable inventTable;
+        InventBatch kkcInventBatch;
+        KPJ_SM_BatchImportCommonFunction  function;
+        ;
+        // Update InventBatch
+        if(InventBatch::find(kkcInventBatchId, itemId))
+        {
+            return ;
+        }
+        // proDate
+        if(conpeek(_lineCon, 6))
+        {
+            kkcManufactureDate = this.convertToDate(conpeek(_lineCon, 6));
+        }
+        else
+        {
+            kkcManufactureDate = dateNull();
+        }
+        // expDate
+        if(conpeek(_lineCon, 7))
+        {
+            kkcExpDate = this.convertToDate(conpeek(_lineCon, 7));
+        }
+        else
+        {
+            kkcExpDate = dateNull();  
+        }
+        // BestBeforeDate
+        kkcBestBeforeDate = dateNull();
+
+        if(remarks && str2numOK(remarks))
+        {
+            actualCoefficient = any2Real(remarks);
+        }
+        else
+        {
+            actualCoefficient = 0;
+        }
+
+        function = new KPJ_SM_BatchImportCommonFunction();
+        function.InventBatchCommonFunction(itemId,
+            kkcInventBatchId,
+            kkcManufactureDate,
+            actualCoefficient,
+            kkcExpDate,
+            kkcBestBeforeDate);
+
+        // Update InventBatch
+        inventTable = InventTable::find(itemId);
+        if(inventTable)
+        {
+            standardCoefficient = inventTable.KJPSMStandardCoefficient;
+        }
+        else
+        {
+            standardCoefficient = 0;
+        }
+        kkcInventBatch = InventBatch::find(kkcInventBatchId, itemId, true);
+        kkcInventBatch.KJPSMStandardCoefficient = standardCoefficient;
+        if(conpeek(_lineCon, 13))
+        {
+            kkcInventBatch.KJPSMVersionRevisionNo = conpeek(_lineCon, 13);
+        }
+        kkcInventBatch.PdsVendBatchId = conpeek(_lineCon, 14);
+        kkcInventBatch.update();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validatePurchOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  validate PurchOrder 
+    /// </summary>
+    private void validatePurchOrder()
+    {
+        // defect #128339
+        MapEnumerator mapEnumerator = headerMap.getEnumerator();
+        ;
+        while (mapEnumerator.moveNext())
+        {
+            str voucherIdStr = mapEnumerator.currentKey();
+            ;
+            if(this.checkPrefix(voucherIdStr, prefixPurchNO))
+            {
+                if(!this.validatePOAndTOUnit(voucherIdStr, NoYes::No))
+                {
+                    errorUnitCheckMap.insert(voucherIdStr, 0);
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validatePOAndTOUnit</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate TransferOrderLine QtyRemainReceive
+    /// </summary>
+    /// <param name = "_voucherIdStr">str</param>
+    /// <param name = "_poOrTo">NoYes</param>
+    /// <returns>boolean</returns>
+    private boolean validatePOAndTOUnit(str _voucherIdStr, NoYes _poOrTo)
+    {
+        // defect #128339
+        container linesCon = lineMap.lookup(_voucherIdStr);
+        ;
+        for(int i = 1; i <= conlen(linesCon); i++)
+        {
+            container lineCon = conpeek(linesCon, i);
+            str itemCodeStr = conpeek(lineCon, 2);
+            str unitCodeStr;      
+            // Yes:TO  No:PO
+            if(_poOrTo)
+            {
+                unitCodeStr = conpeek(lineCon, 13);
+            }
+            else
+            {
+                unitCodeStr = conpeek(lineCon, 15);
+            }
+            UnitOfMeasureSymbol unitOfMeasureSymbol = InventTableModule::getUnitIdByModuleType(itemCodeStr, ModuleInventPurchSales::Invent);
+            if(unitOfMeasureSymbol != unitCodeStr)
+            { 
+                if(_poOrTo)
+                {
+                    error(strFmt("@KJP:KJP500594", itemCodeStr, unitOfMeasureSymbol, unitCodeStr, "@KJP:KJP103065", _voucherIdStr));
+                }
+                else
+                {
+                    error(strFmt("@KJP:KJP500594", itemCodeStr, unitOfMeasureSymbol, unitCodeStr, "@KJP:KJP101558", _voucherIdStr));
+                }    
+                return false;
+            }
+        }
+        return true;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

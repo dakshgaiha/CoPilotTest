@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CodesConvControl_Service</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// service class to insert records from IF table to Master table and capture error message in Error log table.
+/// </summary>
+class KJP_SM_CodesConvControl_Service extends KJP_CM_IFBatchBase
+{
+    date currentDate;
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Process to validate IF table, insert records from IF table to Master table and capture error message in Error log table
+    /// </summary>
+    void processRun()
+    {
+        changecompany(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::companyCodeKey,KJP_CM_ConstantHelper::origCompanyCode_KKC).DestinationCode)
+        {
+            try
+            {
+                currentDate = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+                ttsbegin;
+                if (this.validate())
+                {
+                    this.insertIntoCodeConversionControlMaster();
+                }
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                error(any2Str(Exception::Error));
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate IF table records
+    /// </summary>
+    /// <returns>boolean</returns>
+    protected boolean validate()
+    {
+        boolean                               ret = true;
+        KJP_SM_CodeConversionControlIfTable   CodeConversionControlIfTable;
+
+        select firstonly RecId from CodeConversionControlIfTable;
+
+        if (!CodeConversionControlIfTable.RecId)
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500062", "@KJP:KJP100553"));
+        }
+
+        if (ret)
+        {
+            CodeConversionControlIfTable.clear();
+            while select count(RecId), AgentCode from CodeConversionControlIfTable
+                group by AgentCode
+                where codeConversionControlIfTable.RecordStartDate <= currentDate &&
+                         codeConversionControlIfTable.RecordEndDate >= currentDate
+            {
+                if (CodeConversionControlIfTable.RecId > 1)
+                {
+                    ret =  checkFailed(strFmt("@KJP:KJP500016", "@KJP:KJP100616", CodeConversionControlIfTable.AgentCode));
+                }
+            }
+        }
+        
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertIntoCodeConversionControlMaster</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Delete complete records from Master table, insert records from IF table to Master table and capture error message in Error log table
+    /// </summary>
+    protected void insertIntoCodeConversionControlMaster()
+    {
+        KJP_SM_CodeConversionControlIfTable  codeConversionControlIfTable;
+        KJP_SM_CodeConversionControlMaster   codeConversionControlMaster;
+
+        delete_from codeConversionControlMaster;
+
+        insert_recordset codeConversionControlMaster (AgentCode, RecordStartDate, RecordEndDate, HospitalCodeConversionFlagStr, HospitalCodeDigitPosition,
+                         HospitalCodeLength, HospitalCodeApplyDate, OldHospitalCodeConversionFlagStr, OldHospitalCodeDigitPosition, OldHospitalCodeLength, 
+                         OldHospitalCodeApplyDate, BranchOfficeCodeConversionFlagStr, BranchOfficeCodeDigitPosition, BranchOfficeCodeLength, BranchOfficeCodeApplyDate, 
+                         OldBranchOfficeCodeConversionFlagStr, OldBranchOfficeCodeDigitPosition, OldBranchOfficeCodeLength, OldBranchOfficeCodeApplyDate, 
+                         ActualDigestionTradeClassConversionFlagStr, ActualDigestionTradeClassDigitPosition, ActualDigestionTradeClassLength, ActualDigestionTradeClassApplyDate, 
+                         OldActualDigestionTradeClassConversionFlagStr, OldActualDigestionTradeClassDigitPosition, OldActualDigestionTradeClassLength, OldActualDigestionTradeClassApplyDate,
+                         StockTradeClassificationConversionFlagStr, StockTradeClassificationConversionDigitPosition, StockTradeClassificationConversionLength,
+                         StockTradeClassificationConversionApplyDate, OldStockTradeClassificationConversionFlagStr, OldStockTradeClassificationConversionDigitPosition, 
+                         OldStockTradeClassificationConversionLength, OldStockTradeClassificationConversionApplyDate, WarehouseCodeConversionFlagStr, WarehouseCodeDisitPosition,
+                         WarehouseCodeDisitLength, WarehouseCodeApplyDate, OldWarehouseCodeConversionFlagStr, OldWarehouseCodeDisitPosition, OldWarehouseCodeDisitLength,
+                         OldWarehouseCodeApplyDate, WholesaleDestinationCodeConversionFlagStr, WholesaleDestinationCodeDigitPosition, WholesaleDestinationCodeLength,
+                         WholesaleDestinationCodeApplyDate, OldWholesaleDestinationCodeConversionFlagStr, OldWholesaleDestinationCodeDigitPosition, OldWholesaleDestinationCodeLength,
+                         OldWholesaleDestinationCodeApplyDate)
+            select AgentCode, RecordStartDate, RecordEndDate, HospitalCodeConversionFlagStr, HospitalCodeDigitPosition,
+                   HospitalCodeLength, HospitalCodeApplyDate, OldHospitalCodeConversionFlagStr, OldHospitalCodeDigitPosition, OldHospitalCodeLength,
+                   OldHospitalCodeApplyDate, BranchOfficeCodeConversionFlagStr, BranchOfficeCodeDigitPosition, BranchOfficeCodeLength, BranchOfficeCodeApplyDate,
+                   OldBranchOfficeCodeConversionFlagStr, OldBranchOfficeCodeDigitPosition, OldBranchOfficeCodeLength, OldBranchOfficeCodeApplyDate,
+                   ActualDigestionTradeClassConversionFlagStr, ActualDigestionTradeClassDigitPosition, ActualDigestionTradeClassLength, ActualDigestionTradeClassApplyDate,
+                   OldActualDigestionTradeClassConversionFlagStr, OldActualDigestionTradeClassDigitPosition, OldActualDigestionTradeClassLength, OldActualDigestionTradeClassApplyDate,
+                   StockTradeClassificationConversionFlagStr, StockTradeClassificationConversionDigitPosition, StockTradeClassificationConversionLength,
+                   StockTradeClassificationConversionApplyDate, OldStockTradeClassificationConversionFlagStr, OldStockTradeClassificationConversionDigitPosition,
+                   OldStockTradeClassificationConversionLength, OldStockTradeClassificationConversionApplyDate, WarehouseCodeConversionFlagStr, WarehouseCodeDisitPosition,
+                   WarehouseCodeDisitLength, WarehouseCodeApplyDate, OldWarehouseCodeConversionFlagStr, OldWarehouseCodeDisitPosition, OldWarehouseCodeDisitLength,
+                   OldWarehouseCodeApplyDate, WholesaleDestinationCodeConversionFlagStr, WholesaleDestinationCodeDigitPosition, WholesaleDestinationCodeLength,
+                   WholesaleDestinationCodeApplyDate, OldWholesaleDestinationCodeConversionFlagStr, OldWholesaleDestinationCodeDigitPosition, OldWholesaleDestinationCodeLength,
+                   OldWholesaleDestinationCodeApplyDate
+            from codeConversionControlIfTable
+            where codeConversionControlIfTable.RecordStartDate <= currentDate &&
+                  codeConversionControlIfTable.RecordEndDate >= currentDate;
+
+        select count(RecId) from codeConversionControlMaster;
+        numberOfSuccess = codeConversionControlMaster.RecId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

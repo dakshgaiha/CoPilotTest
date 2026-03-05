@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTransferOrders2LineUpdatePrompt_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension  class for InventTransferOrders2LineUpdatePrompt
+/// </summary>
+[ExtensionOf(classStr(InventTransferOrders2LineUpdatePrompt))]
+ final class KJP_SM_InventTransferOrders2LineUpdatePrompt_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>areShipReceiveDatesChanged</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// areShipReceiveDatesChanged 
+    /// If header ShipReceiveDates are Changed do not show dialog to ask user and will update any TO lines 
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <returns>boolean</returns>
+    protected boolean areShipReceiveDatesChanged(InventTransferTable _inventTransferTable)
+    {
+        boolean ret = next areShipReceiveDatesChanged(_inventTransferTable);
+        ;
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            return false;
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

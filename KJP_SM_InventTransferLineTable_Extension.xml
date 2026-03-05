@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTransferLineTable_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension Table class for InventTransferLine
+/// </summary>
+[ExtensionOf(tableStr(InventTransferLine))]
+final class KJP_SM_InventTransferLineTable_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>modifiedField</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InventTransferLine modifiedField method
+    /// </summary>
+    /// <param name = "_fieldId">FieldId</param>
+    public void modifiedField(FieldId _fieldId)
+    {
+        const str spaceString = '';
+        ;
+        next modifiedField(_fieldId);
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            switch (_fieldId)
+            {
+                // 2.2.1.2.4 Select Item Number of 1st Line
+                case fieldNum(InventTransferLine, ItemId):
+                    InventTable inventTable = InventTable::find(this.ItemId);
+                    // set Packaging category code and Packaging category
+                    this.updateKJPSMPackagingCategoryCode(inventTable);
+                    // set ShipDate and ReceiveDate from InventTransferTable header
+                    this.updateKJPSMShipDateReceiveDate(this.inventTransferTable());
+                    // set Sales Unit
+                    this.updateKJPSMSalesUnitId(inventTable);
+                    break;
+                // 2.2.1.2.5 Sales Quantity/Sales Unit Changed
+                case fieldNum(InventTransferLine, KJPSMSalesUnit):
+                case fieldNum(InventTransferLine, KJPSMSalesQty):
+                    if(!this.KJPSMSalesUnit && this.KJPSMSalesQty > 0)
+                    {
+                        InventTable inventTableSales = InventTable::find(this.ItemId);
+                        // set Sales Unit
+                        this.updateKJPSMSalesUnitId(inventTableSales);
+                    }
+                    // Unit convert
+                    this.QtyTransfer = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                        this.ItemId,
+                        this.InventDimId,
+                        this.KJPSMSalesQty,
+                        this.KJPSMSalesUnit,
+                        this.UnitId);
+                    break;
+                case fieldNum(InventTransferLine, QtyTransfer):
+                    this.KJPSMSalesUnit = spaceString;
+                    this.KJPSMSalesQty = 0;
+                    break;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateKJPSMPackagingCategoryCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update KJPSMPackagingCategoryCode
+    /// </summary>
+    /// <param name = "_inventTable">InventTable</param>
+    public void updateKJPSMPackagingCategoryCode(InventTable _inventTable)
+    {
+        // 詰み合わせコード
+        str packagingCategory = KJP_SM_InventTransferOrders_Utils::mergePackagingCategory(_inventTable);
+        this.KJPSMPackagingCategory = packagingCategory;
+        this.KJPSMPackagingCategoryCode = KJP_SM_InventTransferOrders_Utils::fetchPackagingCategory(packagingCategory, NoYes::Yes);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateKJPSMShipDateReceiveDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update KJPSMShipDateReceiveDate
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    public void updateKJPSMShipDateReceiveDate(InventTransferTable _inventTransferTable)
+    {
+        this.ShipDate = _inventTransferTable.ShipDate;
+        this.ReceiveDate = _inventTransferTable.ReceiveDate;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateKJPSMSalesUnitId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update KJPSMSalesUnitId
+    /// </summary>
+    /// <param name = "_inventTable">InventTable</param>
+    public void updateKJPSMSalesUnitId(InventTable _inventTable)
+    {
+        this.KJPSMSalesUnit = _inventTable.salesUnitId();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateField</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InventTransferLine validateField method
+    /// </summary>
+    /// <param name = "_fieldIdToCheck">boolean</param>
+    /// <returns>boolean</returns>
+    public boolean validateField(FieldId _fieldIdToCheck)
+    {
+        boolean ret;
+        ;
+        ret = next validateField(_fieldIdToCheck);
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            switch (_fieldIdToCheck)
+            {
+                // 2.2.1.2.5 Sales Quantity/Sales Unit Changed
+                case (fieldNum(InventTransferLine, KJPSMSalesQty)) :
+                    // If Sales quantity is entered with negative number
+                    if (this.KJPSMSalesQty < 0)
+                    {
+                        ret = checkFailed("@KJP:KJP500377");
+                    }
+                    break;
+                // 2.2.1.2.5 Sales Quantity/Sales Unit Changed
+                case (fieldNum(InventTransferLine, KJPSMSalesUnit)) :
+                    // If entered unit does not exist in unit conversion master, the error message will be displayed.
+                    if (this.KJPSMSalesUnit && !UnitOfMeasure::unitOfMeasureIdBySymbol(this.KJPSMSalesUnit))
+                    {  
+                        ret = checkFailed("@KJP:KJP500440");
+                    }
+                    //InventTable inventTable = InventTable::find(this.ItemId);
+                    //if(ret && !UnitOfMeasureConverter::canBeConverted(UnitOfMeasure::unitOfMeasureIdBySymbol(this.KJPSMSalesUnit),
+                    //                             UnitOfMeasure::unitOfMeasureIdBySymbol(this.UnitId),
+                    //                             inventTable.product))
+                    if(ret && !EcoResProductUnitConverter::canBeConvertedGivenUnitSymbolsForReleasedProduct(
+                                             this.ItemId,
+                                             this.InventDimId,
+                                             this.KJPSMSalesUnit,
+                                             this.UnitId))
+                    {
+                        ret = checkFailed("@KJP:KJP500380");
+                    }
+                    break;
+                // 2.2.1.2.7 Select Item Number of Subsequent Lines
+                case (fieldNum(InventTransferLine, ItemId)) :
+                    ret = this.validateKJPSMPackagingCategoryCode(this.TransferId, this.ItemId);
+                    break;
+            }
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InventTransferLine validateWrite method
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+        ;
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            boolean Lines5LimitRet = true;
+            InventTransferTable inventTransferTable = this.inventTransferTable();
+            // 2.2.1.2.6 Add Subsequent Lines - Checking 5 lines limit target flag at press save button
+            Lines5LimitRet = KJP_SM_InventTransferOrders_Utils::validateKJPSM5LinesLimitTargetFlagField(inventTransferTable);
+            ret = ret && Lines5LimitRet;
+            if(Lines5LimitRet)
+            {
+                ret = ret && KJP_SM_InventTransferOrders_Utils::validateMaxLineNum(inventTransferTable, this, NoYes::No);
+            }
+            if (ret)
+            {
+                ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMShippingInstructionSendingFlag(inventTransferTable, NoYes::Yes) && ret;
+                ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMStockArrivalScheduleSendingFlag(inventTransferTable, NoYes::Yes) && ret;
+            }
+            ret = ret && this.validateKJPSMPackagingCategoryCode(this.TransferId, this.ItemId);
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateKJPSMPackagingCategoryCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate Packaging Category Code for InventTransferLine
+    /// </summary>
+    /// <param name = "_inventTransferId">InventTransferId</param>
+    /// <param name = "_itemId">ItemId</param>
+    /// <returns>boolean</returns>
+    public boolean validateKJPSMPackagingCategoryCode(InventTransferId _inventTransferId, ItemId _itemId)
+    {
+        boolean ret = true;
+        InventTransferLine inventTransferLine;
+        InventTable inventTable;
+        str packagingCategoryCode;
+        str packagingCategory;
+        ;
+        if(!InventTransferTable::find(_inventTransferId).numOfLines())
+        {
+            return ret;
+        }
+        inventTable = InventTable::find(_itemId);
+        packagingCategory = KJP_SM_InventTransferOrders_Utils::mergePackagingCategory(inventTable);
+        packagingCategoryCode = KJP_SM_InventTransferOrders_Utils::fetchPackagingCategory(packagingCategory, NoYes::Yes);
+        select firstonly RecId from inventTransferLine
+                where inventTransferLine.TransferId == _inventTransferId
+                    && inventTransferLine.KJPSMPackagingCategoryCode == packagingCategoryCode;
+        if(!inventTransferLine)
+        {
+            ret = checkFailed("@KJP:KJP500359");
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_GQPJudgmentToMESTakasaki</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFI-MFG-0157
+/// </summary>
+class KJP_SM_GQPJudgmentToMESTakasaki extends KJP_CM_IFBatchBase
+{
+    private int insertCount = 0;
+    protected static const str ExcuteSection = '1';
+    protected static const str PassResult = '1';
+    protected static const str DateFormat_yyyyMMddString = 'yyyyMMdd';
+    protected static const str NumberSequenceCode = '0001-SM-MESIF-137';
+
+    #ISOCountryRegionCodes
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            // バッチステータス変換
+            KJP_CM_GeneralPurposeMaster pdsDispositionCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::BatchStatusKey, KJP_CM_ConstantHelper::origcodeGQPBatchStatus_GQPRelease);
+            // 生産グループコード変換
+            KJP_CM_GeneralPurposeMaster prodPoolId = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ProdPoolKey, KJP_CM_ConstantHelper::origcodeProdPool_Takasaki);
+
+            if(pdsDispositionCode && prodPoolId)
+            {
+                ttsbegin;
+                // IFテーブルへ書き込み
+                this.writeIFTable(pdsDispositionCode.DestinationCode, prodPoolId.DestinationCode);
+                ttscommit;
+            }
+        }
+        else
+        {
+            Error(strFmt("@KJP:KJP500527", curExt()));
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// IFTableへ書き込み及びBussinessTable更新
+    /// </summary>
+    /// <param name="_pdsDispositionCode">バッチステータスグ</param>
+    /// <param name="_prodPoolId">生産グループコード</param>
+    public void writeIFTable(str _pdsDispositionCode, str _prodPoolId)
+    {
+        KJP_SM_GQPJudgmentToMESIfTable     GQPJudgmentToMESIfTable;
+        InventBatch                        inventBatch;
+        InventTable                        inventTable;
+        RecordInsertList recordInsertList = new RecordInsertList(tableNum(KJP_SM_GQPJudgmentToMESIfTable));
+        str errorMessage                  = null;
+
+        while select forupdate ItemId, InventBatchId, KJPSMGQPJudgmentDate from inventBatch
+            join inventTable 
+            where inventTable.ItemId == inventBatch.itemId
+                  && inventTable.ProdPoolId == _prodPoolId
+                  && inventBatch.KJPSMIsSentForGQPJudgmentFlag == NoYes::No
+                  && inventBatch.PdsDispositionCode == _pdsDispositionCode
+        {
+            insertCount++;
+            GQPJudgmentToMESIfTable.clear();
+            // レコードID 
+            GQPJudgmentToMESIfTable.RecordID = NumberSeq::newGetNumFromCode(NumberSequenceCode).num();
+            // 処理区分
+            GQPJudgmentToMESIfTable.UpdateCategory = ExcuteSection;
+            // 品名コード
+            GQPJudgmentToMESIfTable.ItemCD = inventBatch.itemId;
+            // ロット番号
+            GQPJudgmentToMESIfTable.LotNo = inventBatch.inventBatchId;
+            // 合否結果
+            GQPJudgmentToMESIfTable.TestResults = PassResult;
+            // 判定日が空白の場合、IFテーブルへの登録はスキップする
+            if (inventBatch.KJPSMGQPJudgmentDate == dateNull())
+            {
+                errorMessage = strFmt("@KJP:KJP500418", inventBatch.inventBatchId, inventBatch.itemId);
+                // Write Error Log tables
+                Error(errorMessage);
+                continue;
+            }
+            else
+            {
+                GQPJudgmentToMESIfTable.JudgeDate = KJP_CM_Utils::datetimeToStr(inventBatch.KJPSMGQPJudgmentDate, DateFormat_yyyyMMddString);
+            }
+
+            GQPJudgmentToMESIfTable.JobId = jobId;
+            GQPJudgmentToMESIfTable.ExecutionDateTime = executionDateTime;
+            GQPJudgmentToMESIfTable.SEQNo = insertCount;
+            
+            recordInsertList.add(GQPJudgmentToMESIfTable);
+
+            inventBatch.KJPSMIsSentForGQPJudgmentFlag = NoYes::Yes;
+            inventBatch.update();
+        }
+        numberOfSuccess = recordInsertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

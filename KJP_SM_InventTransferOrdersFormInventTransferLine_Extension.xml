@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTransferOrdersFormInventTransferLine_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension Form DataSource class for InventTransferLine
+/// </summary>
+[ExtensionOf(formDataSourceStr(InventTransferOrders, InventTransferLine))]
+final class KJP_SM_InventTransferOrdersFormInventTransferLine_Extension
+{
+    private const str spaceString = '';
+    private const str TabLineControlName = 'TabLine';
+    private const str GridLineControlName = 'GridLine';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>initValue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Init Value for InventTransferLine
+    /// </summary>
+    public void initValue()
+    {
+        inventTransferTable inventTransferTable;
+        InventTransferLine inventTransferLine;
+        ;
+        next initValue();
+        // 2.2.1.2.3 Add 1st Line
+        // 2.2.1.2.6 Add Subsequent Lines
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            inventTransferTable = this.formRun().dataSource(tableStr(InventTransferTable)).cursor();
+            inventTransferLine = this.cursor();
+            // If Ship date in header is updated, lines’ Ship date will be updated
+            inventTransferLine.ShipDate = inventTransferTable.ShipDate;
+            // If Receipt date in header is updated, lines’ Receipt date will be updated
+            inventTransferLine.ReceiveDate = inventTransferTable.ReceiveDate;
+            // StockArrival Sending Flag
+            if(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::SDCArrivalScheduleSendingTargetWHTKey, inventTransferTable.InventLocationIdTo))
+            {
+                inventTransferLine.KJPSMStockArrivalScheduleSendingFlag = KJP_SM_ShippingInstructionSendingFlag::WaitingForSent;
+            }
+            else
+            {
+                inventTransferLine.KJPSMStockArrivalScheduleSendingFlag = KJP_SM_ShippingInstructionSendingFlag::NotSentNotTarget;
+            }
+            // Shipping Sending Flag
+            if(KJP_SM_InventTransferOrders_Utils::isEastSPOrWestSP(inventTransferTable.InventLocationIdFrom))
+            {
+                inventTransferLine.KJPSMShippingInstructionSendingFlag = KJP_SM_ShippingInstructionSendingFlag::WaitingForSent;
+            }
+            else
+            {
+                inventTransferLine.KJPSMShippingInstructionSendingFlag = KJP_SM_ShippingInstructionSendingFlag::NotSentNotTarget;
+            }
+            inventTransferLine.KJPSMSalesQty = 0;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayKJPPackagingCategoryName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// display method Packaging Category Name
+    /// </summary>
+    /// <param name = "_inventTransferLine">InventTransferLine</param>
+    /// <returns>KJP_CM_Description</returns>
+    [SysClientCacheDataMethodAttribute(true)]
+    display KJP_CM_Description displayKJPPackagingCategoryName(InventTransferLine _inventTransferLine)
+    {
+        // 2.2.1.2.4 Select Item Number of 1st Line
+        if(_inventTransferLine.ItemId)
+        {
+            InventTable inventTable = InventTable::find(_inventTransferLine.ItemId);
+            if(inventTable)
+            {
+                KJP_CM_OriginalCode packagingCategory = KJP_SM_InventTransferOrders_Utils::mergePackagingCategory(inventTable);
+                return KJP_SM_InventTransferOrders_Utils::fetchPackagingCategory(packagingCategory, NoYes::No);
+            }
+        }
+        return spaceString;      
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayKJPCMSupervisingDepartmentName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// display method DepartmentName
+    /// </summary>
+    /// <param name = "_inventTransferLine">InventTransferLine</param>
+    /// <returns>KJP_FI_IndustryUnitName</returns>
+    [SysClientCacheDataMethodAttribute(true)]
+    display KJP_FI_IndustryUnitName displayKJPCMSupervisingDepartmentName(InventTransferLine _inventTransferLine)
+    { 
+        // 2.2.1.2.4 Select Item Number of 1st Line
+        if(_inventTransferLine.ItemId)
+        {
+            InventTable inventTable = InventTable::find(_inventTransferLine.ItemId);     
+            if(inventTable)
+            {
+                return inventTable.displayKJPCMSupervisingDepartmentName();
+            }
+        }
+        return spaceString;       
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayInventTablePropertyId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// display method PropertyId
+    /// </summary>
+    /// <param name = "_inventTransferLine">InventTransferLine</param>
+    /// <returns>PropertyIdItem</returns>
+    [SysClientCacheDataMethodAttribute(true)]
+    display PropertyIdItem displayInventTablePropertyId(InventTransferLine _inventTransferLine)
+    {
+        // 2.2.1.2.4 Select Item Number of 1st Line
+        if(_inventTransferLine.ItemId)
+        {
+            InventTable inventTable = InventTable::find(_inventTransferLine.ItemId);
+            if(inventTable)
+            {
+                return inventTable.PropertyId;
+            }
+        }
+        return spaceString;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>displayConversionQuickFormula</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// display method UnitOfMeasure Conversion QuickFormula
+    /// </summary>
+    /// <param name = "_inventTransferLine">InventTransferLine</param>
+    /// <returns>UnitOfMeasureConversionQuickFormula</returns>
+    [SysClientCacheDataMethodAttribute(true)]
+    display UnitOfMeasureConversionQuickFormula displayConversionQuickFormula(InventTransferLine _inventTransferLine)
+    {
+        // 2.2.1.2.4 Select Item Number of 1st Line
+        if(_inventTransferLine.UnitId == _inventTransferLine.KJPSMSalesUnit || !_inventTransferLine.KJPSMSalesUnit)
+        {
+            return spaceString;
+        }
+        if(_inventTransferLine.ItemId)
+        {
+            InventTable inventTable = InventTable::find(_inventTransferLine.ItemId);
+            UnitOfMeasure unitOfMeasure_Sal = UnitOfMeasure::findBySymbol(_inventTransferLine.KJPSMSalesUnit);
+            UnitOfMeasure unitOfMeasure_Inv = UnitOfMeasure::findBySymbol(_inventTransferLine.UnitId);
+            ;
+            // lookup forward with inventTable.Product
+            UnitOfMeasureConversion unitOfMeasureConversion_Product1 =
+                UnitOfMeasureConversion::findByConversion(
+                unitOfMeasure_Sal.RecId,
+                unitOfMeasure_Inv.RecId,
+                inventTable.Product);
+            if(unitOfMeasureConversion_Product1)
+            {
+                return unitOfMeasureConversion_Product1.displayQuickFormulaWithLocalSeparators();
+            }
+            // lookup inverse with inventTable.Product
+            UnitOfMeasureConversion unitOfMeasureConversion_Product2 =
+                UnitOfMeasureConversion::findByConversion(
+                unitOfMeasure_Inv.RecId,
+                unitOfMeasure_Sal.RecId,
+                inventTable.Product);
+            if(unitOfMeasureConversion_Product2)
+            {
+                return unitOfMeasureConversion_Product2.displayQuickFormulaWithLocalSeparators();
+            }
+            // lookup forward without inventTable.Product
+            UnitOfMeasureConversion unitOfMeasureConversion1 =
+                UnitOfMeasureConversion::findByConversion(
+                unitOfMeasure_Sal.RecId,
+                unitOfMeasure_Inv.RecId,
+                0);
+            if(unitOfMeasureConversion1)
+            {
+                return unitOfMeasureConversion1.displayQuickFormulaWithLocalSeparators();
+            }
+            // lookup inverse without inventTable.Product
+            UnitOfMeasureConversion unitOfMeasureConversion2 =
+                UnitOfMeasureConversion::findByConversion(
+                unitOfMeasure_Inv.RecId,
+                unitOfMeasure_Sal.RecId,
+                0);
+            if(unitOfMeasureConversion2)
+            {
+                return unitOfMeasureConversion2.displayQuickFormulaWithLocalSeparators();
+            }
+        }
+        return spaceString;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>create</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InventTransferLine ds create method
+    /// </summary>
+    /// <param name = "_append">boolean</param>
+    public void create(boolean _append)
+    {
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            InventTransferTable inventTransferTable = this.formRun().dataSource(tableStr(InventTransferTable)).cursor();
+            // 2.2.1.2.6 Add Subsequent Lines - Checking 5 lines limit target flag at create line
+            if(!KJP_SM_InventTransferOrders_Utils::validateKJPSM5LinesLimitTargetFlag(inventTransferTable))
+            {
+                throw Exception::error;
+            }
+            if(!KJP_SM_InventTransferOrders_Utils::validateMaxLineNum(inventTransferTable, null, NoYes::Yes))
+            {
+                throw Exception::error;
+            }
+            // No.114360
+            if(inventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::Yes && this.numberOfRowsLoaded() == 5)
+            {
+                checkFailed("@KJP:KJP500351");
+                throw Exception::error;
+            }
+            // No.114360
+            // No.114378
+            if(KJP_SM_InventTransferOrders_Utils::check99LineFromUbeToCmoDomestic(inventTransferTable)
+                && this.numberOfRowsLoaded() == 99)
+            {
+                checkFailed(strFmt("@KJP:KJP500274", inventTransferTable.TransferId));
+                throw Exception::error;
+            }
+            // No.114378
+            // 2.2.1.2.6 Add Subsequent Lines - Checking Shipping instruction sending flag
+            // No.158397
+            // 2.2.1.2.6 Add Subsequent Lines - Checking Stock arrival schedule sending flag
+            boolean ret = true;
+            ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMShippingInstructionSendingFlag(inventTransferTable, NoYes::Yes) && ret;
+            ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMStockArrivalScheduleSendingFlag(inventTransferTable, NoYes::Yes) && ret;
+            if(!ret)
+            {
+                throw Exception::error;
+            }
+        }
+        next create(_append);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>selectionChanged</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InventTransferLine Datasource selectionChanged
+    /// </summary>
+    public void selectionChanged()
+    {
+        next selectionChanged();
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            InventTransferTable inventTransferTable;
+            FormDataSource  inventDimDs,inventTransferTableDs;
+            FormControl     tabLineControl, gridLineControl;
+            ;
+            inventTransferTable = this.formRun().dataSource(tableStr(InventTransferTable)).cursor();
+            inventDimDs = this.formRun().dataSource(tableStr(InventDim));
+            tabLineControl = this.formRun().design().controlName(TabLineControlName);
+            gridLineControl = this.formRun().design().controlName(GridLineControlName);
+            //
+            if(inventTransferTable.TransferStatus == InventTransferStatus::Created)
+            {
+                boolean ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMShippingInstructionSendingFlag(inventTransferTable, NoYes::No);
+                if (ret)
+                {
+                    ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMStockArrivalScheduleSendingFlag(inventTransferTable, NoYes::No);
+                }
+
+                this.allowEdit(ret);
+                inventDimDs.allowEdit(ret);
+                tabLineControl.allowEdit(ret);
+                gridLineControl.allowEdit(ret);
+            }
+            if(inventTransferTable.TransferStatus != InventTransferStatus::Created)
+            {
+                // No.122090
+                inventTransferTableDs = this.formRun().dataSource(tableStr(InventTransferTable));
+                inventTransferTableDs.allowEdit(false);
+                this.allowEdit(false);
+                // No.122090
+            }
+        }  
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateDelete</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InventTransferLine Datasource validateDelete
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean validateDelete()
+    {
+        InventTransferLine inventTransferLine = this.cursor();
+        ;
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            InventTransferTable inventTransferTable = inventTransferLine.inventTransferTable();
+            boolean ret = true;
+            ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMShippingInstructionSendingFlag(inventTransferTable, NoYes::Yes) && ret;
+            ret = KJP_SM_InventTransferOrders_Utils::validateKJPSMStockArrivalScheduleSendingFlag(inventTransferTable, NoYes::Yes) && ret;
+            if(!ret)
+            {
+                throw Exception::error;
+            }
+        }
+        return next validateDelete();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

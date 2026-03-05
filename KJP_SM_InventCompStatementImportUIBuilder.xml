@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompStatementImportUIBuilder</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>KJP_SM_InventCompStatementImportUIBuilder</c> class is the UI builder for <c>KJP_SM_InventCompStatementImportController</c>.
+/// </summary>
+public class KJP_SM_InventCompStatementImportUIBuilder extends SysOperationAutomaticUIBuilder
+{
+    private const str fileUploadControlName = KJP_CM_ConstantHelper::inventCompStatementImportControlName;
+        
+    private KJP_SM_InventCompStatementImportContract    dataContract;
+    private FileUpload                                  fileUploadControl;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>postBuild</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to perform operations after the dialog screen has been built.
+    /// To add the file upload control.
+    /// </summary>
+    public void postBuild()
+    {
+        super();
+
+        dataContract            = this.dataContractObject();
+        SysOperationDialog dlg  = dialog as SysOperationDialog;
+        dlg.mainFormGroup().columns(1);
+
+        DialogGroup dialogGroup = dlg.addGroup();
+        FormBuildControl formBuildControl = dlg.formBuildDesign().control(dialogGroup.name());
+        
+        FileUploadBuild dialogFileUpload = formBuildControl.addControlEx(classstr(FileUpload), fileUploadControlName);
+        dialogFileUpload.style(FileUploadStyle::MinimalWithFilename);
+        dialogFileUpload.baseFileUploadStrategyClassName(classstr(FileUploadTemporaryStorageStrategy));
+        dialogFileUpload.fileTypesAccepted(dataContract.getAllowedFileType());
+        dialogFileUpload.fileNameLabel("@SYS308842");
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Standard method override to define event subsciptions and to always expand the parameters fasttab.
+    /// </summary>
+    public void postRun()
+    {
+        this.setDialogOkButtonEnabled(dialog.formRun(), false);
+
+        fileUploadControl = this.getFormControl(dialog.formRun(), fileUploadControlName);
+        fileUploadControl.notifyUploadCompleted += eventhandler(this.uploadCompleted);
+
+        FormTabPageControl fcParameters = this.getFormControl(dialog.formRun(), KJP_CM_ConstantHelper::inventCompStatementImportParameControlName);
+        fcParameters.fastTabExpanded(FastTabExpanded::Always);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>uploadCompleted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to perform operations after the file has been uploaded to temporary blob storage.
+    /// </summary>
+    private void uploadCompleted()
+    {
+        fileUploadControl = this.getFormControl(dialog.formRun(), fileUploadControlName);
+        FileUploadTemporaryStorageResult fileUploadResult = fileUploadControl.getFileUploadResult();
+        if (fileUploadResult != null && fileUploadResult.getUploadStatus())
+        {
+            dataContract.parmFilename(fileUploadResult.getFileName());
+
+            if(this.isValidFileType())
+            {
+                dataContract.parmStream(fileUploadResult.openResult());
+                this.setDialogOkButtonEnabled(dialog.formRun(), true);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDialogOkButtonEnabled</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to enable/disable the 'Ok' button.
+    /// </summary>
+    /// <param name = "_formRun">
+    /// The dialog's formrun instance which contains the 'Ok' button.
+    /// </param>
+    /// <param name = "_isEnabled">
+    /// Boolean parameter to enable/disable the 'Ok' button.
+    /// </param>
+    private void setDialogOkButtonEnabled(FormRun _formRun, boolean _isEnabled)
+    {
+        str OkButtonName            = KJP_CM_ConstantHelper::inventCompStatementImportOkButtonName;
+        FormControl okButtonControl = this.getFormControl(_formRun, OkButtonName);
+
+        if (okButtonControl)
+        {
+            okButtonControl.enabled(_isEnabled);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFormControl</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to get the FormControl instance based on FormRun instance and form control's name.
+    /// </summary>
+    /// <param name = "_formRun">
+    /// The dialog's FormRun instance.
+    /// </param>
+    /// <param name = "_controlName">
+    /// Name of the control.
+    /// </param>
+    /// <returns>
+    /// The FormControl instance based on FormRun instance and form control's name.
+    /// </returns>
+    private FormControl getFormControl(FormRun _formRun, str _controlName)
+    {
+        return _formRun.control(_formRun.controlId( _controlName));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isValidFileType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to determine if the uploaded file is of a valid/allowed file type.
+    /// </summary>
+    /// <returns>
+    /// True, if the uploaded file is of a valid/allowed file type, false otherwise.
+    /// </returns>
+    private boolean isValidFileType()
+    {
+        boolean isValid = true;
+
+        str fileType = System.IO.Path::GetExtension(dataContract.parmFilename());
+        
+        if (fileType != dataContract.getAllowedFileType())
+        {
+            isValid = checkFailed(strFmt("@KJP:KJP500519",
+                                        dataContract.getAllowedFileType()));
+        }
+
+        return isValid;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

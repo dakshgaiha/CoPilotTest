@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AutoInvoicePostingDataContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Contract class
+/// </summary>
+[DataContractAttribute,
+    SysOperationGroupAttribute('Filter',"@SYS2163", '1')]
+class KJP_SM_AutoInvoicePostingDataContract
+{
+    str recievedPickingList;
+    str recievedSalesOrders;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmRecievedPickListNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Display param
+    /// </summary>
+    /// <param name = "_recievedPickListNumber">PickList</param>
+    /// <returns>PickList</returns>
+    [DataMemberAttribute,
+        SysOperationLabelAttribute(literalStr("@KJP:KJP102837")),
+        SysOperationGroupMemberAttribute('Filter'),
+        SysOperationDisplayOrderAttribute('1')]
+    public str parmRecievedPickListNumber(str _recievedPickListNumber = recievedPickingList)
+    {
+        recievedPickingList = _recievedPickListNumber;
+
+        return recievedPickingList;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmRecievedSalesOrderNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  SO Ids
+    /// </summary>
+    /// <param name = "_recievedSONumber">SO</param>
+    /// <returns>SO</returns>
+
+    [DataMemberAttribute,
+        SysOperationLabelAttribute(literalStr("@KJP:KJP102838")),
+        SysOperationGroupMemberAttribute('Filter'),
+        SysOperationDisplayOrderAttribute('2')]
+    public str parmRecievedSalesOrderNumber(str _recievedSONumber = recievedSalesOrders)
+    {
+        recievedSalesOrders = _recievedSONumber;
+
+        return recievedSalesOrders;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

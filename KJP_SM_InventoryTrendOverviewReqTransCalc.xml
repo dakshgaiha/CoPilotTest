@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventoryTrendOverviewReqTransCalc</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// 累計計算
+/// </summary>
+internal final class KJP_SM_InventoryTrendOverviewReqTransCalc extends ReqTransCalc
+{
+    RecId              reqTransRecId;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>newStandard</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 初期化
+    /// </summary>
+    /// <param name = "_reqPlanId">マスタプランID</param>
+    /// <param name = "_itemId">品目番号</param>
+    /// <returns>累計計算</returns>
+    public static KJP_SM_InventoryTrendOverviewReqTransCalc newStandard(ReqPlanId _reqPlanId, ItemId _itemId, RecId _reqTransRecId)
+    {
+        KJP_SM_InventoryTrendOverviewReqTransCalc reqTransCalc = new KJP_SM_InventoryTrendOverviewReqTransCalc();
+        reqTransCalc.parmReqPlanId(_reqPlanId);
+        reqTransCalc.parmItemId(_itemId);
+        reqTransCalc.parmReqTransRecId(_reqTransRecId);
+
+        return reqTransCalc;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initMapReqTrans</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ソート順により、在庫数量を累計計算する
+    /// </summary>
+    /// <param name = "_sorting">ソート順</param>
+    /// <returns>品目ごと累計数量をマップに保持</returns>
+    protected Map initMapReqTrans(ReqSorting _sorting)
+    {
+        Map         mapRecId = new Map(typeName2Type(extendedtypestr(recId)), Types::Real);
+        ReqTrans    reqTrans;
+        InventQty   qty;
+        ItemId      itemIdForAccumulated;
+        
+        reqTrans = this.selectReqTransReqDate();
+
+        while (reqTrans.RecId)
+        {
+            // 品目別に累計を計算
+            if (itemIdForAccumulated != reqTrans.ItemId)
+            {
+                qty = 0;
+                itemIdForAccumulated = reqTrans.ItemId;
+            }
+
+            if (reqTrans.RefType != ReqRefType::SafetyInvent)
+            {
+                qty   += reqTrans.Qty;
+            }
+
+            mapRecId.insert(reqTrans.RecId,qty);
+
+            next reqTrans;
+        }
+
+        return mapRecId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>selectReqTransReqDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// reqTransの抽出
+    /// </summary>
+    /// <returns>reqTrans</returns>
+    protected ReqTrans selectReqTransReqDate()
+    {
+        ReqTrans        reqTrans;
+        ReqPlanVersion  reqPlanVersion;
+        KJP_SM_InventoryTrendSortView inventoryTrendSortView;
+
+        select reqTrans
+            order by reqTrans.ItemId, reqTrans.ReqDate, 
+                        inventoryTrendSortView.DestinationCode, reqTrans.RecId
+            outer join inventoryTrendSortView
+            where inventoryTrendSortView.OriginalCodeEnum == reqTrans.RefType
+            exists join reqPlanVersion
+            where reqTrans.PlanVersion              == reqPlanVersion.RecId
+                && reqPlanVersion.ReqPlanId         == reqPlanId
+                && reqPlanVersion.ReqPlanDataAreaId == reqTrans.DataAreaId
+                && reqPlanVersion.Active            == NoYes::Yes;
+        return reqTrans;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmReqTransRecId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ReqTransのレコードIDを設定する
+    /// </summary>
+    /// <param name = "_reqTransRecId">ReqTransRecId</param>
+    /// <returns>RecId</returns>
+    public RecId parmReqTransRecId(RecId _reqTransRecId = reqTransRecId)
+    {
+        reqTransRecId  = _reqTransRecId;
+        return reqTransRecId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

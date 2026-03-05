@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventJournalCheckPost_MovementCls_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension of Class [InventJournalCheckPost_Movement].
+/// </summary>
+[ExtensionOf(classStr(InventJournalCheckPost_Movement))]
+public final class KJP_SM_InventJournalCheckPost_MovementCls_Extension
+{
+}
+
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>postTransLedger</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// movement invent journal post
+    /// </summary>
+    /// <param name = "_journalTransData">_journalTransData</param>
+    /// <param name = "_ledgerVoucher">_ledgerVoucher</param>
+    protected void postTransLedger(
+        JournalTransData    _journalTransData,
+        LedgerVoucher       _ledgerVoucher)
+    {
+        InventJournalTrans  inventJournalTrans = _journalTransData.journalTrans();
+        InventJournalTable  inventJournalTable = InventJournalTable::find(inventJournalTrans.JournalId);
+        KJP_SM_DisposalList disposalList;
+
+        // 移動仕訳帳の転記処理
+        next postTransLedger(_journalTransData, _ledgerVoucher);
+
+        // LE:KKC 以外下記の処理不要、返却する
+        if(!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            return;
+        }
+
+        // 移動仕訳帳の「転記」ボタンを押すと、除却用摘要文コードの場合は転記処理の最後に移動仕訳帳から廃棄一覧テーブルに以下項目をセットする
+        if(inventJournalTrans.JournalType == InventJournalType::Movement && inventJournalTable.kjp_sm_isDisposalJournal())
+        {
+            disposalList.clear();
+            disposalList.initFromInventJournalTrans(inventJournalTrans);
+
+            disposalList.insert();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

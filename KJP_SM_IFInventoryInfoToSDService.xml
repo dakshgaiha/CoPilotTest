@@ -1,0 +1,548 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_IFInventoryInfoToSDService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFI-MFG-0135
+/// </summary>
+class KJP_SM_IFInventoryInfoToSDService extends KJP_CM_IFBatchBase
+{
+    protected static const str SDCTargetWarehouseEString = 'KJP_SM_SDCTargetWarehouseE';
+    protected static const str SDCTargetWarehouseWString = 'KJP_SM_SDCTargetWarehouseW';
+    protected static const str SDCTargetDisposalEString = 'KJP_SM_SDCTargetDisposalE';
+    protected static const str SDCTargetDisposalWString = 'KJP_SM_SDCTargetDisposalW';
+    protected static const str SDCTargetWarehouseConEString = 'KJP_SM_SDCTargetWarehouseConE';
+    protected static const str SDCTargetWarehouseConWString = 'KJP_SM_SDCTargetWarehouseConW';
+    protected static const str SDCTargetWhConEStopString = 'KJP_SM_SDCTargetWhConEStop';
+    protected static const str SDCTargetWhConWStopString = 'KJP_SM_SDCTargetWhConWStop';
+    protected static const str EastOrgCode38081String = '38081';
+    protected static const str WestOrgCode58081String = '58081';
+    protected static const str SpaceString = '';
+    protected static const str DateFormat_yyyyMMString = 'yyyyMM';
+    protected static const str DateFormat_yyyyMM00String = 'yyyyMM00';
+    protected static const str DateFormat_yyyyMMddString = 'yyyyMMdd';
+    protected static const str DateFormat_HHmmssString = 'HHmmss';
+    protected static const str IFStartRecordClassificationString = 'S';
+    protected static const str IFStartDataIdentificationString = '41';
+    protected static const str IFStartSenderGroupCodeString = '00000';
+    protected static const str IFStartSenderCodeString = '05701';
+    protected static const str IFStartRecipientGroupCodeString = '00000';
+    protected static const str IFStartRecipientCodeString = 'CCW01';
+    protected static const str IFDetailRecordClassificationString = 'D';
+    protected static const str IFDetailDataIdentificationString = '41';
+    protected static const str IFDetailManufacturerCodeString = '057';
+    protected static const str IFEndRecordClassificationString = 'E';
+    protected static const str IFEndDataIdentificationString = '41';
+    protected static const str EastSPClassificationString = '02';
+    protected static const str WestSPClassificationString = '01';
+    protected static const str SpaceByteString = '';
+    protected static const str CalendarIdString = 'CalendarId';
+    protected static const str SDCTargetCalendarIdString = 'KJP_SM_SDCTargetCalendarId';
+    protected static const str SubfilesSequenceNumberString = '0000';
+    protected static const str RecordSizeString = '128';
+
+ 
+    container      errorItemIdList;
+    date           businessDate;
+    utcdatetime    jpDateTime;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        // Check if the current company is KKC.
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            KJP_CM_GeneralPurposeMaster generalPurposeMasterCal = KJP_CM_GeneralPurposeMaster::find(SDCTargetCalendarIdString, CalendarIdString);
+            if(generalPurposeMasterCal)
+            {
+
+                jpDateTime = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMTPLUS0900OSAKA_SAPPORO_TOKYO);
+                // 営業日 前の営業日
+                businessDate = KJP_CM_Utils::getPreviousWorkingDay(DateTimeUtil::date(jpDateTime),
+                generalPurposeMasterCal.DestinationCode, 1);
+
+                ttsbegin;
+
+                this.delWorkTable();
+
+                this.calcInvQtySummary();
+
+                this.changeUnitAndValidation();
+
+                this.writeIFTable();
+
+                ttscommit;
+
+            }
+        }
+        else
+        {
+            str message = strFmt("@KJP:KJP500527", curExt());
+            this.setMessage(message, KJP_CM_LogType::Warning);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>delWorkTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 削除前回統計結果テーブルとワークテーブル
+    /// </summary>
+    public void delWorkTable()
+    {
+        // 前回統計結果テーブル
+        KJP_SM_SDCInvInfoDataSummaryTable  invInfoDataSummaryTable;
+        // ワークテーブル
+        KJP_SM_SDCInvInfoWorkTable         invInfoWorkTable;
+        ;
+        delete_from invInfoDataSummaryTable;
+        delete_from invInfoWorkTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calcInvQtySummary</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// バッチ実施日の前営業日の日東西SP倉庫の在庫数量を統計する
+    /// </summary>
+    public void calcInvQtySummary()
+    {
+        // 38001 38002 38003 38004 38081 58001 58002 58003 58004 58081の在庫数量を統計
+        this.calcInvQtySummaryEastWestWh();
+        // 38003,38004から38001へ変更 58003,58004から58001へ変更
+        this.mergeHoldWh();
+        this.calcInvQtySummaryDisposalWh();
+        this.mergeDisposalWh();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calcInvQtySummaryEastWestWh</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 38001 38002 38003 38004 38081 58001 58002 58003 58004 58081の在庫数量を統計
+    /// </summary>
+    public void calcInvQtySummaryEastWestWh()
+    {
+        // 前回統計結果テーブル
+        KJP_SM_SDCInvInfoDataSummaryTable  invInfoDataSummaryTable;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMaster;
+        InventTrans                        inventTrans;
+        InventDim                          inventDim;
+        ;
+        insert_recordset invInfoDataSummaryTable (ItemId, Qty, Site, LocationId, BatchId, FromLocationId)
+        select ItemId, sum(Qty) from inventTrans
+            group by inventTrans.ItemId, inventDim.InventSiteId, inventDim.InventLocationId, inventDim.inventBatchId
+            where inventTrans.DatePhysical <= businessDate && inventTrans.DatePhysical != dateNull()
+        join InventSiteId, InventLocationId, inventBatchId, InventLocationId from inventDim
+            where inventTrans.inventDimid == inventDim.inventDimid
+        exists join generalPurposeMaster
+            where (generalPurposeMaster.Key == SDCTargetWarehouseWString || generalPurposeMaster.Key == SDCTargetWarehouseEString)
+            && generalPurposeMaster.OriginalCode == inventDim.InventLocationId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>mergeHoldWh</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 38003,38004から38001へ変更 58003,58004から58001へ変更
+    /// </summary>
+    public void mergeHoldWh()
+    {
+        KJP_SM_SDCInvInfoDataSummaryTable  invInfoDataSummaryTable;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMasterEast;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMasterWest;
+        
+        // 38003,38004から38001へ変更
+        while select generalPurposeMasterEast
+            where generalPurposeMasterEast.Key == SDCTargetWarehouseConEString
+        {
+            update_recordset invInfoDataSummaryTable
+            setting LocationId = generalPurposeMasterEast.DestinationCode
+                where invInfoDataSummaryTable.FromLocationId == generalPurposeMasterEast.OriginalCode;
+        }
+
+        // 58003,58004から58001へ変更
+        while select generalPurposeMasterWest
+            where generalPurposeMasterWest.Key == SDCTargetWarehouseConWString
+        {
+            update_recordset invInfoDataSummaryTable
+            setting LocationId = generalPurposeMasterWest.DestinationCode
+                where invInfoDataSummaryTable.FromLocationId == generalPurposeMasterWest.OriginalCode;
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calcInvQtySummaryDisposalWh</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 廃棄一覧から在庫数量を統計する
+    /// </summary>
+    public void calcInvQtySummaryDisposalWh()
+    {
+        KJP_SM_SDCInvInfoDataSummaryTable  invInfoDataSummaryTable;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMaster;
+        KJP_SM_DisposalList                disposalListTable;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMasterEast;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMasterWest;
+        str                                destinationCodeEast;
+        str                                destinationCodeWest;
+        ;
+        generalPurposeMasterEast = KJP_CM_GeneralPurposeMaster::find(SDCTargetWhConEStopString, EastOrgCode38081String);
+        generalPurposeMasterWest = KJP_CM_GeneralPurposeMaster::find(SDCTargetWhConWStopString, WestOrgCode58081String);
+        if(generalPurposeMasterEast)
+        {
+            destinationCodeEast = generalPurposeMasterEast.DestinationCode;
+            insert_recordset invInfoDataSummaryTable (ItemId, Qty, Site, LocationId, BatchId, FromLocationId, ToLocationId)
+            select ItemNnumber, sum(Quantity) , Site, WHBelongToRetire, BatchNumber, WHBelongToRetire, destinationCodeEast
+                from disposalListTable
+                group by disposalListTable.ItemNnumber, disposalListTable.Site,disposalListTable.WHBelongToRetire,disposalListTable.BatchNumber
+                where disposalListTable.RetiredDate <= businessDate                                                     
+                    && disposalListTable.EastWestSPInvTargetFlag == NoYes::Yes
+                    && (disposalListTable.Status == KJP_SM_DisposalStatus::RetiredAndAwaitingDisposal)
+            exists join generalPurposeMaster
+                where generalPurposeMaster.Key == SDCTargetDisposalEString
+                    && generalPurposeMaster.OriginalCode == disposalListTable.WHBelongToRetire;
+        }
+
+        if(generalPurposeMasterWest)
+        {
+            destinationCodeWest = generalPurposeMasterWest.DestinationCode;
+            insert_recordset invInfoDataSummaryTable (ItemId, Qty, Site, LocationId, BatchId, FromLocationId, ToLocationId)
+            select ItemNnumber, sum(Quantity) , Site, WHBelongToRetire, BatchNumber, WHBelongToRetire, destinationCodeWest
+                from disposalListTable
+                group by disposalListTable.ItemNnumber, disposalListTable.Site,disposalListTable.WHBelongToRetire,disposalListTable.BatchNumber
+                where disposalListTable.RetiredDate <= businessDate
+                    && disposalListTable.EastWestSPInvTargetFlag == NoYes::Yes
+                    && (disposalListTable.Status == KJP_SM_DisposalStatus::RetiredAndAwaitingDisposal)
+            exists join generalPurposeMaster
+                where generalPurposeMaster.Key == SDCTargetDisposalWString
+                    && generalPurposeMaster.OriginalCode == disposalListTable.WHBelongToRetire;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>mergeDisposalWh</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 38081へ変更 58081へ変更
+    /// </summary>
+    public void mergeDisposalWh()
+    {
+        KJP_SM_SDCInvInfoDataSummaryTable  invInfoDataSummaryTable;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMasterEast;
+        KJP_CM_GeneralPurposeMaster        generalPurposeMasterWest;
+        str                                destinationCodeEast;
+        str                                destinationCodeWest;
+        ;
+        generalPurposeMasterEast = KJP_CM_GeneralPurposeMaster::find(SDCTargetWhConEStopString, EastOrgCode38081String);
+        generalPurposeMasterWest = KJP_CM_GeneralPurposeMaster::find(SDCTargetWhConWStopString, WestOrgCode58081String);
+
+        if(generalPurposeMasterEast)
+        {
+            destinationCodeEast = generalPurposeMasterEast.DestinationCode;
+            update_recordset invInfoDataSummaryTable
+                setting LocationId = destinationCodeEast
+            where invInfoDataSummaryTable.ToLocationId == destinationCodeEast;
+        }
+
+        if(generalPurposeMasterWest)
+        {
+            destinationCodeWest = generalPurposeMasterWest.DestinationCode;
+            update_recordset invInfoDataSummaryTable
+                setting LocationId = destinationCodeWest
+            where invInfoDataSummaryTable.ToLocationId == destinationCodeWest;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>changeUnitAndValidation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 単位換算　在庫単位⇒販売単位　及びバリデーションチェック
+    /// </summary>
+    public void changeUnitAndValidation()
+    {
+        KJP_SM_SDCInvInfoDataSummaryTable     invInfoDataSummaryTable;
+        InventBatch                           inventBatch;
+        InventLocation                        inventLocation;
+        InventTable                           inventTable;
+        UnitOfMeasure                         unitOfMeasure_Inv;
+        UnitOfMeasure                         unitOfMeasure_Sal;
+        InventTableModule                     inventTableModule_Inv;
+        InventTableModule                     inventTableModule_Sal;
+        KJP_SM_SDCInvInfoWorkTable            invInfoWorkTable;
+        RecordInsertList recordInsertList = new RecordInsertList(tableNum(KJP_SM_SDCInvInfoWorkTable));
+        ;
+        while select ItemId, LocationId, Qty from invInfoDataSummaryTable
+            join inventBatchId, expDate from inventBatch
+                where invInfoDataSummaryTable.ItemId == inventBatch.ItemId
+                      && invInfoDataSummaryTable.BatchId == inventBatch.inventBatchId
+            join RecId from inventLocation
+                where invInfoDataSummaryTable.LocationId == inventLocation.InventLocationId
+                      && (inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP
+                        || inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP)
+            join itemId, KJPCMCommonItemCode, Product from inventTable
+                where invInfoDataSummaryTable.ItemId == inventTable.ItemId
+            join RecId from inventTableModule_Inv
+                where inventTableModule_Inv.ModuleType == ModuleInventPurchSales::Invent
+                      && invInfoDataSummaryTable.ItemId == inventTableModule_Inv.itemId
+            join RecId,Symbol from unitOfMeasure_Inv
+                where unitOfMeasure_Inv.Symbol == inventTableModule_Inv.UnitId
+            join RecId from inventTableModule_Sal
+                where inventTableModule_Sal.ModuleType == ModuleInventPurchSales::Sales
+                      && invInfoDataSummaryTable.ItemId == inventTableModule_Sal.itemId
+            join RecId,Symbol from unitOfMeasure_Sal
+                where unitOfMeasure_Sal.Symbol == inventTableModule_Sal.UnitId
+        {
+            if(invInfoDataSummaryTable.Qty != 0 && this.validationCheck(inventTable))
+            {
+                invInfoWorkTable.clear();
+                invInfoWorkTable.ItemId = invInfoDataSummaryTable.ItemId;
+                invInfoWorkTable.CommonItemCode = inventTable.KJPCMCommonItemCode;   
+                invInfoWorkTable.InventLocationId20 = invInfoDataSummaryTable.LocationId;
+                invInfoWorkTable.InventBatchId20 = inventBatch.inventBatchId;
+                invInfoWorkTable.ExpDate = inventBatch.expDate;
+                
+                invInfoWorkTable.PhysicalInventReal = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                invInfoDataSummaryTable.ItemId,
+                                SpaceString,
+                                invInfoDataSummaryTable.Qty,
+                                unitOfMeasure_Inv.Symbol,
+                                unitOfMeasure_Sal.Symbol);
+
+                recordInsertList.add(invInfoWorkTable);
+            }         
+        }
+        recordInsertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validationCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// バリデーションチェック
+    /// </summary>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <returns>boolean</returns>
+    public boolean validationCheck(InventTable _inventTable)
+    {
+        boolean ret = true;
+        str     message;
+        ;
+        if(_inventTable.KJPCMCommonItemCode == SpaceString)
+        {
+            if(!conFind(errorItemIdList, _inventTable.ItemId))
+            {
+                errorItemIdList += _inventTable.ItemId;
+                message = strFmt("@KJP:KJP500159", "@KJP:KJP100701", _inventTable.ItemId);
+                ret = checkFailed(message);
+            }
+            else
+            {  
+                ret = false;
+            }    
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// IF Tablesへ書き込み
+    /// </summary>
+    public void writeIFTable()
+    {
+        this.writeStartIFTable();
+
+        numberOfSuccess = this.writeInfoIFTable();
+                
+        this.writeEndIFTable(numberOfSuccess);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeStartIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Start IF Tableへ書き込み
+    /// </summary>
+    public void writeStartIFTable()
+    {
+        KJP_SM_SDCInvInfoStartIFTable         infoStartIFTable;
+        ;
+        infoStartIFTable.clear();
+        //レコード区分
+        infoStartIFTable.RecordClassification = IFStartRecordClassificationString;
+        //データ識別
+        infoStartIFTable.DataIdentification = IFStartDataIdentificationString;
+        //送信元グループコード
+        infoStartIFTable.SenderGroupCode = IFStartSenderGroupCodeString;
+        //送信元コード
+        infoStartIFTable.SenderCode = IFStartSenderCodeString;
+        //送信先グループコード
+        infoStartIFTable.RecipientGroupCode = IFStartRecipientGroupCodeString;
+        //送信先コード
+        infoStartIFTable.RecipientCode = IFStartRecipientCodeString;
+        //サブファイルＳＥＱＮＯ
+        infoStartIFTable.SubfilesSequenceNumberStr = SubfilesSequenceNumberString;
+        //データ作成日付 
+        infoStartIFTable.DataCreationDateStr = KJP_CM_Utils::datetimeToStr(jpDateTime, DateFormat_yyyyMMddString);
+        //データ作成時刻 
+        infoStartIFTable.DataCreationTimeStr = KJP_CM_Utils::datetimeToStr(jpDateTime, DateFormat_HHmmssString);
+        //データ月度 
+        infoStartIFTable.DataMonth = KJP_CM_Utils::datetimeToStr(jpDateTime, DateFormat_yyyyMMString);
+        //最終データ区分 Infra 1 byte 補足
+        infoStartIFTable.FinalDataClassification = SpaceByteString;
+        //物理レコードサイズ
+        infoStartIFTable.PhysicalRecordSizeStr = RecordSizeString;
+        //論理レコードサイズ
+        infoStartIFTable.LogicalRecordSizeStr = RecordSizeString;
+        //送信済みレコード区分 Infra 1 byte 補足
+        infoStartIFTable.SentRecordClassification = SpaceByteString;
+        //予備 Infra 73 byte 補足
+        infoStartIFTable.Preparatory = SpaceByteString;
+        //ジョブID
+        infoStartIFTable.JobId = jobId;
+        //実行日時
+        infoStartIFTable.ExecutionDateTime = executionDateTime;
+        //No.
+        infoStartIFTable.SEQNo = 1;
+
+        infoStartIFTable.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeEndIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// End IF Tableへ書き込み
+    /// </summary>
+    /// <param name = "_numberOfRecords">int64</param>
+    public void writeEndIFTable(int64 _numberOfRecords)
+    {
+        KJP_SM_SDCInvInfoEndIFTable         InfoEndIFTable;
+        ;
+        //レコード区分
+        InfoEndIFTable.RecordClassification = IFEndRecordClassificationString;
+        //データ識別
+        InfoEndIFTable.DataIdentification = IFEndDataIdentificationString;
+        //レコード件数
+        InfoEndIFTable.NumberOfRecordsStr = strRFix(any2Str(_numberOfRecords), 6, '0');
+        //実レコード件数
+        InfoEndIFTable.NumberOfActualRecordsStr = strRFix(any2Str(_numberOfRecords), 6, '0');
+        //予備 Infra 113 byte 補足
+        InfoEndIFTable.Preparatory = SpaceByteString;
+        //ジョブID
+        InfoEndIFTable.JobId = jobId;
+        //実行日時
+        InfoEndIFTable.ExecutionDateTime = executionDateTime;
+        //No.
+        InfoEndIFTable.SEQNo = 1;
+
+        InfoEndIFTable.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeInfoIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// IF Tableへ書き込み
+    /// </summary>
+    /// <returns>int</returns>
+    public int64 writeInfoIFTable()
+    {
+        KJP_SM_SDCInvInfoWorkTable            invInfoWorkTable;
+        KJP_SM_SDCInvInfoDataIFTable          invInfoDataIFTable;
+        InventLocation                        inventLocation;
+        KJP_CM_SEQNo                          sqNo = 1;
+        RecordInsertList recordInsertList = new RecordInsertList(tableNum(KJP_SM_SDCInvInfoDataIFTable));
+        ;
+        while select Itemid, CommonItemCode, InventLocationId20, InventBatchId20, ExpDate, sum(PhysicalInventReal)
+            from invInfoWorkTable
+            group by ItemId, CommonItemCode, InventLocationId20, InventBatchId20, ExpDate
+        {
+            if (invInfoWorkTable.PhysicalInventReal <= 0)
+            {
+                continue;
+            }
+
+            invInfoDataIFTable.clear();
+            //レコード区分
+            invInfoDataIFTable.RecordClassification = IFDetailRecordClassificationString;
+            //データ識別
+            invInfoDataIFTable.DataIdentification = IFDetailDataIdentificationString;
+            //東西SP区分 西SP：01、東SP：02
+            inventLocation = InventLocation::find(invInfoWorkTable.InventLocationId20);
+            if(inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP)
+            {
+                invInfoDataIFTable.EastWestSPClassification = EastSPClassificationString;
+            }
+            if(inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+            {
+                invInfoDataIFTable.EastWestSPClassification = WestSPClassificationString;
+            }    
+            //メーカーコード
+            invInfoDataIFTable.ManufacturerCode = subStr(invInfoWorkTable.CommonItemCode,1,3);
+            //入出庫ＳＰコード
+            invInfoDataIFTable.InventLocationId = invInfoWorkTable.InventLocationId20;
+            //統一商品コード
+            invInfoDataIFTable.CommonItemCode = invInfoWorkTable.CommonItemCode;
+            //バッチ番号
+            invInfoDataIFTable.InventBatchId = invInfoWorkTable.InventBatchId20;
+            //現物在庫数  
+            invInfoDataIFTable.PhysicalInventStr = strRFix(any2Str(any2Int64(invInfoWorkTable.PhysicalInventReal)), 12, '0');
+            //使用期限
+            invInfoDataIFTable.ExpDateStr = KJP_CM_Utils::datetimeToStr(invInfoWorkTable.ExpDate, DateFormat_yyyyMM00String);
+            //予備 Infra 76 byte 補足
+            invInfoDataIFTable.Reserve = SpaceByteString;
+            //ジョブID
+            invInfoDataIFTable.JobId = jobId;
+            //実行日時
+            invInfoDataIFTable.ExecutionDateTime = executionDateTime;
+            //No.       
+            invInfoDataIFTable.SEQNo = sqNo;
+            recordInsertList.add(invInfoDataIFTable);
+            sqNo++;
+        }
+        return recordInsertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

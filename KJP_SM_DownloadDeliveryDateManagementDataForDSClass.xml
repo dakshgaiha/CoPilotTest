@@ -1,0 +1,471 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DownloadDeliveryDateManagementDataForDSClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelRange;
+/// <summary>
+/// Download DeliveryDate ManagementData For DS
+/// </summary>
+class KJP_SM_DownloadDeliveryDateManagementDataForDSClass extends RunBase
+{
+    private const str DateFormat_yyyyMMddHHmmssString = 'yyyyMMddHHmmss';
+    static int currentRow;
+    utcDateTime currentUserDateTime;
+    DialogField      dlgProdField, dlgTypeField, dlgDateField;
+
+    KJP_SM_PlanAndActualClassification planAndActual;
+    ProdPoolId prodPoolId;
+
+    #DEFINE.CurrentVersion(2)
+
+    #LOCALMACRO.CurrentList
+        planAndActual,
+        prodPoolId
+    #ENDMACRO
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// class construct
+    /// </summary>
+    /// <returns>KJP_SM_DownloadDeliveryDateManagementDataForDSClass</returns>
+    public static KJP_SM_DownloadDeliveryDateManagementDataForDSClass construct()
+    {
+        return new KJP_SM_DownloadDeliveryDateManagementDataForDSClass();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_DownloadDeliveryDateManagementDataForDSClass judgementResultEntry = KJP_SM_DownloadDeliveryDateManagementDataForDSClass::construct();
+        if (judgementResultEntry.prompt())
+        {
+            FormRun         callerForm;
+            callerForm = _args.caller();
+
+            // data export
+            judgementResultEntry.runOperation();
+
+            info("@KJP:KJP500581");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog initialization
+    /// </summary>
+    /// <returns>Object</returns>
+    public Object dialog()
+    {
+        DialogGroup      dlgMainGroup, dlgProductGroup, dlgFromGroup;
+        DialogRunbase   dialog = super();
+
+        dialog.caption("@KJP:KJP103874");
+
+        dlgMainGroup = dialog.addGroup(KJP_CM_ConstantHelper::singleSpace);
+        dlgMainGroup.columns(2);
+
+        dlgProductGroup = dialog.addGroup(KJP_CM_ConstantHelper::singleSpace, dlgMainGroup);
+        dlgProdField = dialog.addField(extendedTypeStr(ProdPoolId),"@SYS23559");
+
+        if (prodPoolId)
+        {
+            dlgProdField.value(prodPoolId);
+        }
+        else
+        {
+            dlgProdField.value(
+                KJP_CM_GeneralPurposeMaster::find(
+                KJP_CM_ConstantHelper::ProdPoolKey,KJP_CM_ConstantHelper::origcodeProdPool_Takasaki).DestinationCode);
+        }
+        dlgProdField.control().mandatory(true);
+
+        dlgFromGroup = dialog.addGroup(KJP_CM_ConstantHelper::singleSpace,dlgMainGroup);
+        dlgDateField = dialog.addField(extendedTypeStr(TransDate), "@KJP:KJP103876");
+
+        // get current user DateTime
+        currentUserDateTime = DateTimeUtil::applyTimeZoneOffset(
+            DateTimeUtil::getSystemDateTime(), DateTimeUtil::getUserPreferredTimeZone());
+        // get current user Date for first day
+        date firstDay = dateStartMth(DateTimeUtil::date(currentUserDateTime));
+        dlgDateField.value(firstDay);
+        dlgDateField.control().mandatory(true);
+
+        dlgTypeField = dialog.addField(enumStr(KJP_SM_PlanAndActualClassification),KJP_CM_ConstantHelper::blankValue);
+        if (planAndActual)
+        {
+            dlgTypeField.value(planAndActual);
+        }
+        else
+        {
+            dlgTypeField.value(KJP_SM_PlanAndActualClassification::Plan);
+        }
+
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFromDialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// check field
+    /// </summary>
+    /// <returns>ret</returns>
+    public boolean getFromDialog()
+    {
+        boolean ret;
+
+        ret = super();
+
+        if (!dlgProdField.value())
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500164","@SYS23559"));
+        }
+        else
+        {
+            prodPoolId = dlgProdField.value();
+        }
+
+        if (!dlgDateField.value())
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500164",subStr("@KJP:KJP103876",1,4)));
+        }
+
+        planAndActual = dlgTypeField.value();
+        
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pamProdPoolId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get pamProdPoolId in session
+    /// </summary>
+    /// <param name = "_prodPoolId">_prodPoolId</param>
+    /// <returns>prodPoolId</returns>
+    public ProdPoolId pamProdPoolId(ProdPoolId _prodPoolId = prodPoolId)
+    {
+        prodPoolId = _prodPoolId;
+        return prodPoolId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pamPlanAndActual</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get pamPlanAndActual in session
+    /// </summary>
+    /// <param name = "_planAndActual">_planAndActual</param>
+    /// <returns>planAndActual</returns>
+    public KJP_SM_PlanAndActualClassification pamPlanAndActual(KJP_SM_PlanAndActualClassification _planAndActual = planAndActual)
+    {
+        planAndActual = _planAndActual;
+        return planAndActual;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// May be run in new session
+    /// </summary>
+    /// <returns>false</returns>
+    protected boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get recoeds in session
+    /// </summary>
+    /// <returns>pack</returns>
+    public container pack()
+    {
+        return [#CurrentVersion,#CurrentList];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// unpack recoeds in session
+    /// </summary>
+    /// <param name = "_packedClass">_packedClass</param>
+    /// <returns>ret</returns>
+    public boolean unpack(container _packedClass)
+    {
+        Integer     version     = conpeek(_packedClass,1);
+        boolean     ret = true;
+
+        switch (version)
+        {
+            case #CurrentVersion  :
+                [version,#CurrentList] = _packedClass;
+            default :
+                ret = false;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// run method
+    /// </summary>
+    public void run()
+    {
+        try
+        {
+            KJP_SM_DeliveryDateMgmtDSView deliveryDateMgmtDSView;
+            KJP_SM_PlanAndActualClassification searchPlanAndActual = dlgTypeField.value();
+            TransDate   searchFromDate = dlgDateField.value();
+            ProdPoolId searchProdPoolId = dlgProdField.value();
+
+            // deliveryDateMgmtDSCon
+            container       deliveryDateMgmtDSCon;
+
+            // create header for excel
+            // plan or actual
+            if (searchPlanAndActual == KJP_SM_PlanAndActualClassification::Plan)
+            {
+                deliveryDateMgmtDSCon = ["@KJP:KJP100734","@SYS23559","@SYS12836","@SYS133866","@KJP:KJP103817","@KJP:KJP102583","@SYS53635","@KJP:KJP103781","@KJP:KJP103782","@SYS14666"];
+            }
+            else
+            {
+                deliveryDateMgmtDSCon = ["@KJP:KJP100734","@SYS23559","@SYS12836","@SYS133866","@KJP:KJP103817","@KJP:KJP102583","@SYS53635","@KJP:KJP103860","@KJP:KJP103841","@KJP:KJP100730","@KJP:KJP100731"];
+            }
+
+            DocuFileSaveResult saveResult =
+                DocuFileSave::promptForSaveLocation("@KJP:KJP103812" 
+                + "@SYS136211" + subStr(KJP_CM_Utils::datetimeToStr(currentUserDateTime, DateFormat_yyyyMMddHHmmssString),1,8)
+                + "@SYS136211" + subStr(KJP_CM_Utils::datetimeToStr(currentUserDateTime, DateFormat_yyyyMMddHHmmssString),9,14),
+                "@KJP:KJP101407", null, "@KJP:KJP103812");
+
+            if (saveResult && saveResult.parmAction() != DocuFileSaveAction::Cancel)
+            {
+                saveResult.parmOpenParameters("@KJP:KJP101409");
+                saveResult.parmOpenInNewWindow(false);
+            
+                MemoryStream memoryStream = new System.IO.MemoryStream();
+                
+                using(var package = new OfficeOpenXml.ExcelPackage(memoryStream))
+
+                {
+                    // Create sheet
+                    var worksheets = package.get_Workbook().get_Worksheets();
+                    var worksheet = worksheets.Add("@KJP:KJP103874");
+                    var cells = worksheet.get_Cells();
+
+                    currentRow = 1;
+                    
+                    // Create header
+                    this.setExcelHeader(deliveryDateMgmtDSCon, cells);
+
+                    // Create data
+                    // plan or actual
+                    if (searchPlanAndActual == KJP_SM_PlanAndActualClassification::Plan)
+                    {
+                        // get data
+                        while select deliveryDateMgmtDSView
+                        order by deliveryDateMgmtDSView.SchedStart asc
+                        , deliveryDateMgmtDSView.OrderNumber asc
+                        where deliveryDateMgmtDSView.ProdPoolId == searchProdPoolId
+                        && deliveryDateMgmtDSView.SchedStart >= searchFromDate
+                        && deliveryDateMgmtDSView.ProdStatus != ProdStatus::Completed
+                        {
+                            this.setDeliveryDateMgmtDS(cells, deliveryDateMgmtDSView, searchPlanAndActual);
+                        }
+                    }
+                    else
+                    {
+                        // get data
+                        while select deliveryDateMgmtDSView
+                        order by deliveryDateMgmtDSView.SchedStart asc
+                        , deliveryDateMgmtDSView.OrderNumber asc
+                        where deliveryDateMgmtDSView.ProdPoolId == searchProdPoolId
+                        && deliveryDateMgmtDSView.SchedStart >= searchFromDate
+                            && deliveryDateMgmtDSView.ProdStatus == ProdStatus::Completed
+                        {
+                            this.setDeliveryDateMgmtDS(cells, deliveryDateMgmtDSView, searchPlanAndActual);
+                        }
+                    
+                    }
+                    package.save();
+                }
+                memoryStream.Seek(0, System.IO.SeekOrigin::Begin);
+                //Download the file.
+                DocuFileSave::processSaveResult(memoryStream, saveResult);
+            }
+        }
+        catch (Exception::CLRError)
+        {
+            // if the statement can't be generated, report an error and return null
+            error("@SYS135884");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setExcelHeader</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setExcelHeader
+    /// </summary>
+    /// <param name = "_con">con</param>
+    /// <param name = "_cells">cells</param>
+    public void setExcelHeader(container _con, ExcelRange _cells)
+    {
+        // create header
+        for (int headerNum = 1; headerNum <= conLen(_con); headerNum++)
+        {
+            var cell = _cells.get_Item(currentRow, headerNum);
+            cell.set_Value(conPeek(_con, headerNum));
+            cell = null;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDeliveryDateMgmtDS</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set excel content
+    /// </summary>
+    /// <param name = "_cells">cells</param>
+    /// <param name = "_setDeliveryDateMgmtDSValue">_setDeliveryDateMgmtDSValue</param>
+    /// <param name = "_setPlanOrActualValue">_setPlanOrActualValue</param>
+    public void setDeliveryDateMgmtDS(
+        ExcelRange _cells
+        , KJP_SM_DeliveryDateMgmtDSView _setDeliveryDateMgmtDSValue
+        , KJP_SM_PlanAndActualClassification _setPlanOrActualValue)
+    {
+        currentRow++;
+
+        boolean checkProdData = ProdTable::exist(_setDeliveryDateMgmtDSValue.OrderNumber);
+
+        // DiscontinuingFlag
+        var cell = _cells.get_Item(currentRow, 1);
+        if (!checkProdData)
+        {
+            cell.set_Value(KJP_CM_ConstantHelper::blankValue);
+        }
+        else
+        {
+            cell.set_Value(_setDeliveryDateMgmtDSValue.DiscontinuingFlag);
+        }
+        cell = null;
+        
+        // ProdPoolId
+        cell = _cells.get_Item(currentRow, 2);
+        cell.set_Value(_setDeliveryDateMgmtDSValue.ProdPoolId);
+        cell = null;
+        
+        // ItemId
+        cell = _cells.get_Item(currentRow, 3);
+        cell.set_Value(_setDeliveryDateMgmtDSValue.ItemId);
+        cell = null;
+
+        // ProductName
+        cell = _cells.get_Item(currentRow, 4);
+        cell.set_Value(_setDeliveryDateMgmtDSValue.ProductName);
+        cell = null;
+
+        // OrderNumber
+        cell = _cells.get_Item(currentRow, 5);
+        cell.set_Value(_setDeliveryDateMgmtDSValue.OrderNumber);
+        cell = null;
+
+        // TemporaryBatchNumber
+        cell = _cells.get_Item(currentRow, 6);
+        cell.set_Value(_setDeliveryDateMgmtDSValue.TemporaryBatchNumber);
+        cell = null;
+        
+        // inventBatchId
+        cell = _cells.get_Item(currentRow, 7);
+        if (!checkProdData)
+        {
+            cell.set_Value(KJP_CM_ConstantHelper::blankValue);
+        }
+        else
+        {
+            cell.set_Value(_setDeliveryDateMgmtDSValue.inventBatchId);
+        }
+        cell = null;
+
+        // SchedStart
+        cell = _cells.get_Item(currentRow, 8);
+        cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_setDeliveryDateMgmtDSValue.SchedStart));
+        cell = null;
+
+        // SchedEnd
+        cell = _cells.get_Item(currentRow, 9);
+        cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_setDeliveryDateMgmtDSValue.SchedEnd));
+        cell = null;
+
+        if (_setPlanOrActualValue == KJP_SM_PlanAndActualClassification::Plan)
+        {
+            // SchedFinish
+            cell = _cells.get_Item(currentRow, 10);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_setDeliveryDateMgmtDSValue.SchedFinish));
+        }
+        else
+        {
+            // KJPSMQCTestDate
+            cell = _cells.get_Item(currentRow, 10);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_setDeliveryDateMgmtDSValue.KJPSMQCTestDate));
+            cell = null;
+
+            // KJPSMGMPJudgmentDate
+            cell = _cells.get_Item(currentRow, 11);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_setDeliveryDateMgmtDSValue.KJPSMGMPJudgmentDate));
+        }
+
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

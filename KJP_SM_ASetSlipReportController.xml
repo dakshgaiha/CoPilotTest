@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ASetSlipReportController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller class for ASetSlip report - KJP_FI_ASetSlipReport
+/// </summary>
+public class KJP_SM_ASetSlipReportController extends SrsReportRunController implements BatchRetryable
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Main method to initialize the constructor of the class
+    /// </summary>
+    /// <param name = "_args">Report args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_ASetSlipReportController::construct(_args).startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Constructor method for the class
+    /// </summary>
+    /// <param name = "_args">Report agrs</param>
+    /// <returns>construct for class</returns>
+    public static KJP_SM_ASetSlipReportController construct(Args _args)
+    {
+        KJP_SM_ASetSlipReportController  controller = new KJP_SM_ASetSlipReportController();
+        KJP_SM_ASetSlipReportContract contract;
+
+        controller.parmReportName(ssrsReportStr(KJP_SM_ASetSlipReport, Report));
+        controller.parmArgs(_args);
+        controller.parmLoadFromSysLastValue(false);
+        controller.parmShowDialog(false);
+        contract = controller.parmReportContract().parmRdpContract();
+        contract.parmMenuItemName(_args.menuItemName());
+        if (_args.menuItemName() == menuItemOutputStr(KJP_SM_ASetSlipReport))
+        {
+            SRSPrintDestinationSettings settings;
+            settings = controller.parmReportContract().parmPrintSettings();
+            settings.printMediumType(SRSPrintMediumType::File);
+            settings.fileFormat(SRSReportFileFormat::PDF);
+        }
+
+        return controller;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>preRunModifyContract</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Provides the opportunity to modify the contract before the report is run.
+    /// </summary>
+    protected void preRunModifyContract()
+    {
+        KJP_SM_ASetSlipReportContract contract;
+        InventTransferTable inventTransferTable;
+        MultiSelectionHelper multiSelectHelper;
+        WMSPickingRoute wMSPickingRoute;
+        container pickingListId;
+        int i;
+
+        contract = this.parmReportContract().parmRdpContract() as KJP_SM_ASetSlipReportContract;
+
+        if(this.args.record() && contract.parmMenuItemName() == menuItemOutputStr(KJP_SM_ASetSlipReport))
+        {
+            inventTransferTable = this.args.record();
+            contract.parmTransferId(inventTransferTable.TransferId);
+        }
+
+        else if (this.args.record() && contract.parmMenuItemName() == menuItemOutputStr(KJP_SM_ASetSlipPickingListReport))
+        {
+            multiSelectHelper = MultiSelectionHelper::createFromCaller(this.parmArgs().caller());
+            wMSPickingRoute = multiSelectHelper.getFirst();
+            while(wMSPickingRoute)
+            {
+                i++;
+                pickingListId = conIns(pickingListId, i, wMSPickingRoute.pickingRouteID); 
+                wMSPickingRoute = multiSelectHelper.getNext();
+            }
+            if(pickingListId != conNull())
+            {
+                contract.parmPickingRouteId(con2Str(pickingListId));
+            }
+            
+        }
+        
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

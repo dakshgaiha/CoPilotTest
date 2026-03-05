@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DemandForecastExportClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelRange;
+/// <summary>
+/// DemandForecast Export from Excel
+/// </summary>
+class KJP_SM_DemandForecastExportClass
+{
+    static int currentRow;
+    private const str DateFormat_yyyyMMddHHmmssString = 'yyyyMMddHHmmss';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main
+    /// </summary>
+    /// <param name = "_args">args</param>
+    public static void main(Args _args)
+    {
+        FormRun         fr;
+        fr = _args.caller();
+        KJP_SM_DemandForecastExportClass obj = new KJP_SM_DemandForecastExportClass();
+        obj.export(fr);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>export</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// export method
+    /// </summary>
+    /// <param name = "_fr">fr</param>
+    public void export(FormRun _fr)
+    {
+        try 
+        {
+            FormDataSource  fds;
+            container       demandForecasCon;
+            ForecastSales forecastSales;
+
+            fds = _fr.dataSource(FormDataSourceStr(ForecastSales, ForecastSales));
+
+            forecastSales = fds.getFirst(true);
+            if(!forecastSales.RecId)
+            {
+                forecastSales = fds.cursor();
+            }
+
+            // ヘッダー作成
+            demandForecasCon = ["@KJP:KJP102377","@KJP:KJP101405","@SYS7149","@KJP:KJP101383","@SYS67777","@KJP:KJP101172",
+                "@KJP:KJP101390","@KJP:KJP101406","@KJP:KJP101389","@KJP:KJP100735","@KJP:KJP101456","@Sys14584","@SYS21709","@KJP:KJP100749","@KJP:KJP100748"];
+
+            DocuFileSaveResult saveResult =
+                DocuFileSave::promptForSaveLocation("@KJP:KJP101380" +
+                KJP_CM_Utils::datetimeToStr(DateTimeUtil::getSystemDateTime(), DateFormat_yyyyMMddHHmmssString),
+                "@KJP:KJP101407", null, "@KJP:KJP101380");
+
+            if (saveResult && saveResult.parmAction() != DocuFileSaveAction::Cancel)
+            {
+                saveResult.parmOpenParameters("@KJP:KJP101409");
+                saveResult.parmOpenInNewWindow(false);
+            
+                MemoryStream memoryStream = new System.IO.MemoryStream();
+                
+                using(var package = new OfficeOpenXml.ExcelPackage(memoryStream))
+
+                {
+                    // シート作成
+                    var worksheets = package.get_Workbook().get_Worksheets();
+                    var worksheet = worksheets.Add("@KJP:KJP101380");
+                    var cells = worksheet.get_Cells();
+
+                    currentRow = 1;
+                    
+                    // ヘッダー作成
+                    this.setExcelHeader(demandForecasCon, cells);
+
+                    // データ作成
+                    while (forecastSales.RecId)
+                    {
+                        this.setDemandForecasData(cells, forecastSales.RecId);
+                        forecastSales = fds.getNext();
+                    }
+                    package.save();
+                }
+                memoryStream.Seek(0, System.IO.SeekOrigin::Begin);
+                //Download the file.
+                DocuFileSave::processSaveResult(memoryStream, saveResult);
+            }
+        }
+        catch (Exception::CLRError)
+        {
+            // if the statement can't be generated, report an error and return null
+            error("@SYS135884");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setExcelHeader</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setExcelHeader
+    /// </summary>
+    /// <param name = "_con">con</param>
+    /// <param name = "_cells">cells</param>
+    public void setExcelHeader(container _con, ExcelRange _cells)
+    {
+        // ヘッダー作成
+        for (int headerNum = 1; headerNum <= conLen(_con); headerNum++)
+        {
+            var cell = _cells.get_Item(currentRow, headerNum);
+            cell.set_Value(conPeek(_con, headerNum));
+            cell = null;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDemandForecasData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 需要予測情報
+    /// </summary>
+    /// <param name = "_cells">cells</param>
+    /// <param name = "_recId">recId</param>
+    public void setDemandForecasData(ExcelRange _cells, RecId _recId)
+    {
+        InventDim                       inventDim;
+        ForecastSales                   forecastSales;
+
+        while select
+            ModelId,
+            StartDate,
+            ItemId,
+            SalesQty,
+            Comment
+            from forecastSales
+            where forecastSales.RecId  == _recId
+            join InventLocationId, InventSiteId
+            from inventDim
+            where forecastSales.InventDimId == inventDim.inventDimId
+        {
+            currentRow++;
+                                    
+            //モデル Model
+            var cell = _cells.get_Item(currentRow, 1);
+            cell.set_Value(forecastSales.ModelId);
+            cell = null;
+        
+            //日付 Date
+            cell = _cells.get_Item(currentRow, 2);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(ForecastSales.StartDate));
+            cell = null;
+        
+            //顧客 ID CustAccountId
+            cell = _cells.get_Item(currentRow, 3);
+            cell.set_Value(forecastSales.CustAccountId);
+            cell = null;
+
+            //品目番号 Item Number
+            cell = _cells.get_Item(currentRow, 4);
+            cell.set_Value(forecastSales.ItemId);
+            cell = null;
+
+            //BOMバージョン BOMVersion
+            cell = _cells.get_Item(currentRow, 5);
+            cell.set_Value(forecastSales.ItemBOMId);
+            cell = null;
+
+            //サイト Site
+            cell = _cells.get_Item(currentRow, 6);
+            cell.set_Value(inventDim.InventSiteId);
+            cell = null;
+        
+            //倉庫 Warehouse
+            cell = _cells.get_Item(currentRow, 7);
+            cell.set_Value(inventDim.InventLocationId);
+            cell = null;
+
+            //販売数量 SalesQty
+            cell = _cells.get_Item(currentRow, 8);
+            cell.set_Value(any2Str(forecastSales.SalesQty));
+            cell = null;
+
+            //単位 SalesUnitId
+            cell = _cells.get_Item(currentRow, 9);
+            cell.set_Value(any2Str(forecastSales.SalesUnitId));
+            cell = null;
+
+            //コメント Comment
+            cell = _cells.get_Item(currentRow, 10);
+            cell.set_Value(forecastSales.Comment);
+            cell = null;
+
+            //プロパティ Property エクスポート用項目として利用。
+            cell = _cells.get_Item(currentRow, 11);
+            cell.set_Value(InventTable::find(forecastSales.ItemId).PropertyId);
+            cell = null;
+
+            //有効 Active
+            cell = _cells.get_Item(currentRow, 12);
+            cell.set_Value(int2Str(enum2int(forecastSales.Active)));
+            cell = null;
+
+            //工順番号 routeId
+            cell = _cells.get_Item(currentRow, 13);           
+            cell.set_Value(forecastSales.ItemRouteId);
+            cell = null;
+
+            //レコードID Record Id
+            cell = _cells.get_Item(currentRow, 14);
+            cell.set_Value(forecastSales.RecId);
+            cell = null;
+
+            //削除フラグ Deletion Flag エクスポート時は一律0で出力。
+            cell = _cells.get_Item(currentRow, 15);
+            cell.set_Value(int2Str(enum2int(NoYes::No)));        
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

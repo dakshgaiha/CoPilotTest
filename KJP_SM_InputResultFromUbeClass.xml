@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InputResultFromUbeClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// 宇部MES 投入実績受信IF
+/// </summary>
+class KJP_SM_InputResultFromUbeClass extends KJP_CM_IFBatchBase
+{
+    #ISOCountryRegionCodes
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            numberOfSuccess = KJP_SM_InputResultCommonClass::inputResultRun(jobId,true);
+        }
+        else
+        {
+            Error(strFmt("@KJP:KJP500527", curExt()));
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

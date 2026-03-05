@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ASetSlipReportDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///  Report data provider class for ASetSlip Report
+/// </summary>
+[SRSReportParameterAttribute(classStr(KJP_SM_ASetSlipReportContract))]
+public class KJP_SM_ASetSlipReportDP extends SrsReportDataProviderPreProcessTempDb
+{
+    const str nullSpace = '';
+    const str maxGroupId = '99999';
+    
+
+    KJP_SM_ListOfLotNumberByDestinationTemp generalJournalReportTemp;
+    /// <summary>
+    /// Get temp table buffer
+    /// </summary>
+    /// <returns></returns>
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getKJP_FI_GeneralJournalReportTemp</Name>
+				<Source><![CDATA[
+    [
+        SRSReportDataSetAttribute(tablestr(KJP_SM_ListOfLotNumberByDestinationTemp))
+    ]
+    public KJP_SM_ListOfLotNumberByDestinationTemp getKJP_FI_GeneralJournalReportTemp()
+    {
+        select generalJournalReportTemp;
+        return generalJournalReportTemp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// execute report
+    /// </summary>
+    public void processReport()
+    {
+        
+        InventTransferId                    transferId;
+        container                           pickingRouteIds;
+        KJP_SM_ASetSlipReportContract       contract;
+
+        contract = this.parmDataContract() as KJP_SM_ASetSlipReportContract;
+
+        transferId = contract.parmTransferId();
+        pickingRouteIds = str2con_RU(contract.parmPickingRouteId());
+
+        if (transferId && contract.parmMenuItemName() == menuItemOutputStr(KJP_SM_ASetSlipReport))
+        {
+            this.processReportTransferOrder(transferId);   
+        }
+
+        else if (pickingRouteIds != conNull() &&  contract.parmMenuItemName() == menuItemOutputStr(KJP_SM_ASetSlipPickingListReport))
+        {
+            for (int i = 1; i <= conLen(pickingRouteIds); i++)
+            {
+                this.processPickingListReport(conPeek(pickingRouteIds, i));
+
+            }
+        }
+          
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processPickingListReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Picking Route Report
+    /// </summary>
+    /// <param name = "_pickingRouteId">Picking route Id</param>
+    public void processPickingListReport(WMSPickingRouteID _pickingRouteId)
+    {
+        WMSPickingRoute                     wMSPickingRoute;
+        InventLocation                      inventLocation;
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressViewWarehouse;
+        LogisticsContactInfoView            logisticsContactInfoViewWarehouse;
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressViewDelivery;
+        WMSOrderTrans                       wmsOrderTrans;
+        SalesLine                           salesLine;
+        SalesTable                          salesTable;
+        CustTable                           custTableDelivery;
+        DirPartyTable                       dirPartyTableDelivery;
+        LogisticsElectronicAddress          logisticsElectronicAddressDelivery;
+        DimensionAttributeValueSetItem      dimensionAttributeValueSetItemCustomer;
+        DimensionAttributeValue             dimensionAttributeValueCustomer;
+        DimensionAttribute                  dimensionAttributeCustomer;
+        CustTable                           custTableCustomer;
+        DirPartyTable                       dirpartyTableCustomer;
+        LogisticsElectronicAddress          logisticsElectronicAddressCustomer;
+        TMSCarrier                          tmsCarrier;
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressViewForwarder;
+        LogisticsContactInfoView            logisticsContactInfoViewForwarder;
+        DimensionAttributeValueSetItem      dimensionAttributeValueSetItemDepartment;
+        DimensionAttributeValue             dimensionAttributeValueDepartment;
+        DimensionAttribute                  dimensionAttributeDepartment;
+        InventTable                         inventTable;
+        EcoResProductTranslation            ecoResProductTranslation;
+        InventItemGroupItem                 inventItemGroupItem;
+        InventItemGroup                     inventItemGroup;
+        KJP_SM_PackagingCategoryView        kJP_SM_PackagingCategoryView;
+        InventTableModule                   inventTableModule, inventTableModuleLoc;
+        InventDim                           inventDim;
+        KJP_CM_OriginalCode                 originalCode;
+        UnitOfMeasureConversion             unitOfMeasureConversion;
+       
+       
+        while select wMSPickingRoute
+            where wMSPickingRoute.pickingRouteID == _pickingRouteId
+            join wmsOrderTrans
+            where wmsOrderTrans.routeId == wMSPickingRoute.pickingRouteID
+            && wmsOrderTrans.fullPallet == NoYes::No
+            join InventLocationId, RecId from inventLocation
+            where inventLocation.InventLocationId == wMSPickingRoute.inventLocationId
+            join Location,EntityType, Entity, IsPrimary, recId from logisticsEntityPostalAddressViewWarehouse
+            where logisticsEntityPostalAddressViewWarehouse.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressViewWarehouse.Entity == inventLocation.RecId
+            && logisticsEntityPostalAddressViewWarehouse.IsPrimary == NoYes::Yes
+            outer join logisticsContactInfoViewWarehouse
+            where logisticsContactInfoViewWarehouse.ParentLocation == logisticsEntityPostalAddressViewWarehouse.Location
+            && logisticsContactInfoViewWarehouse.IsPrimary == NoYes::Yes
+            && logisticsContactInfoViewWarehouse.Type == LogisticsElectronicAddressMethodType::Phone
+            join LocationName, RecId from logisticsEntityPostalAddressViewDelivery
+            where  logisticsEntityPostalAddressViewDelivery.PostalAddress == wMSPickingRoute.DeliveryPostalAddress
+            join SalesId, RecId, DefaultDimension from salesLine
+            where salesLine.InventTransId == wmsOrderTrans.inventTransId
+            join SalesId, RecId, DefaultDimension, CustAccount from salesTable
+            where salesTable.SalesId == salesLine.SalesId
+            join Party, RecId from custTableDelivery
+            where custTableDelivery.AccountNum == salesTable.CustAccount
+            join PrimaryContactPhone from dirPartyTableDelivery
+            where dirPartyTableDelivery.RecId == custTableDelivery.Party
+            outer join logisticsElectronicAddressDelivery
+            where logisticsElectronicAddressDelivery.RecId == dirPartyTableDelivery.PrimaryContactPhone
+            join DimensionAttributeValue, DisplayValue from  dimensionAttributeValueSetItemCustomer
+            where dimensionAttributeValueSetItemCustomer.DimensionAttributeValueSet == salesLine.DefaultDimension
+            join DimensionAttribute, RecId from dimensionAttributeValueCustomer
+            where dimensionAttributeValueCustomer.RecId == dimensionAttributeValueSetItemCustomer.DimensionAttributeValue
+            join Name, RecId from dimensionAttributeCustomer
+            where dimensionAttributeCustomer.RecId == dimensionAttributeValueCustomer.DimensionAttribute
+            && dimensionAttributeCustomer.Name == KJP_CM_ConstantHelper::customer
+            join Party, RecId from custTableCustomer
+            where custTableCustomer.AccountNum == dimensionAttributeValueSetItemCustomer.DisplayValue
+            join PrimaryContactPhone, RecId from dirpartyTableCustomer
+            where dirpartyTableCustomer.RecId == custTableCustomer.Party
+            outer join logisticsElectronicAddressCustomer
+            where logisticsElectronicAddressCustomer.RecId == dirpartyTableCustomer.PrimaryContactPhone
+            join DimensionAttributeValue, RecId from dimensionAttributeValueSetItemDepartment
+            where dimensionAttributeValueSetItemDepartment.DimensionAttributeValueSet == salesTable.DefaultDimension
+            join DimensionAttribute, recid from dimensionAttributeValueDepartment
+            where dimensionAttributeValueDepartment.recid == dimensionAttributeValueSetItemDepartment.DimensionAttributeValue
+            join Name, RecId from dimensionAttributeDepartment
+            where dimensionAttributeDepartment.RecId == dimensionAttributeValueDepartment.DimensionAttribute
+            && dimensionAttributeDepartment.Name == KJP_CM_ConstantHelper::jpDepartMent
+            join inventTable
+            where inventTable.ItemId == wmsOrderTrans.itemId
+            join Name, RecId from ecoResProductTranslation
+            where ecoResProductTranslation.Product == inventTable.Product
+            && ecoResProductTranslation.LanguageId == KJP_CM_ConstantHelper::LanguageId_ja
+            join ItemGroupDataAreaId,ItemGroupId, RecId from  inventItemGroupItem
+            where inventItemGroupItem.ItemDataAreaId == inventTable.DataAreaId
+            && inventItemGroupItem.ItemId == inventTable.ItemId
+            join Name, RecId from inventItemGroup
+            where inventItemGroup.DataAreaId == inventItemGroupItem.ItemGroupDataAreaId
+            && inventItemGroup.ItemGroupId == inventItemGroupItem.ItemGroupId
+            join UnitId, RecId,ItemId, ModuleType from  inventTableModule
+            where inventTableModule.ItemId == inventTable.ItemId
+            && inventTableModule.ModuleType == ModuleInventPurchSales::Invent
+            join inventBatchId,inventDimId, RecId from  inventDim
+            where inventDim.inventDimId == wmsOrderTrans.inventDimId
+        {
+            if (ecoResProductTranslation.RecId)
+            {
+                select firstonly tmsCarrier
+                    where tmsCarrier.CarrierCode == wMSPickingRoute.KJPSMForwarder
+                    join Location, RecId, LocationName from  logisticsEntityPostalAddressViewForwarder
+                    where logisticsEntityPostalAddressViewForwarder.EntityType == LogisticsLocationEntityType::TMSCarrier
+                    && logisticsEntityPostalAddressViewForwarder.Entity == tmsCarrier.RecId
+                    && logisticsEntityPostalAddressViewForwarder.IsPrimary == NoYes::Yes
+                    outer join logisticsContactInfoViewForwarder
+                    where logisticsContactInfoViewForwarder.ParentLocation == logisticsEntityPostalAddressViewForwarder.Location
+                    && logisticsContactInfoViewForwarder.IsPrimary == NoYes::Yes
+                    && logisticsContactInfoViewForwarder.Type == LogisticsElectronicAddressMethodType::Phone;
+
+                originalCode    = inventTable.KJPCMTransportTemperatureZoneClassification + inventTable.KJPCMTransportMedicalItemClassification;
+
+                select firstonly kJP_SM_PackagingCategoryView
+                        where kJP_SM_PackagingCategoryView.OriginalCode == originalCode;
+
+                            
+                generalJournalReportTemp.clear();
+                generalJournalReportTemp.TransferId             = wMSPickingRoute.pickingRouteID;
+                generalJournalReportTemp.LineNum                = wmsOrderTrans.KJPSMLineNum;
+                generalJournalReportTemp.AssetClassification    = inventItemGroup.Name;
+                generalJournalReportTemp.TransportationFunction = kJP_SM_PackagingCategoryView.Description;
+                generalJournalReportTemp.InventLocationIdTo     = logisticsEntityPostalAddressViewForwarder.LocationName ? logisticsEntityPostalAddressViewForwarder.LocationName : logisticsEntityPostalAddressViewDelivery.LocationName;
+                generalJournalReportTemp.ShipDate               = KJP_CM_Utils::convertDate2StryyyyMMdd(wMSPickingRoute.DlvDate);
+                generalJournalReportTemp.ItemName               = ecoResProductTranslation.Name;
+                generalJournalReportTemp.InventBatchId          = inventDim.inventBatchId;
+                generalJournalReportTemp.QtyTransfer            = wmsOrderTrans.qty;
+                generalJournalReportTemp.UnitId                 = inventTableModule.UnitId;
+                generalJournalReportTemp.ItemId                 = wmsOrderTrans.itemId;
+                            
+                KJP_SM_DelivaeryPackageReportDP   delivaeryPackageReport = new KJP_SM_DelivaeryPackageReportDP();
+                inventTableModuleLoc   = inventTableModule::find(wMSOrderTrans.ItemId,ModuleInventPurchSales::Invent);
+                container packageAssortedQty = delivaeryPackageReport.getPackageAssortedQty(wMSOrderTrans.qty,
+                                                                                inventTableModuleLoc.UnitId,
+                                                                                wMSOrderTrans.itemId,
+                                                                                wMSOrderTrans.inventDimId,
+                                                                                inventTable.KJPCMPackingUnit);
+                                
+                generalJournalReportTemp.Quantity               = conPeek(packageAssortedQty, 1);
+                generalJournalReportTemp.Fraction               = conPeek(packageAssortedQty, 2);
+                if(inventTable.KJPCMPackagingWeight == 0)
+                {
+                    generalJournalReportTemp.Weight = 0;
+                }
+                else
+                {
+                    unitOfMeasureConversion = UnitOfMeasureConversion::findByConversion(UnitOfMeasure::findBySymbol(inventTable.KJPCMPackingUnit).RecId, unitOfMeasure::findBySymbol(inventTableModule.UnitId).RecId, inventTable.Product);
+                    if(unitOfMeasureConversion && unitOfMeasureConversion.Factor != 0)
+                    {
+                        generalJournalReportTemp.Weight = decRound(inventTable.KJPCMPackagingWeight * unitOfMeasureConversion.Factor * wmsOrderTrans.qty,1);
+                    }                 
+                }
+                generalJournalReportTemp.insert();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReportTransferOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Transfer Id Report
+    /// </summary>
+    /// <param name = "_transferId">TransferId</param>
+    public void processReportTransferOrder(InventTransferId _transferId)
+    {
+        InventTransferTable                 inventTransferTable;
+        InventTransferLine                  inventTransferLine;
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressView;
+        InventLocation                      inventLocation;
+        InventTable                         inventTable;
+        InventItemGroup                     inventItemGroup;
+        InventDim                           inventDim;
+        EcoResProduct                       ecoResProduct;
+        UnitOfMeasureConversion             unitOfMeasureConversion;
+        KJP_SM_PackagingCategoryView        packagingCategoryView;
+        
+        InventTableModule                   inventTableModule;
+        utcdatetime                         systemDateTime;
+        UnitOfMeasureRecId                  unitRecIdFrom;
+        UnitOfMeasureRecId                  unitRecIdTo;
+        real                                fraction;
+
+        systemDateTime      = KJP_CM_Utils::getSystemDateTimeUserTimeZone();
+
+        while select inventTransferLine
+                order by inventTransferLine.ItemId
+                join inventTransferTable
+                where inventTransferLine.TransferId             == inventTransferTable.TransferId
+                join inventLocation
+                where inventLocation.InventLocationId           == inventTransferTable.InventLocationIdTo
+                join logisticsEntityPostalAddressView
+                where logisticsEntityPostalAddressView.Entity   == inventLocation.RecId
+                && logisticsEntityPostalAddressView.EntityType  == LogisticsLocationEntityType::Warehouse
+                && logisticsEntityPostalAddressView.IsPrimary   == NoYes::Yes
+                && logisticsEntityPostalAddressView.ValidFrom   <= systemDateTime
+                && logisticsEntityPostalAddressView.ValidTo     >= systemDateTime
+                join inventTable
+                where inventTransferLine.ItemId                 == inventTable.ItemId
+                join inventDim
+                where inventTransferLine.InventDimId            == inventDim.inventDimId
+                && inventTransferTable.TransferId               == _transferId
+        {
+            generalJournalReportTemp.clear();
+
+            generalJournalReportTemp.TransferId     = inventTransferLine.TransferId;
+            generalJournalReportTemp.ItemId         = inventTransferLine.ItemId;
+            generalJournalReportTemp.ItemName       = inventTransferLine.itemName();
+            generalJournalReportTemp.LineNum        = inventTransferLine.LineNum;
+            
+            // set unitId and QtyTransfer
+            inventTableModule   = inventTableModule::find(inventTransferLine.ItemId,ModuleInventPurchSales::Sales);
+
+            generalJournalReportTemp.UnitId         = inventTableModule.UnitId;
+
+            if(inventTableModule.UnitId == inventTransferLine.UnitId)
+            {
+                generalJournalReportTemp.QtyTransfer = inventTransferLine.QtyTransfer;
+            }
+            else
+            {
+                generalJournalReportTemp.QtyTransfer = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                                           InventTransferLine.ItemId,
+                                                           InventTransferLine.InventDimId,
+                                                           InventTransferLine.QtyTransfer,
+                                                           InventTransferLine.UnitId,
+                                                           inventTableModule.UnitId);
+            }
+
+            // set shipdate
+            if(inventTransferLine.RemainStatus == InventTransferRemainStatus::Shipping)
+            {
+                generalJournalReportTemp.ShipDate   = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate);
+            }
+            else
+            {
+                InventTransferJour InventTransferJour;
+
+                select maxof(TransDate) from InventTransferJour
+                        where InventTransferJour.UpdateType     == InventTransferUpdateType::Shipment
+                        && InventTransferJour.CanceledShipment  == NoYes::No
+                        && InventTransferJour.TransferId        == inventTransferLine.TransferId;
+
+                generalJournalReportTemp.ShipDate = KJP_CM_Utils::convertDate2StryyyyMMdd(InventTransferJour.TransDate);
+            }
+
+            // set InventLocationIdTo
+            generalJournalReportTemp.InventLocationIdTo = logisticsEntityPostalAddressView.LocationName;
+
+            // set AssetClassification and TransportationFunction
+            inventItemGroup = InventItemGroup::find(inventTable.itemGroupId());
+
+            select firstonly packagingCategoryView
+                    where packagingCategoryView.OriginalCode == inventTransferLine.KJPSMPackagingCategory;
+
+            // set ItemGroupId for sort
+            if(inventTable.itemGroupId())
+            {
+                generalJournalReportTemp.ItemGroupId            = inventTable.itemGroupId();
+            }
+            else
+            {
+                generalJournalReportTemp.ItemGroupId            = maxGroupId;
+            }
+            generalJournalReportTemp.AssetClassification    = inventItemGroup.Name;
+            generalJournalReportTemp.TransportationFunction = packagingCategoryView.Description;
+
+            // set InventBatchId
+            generalJournalReportTemp.InventBatchId = inventDim.inventBatchId;
+
+            // set Quantity
+            if(inventTable.KJPCMPackingUnit == nullSpace || inventTable.KJPCMPackingUnit == inventTransferLine.UnitId)
+            {
+                generalJournalReportTemp.Quantity = InventTransferLine.QtyTransfer;
+            }
+            else
+            {
+                generalJournalReportTemp.Quantity = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                                        InventTransferLine.ItemId,
+                                                        InventTransferLine.InventDimId,
+                                                        InventTransferLine.QtyTransfer,
+                                                        InventTransferLine.UnitId,
+                                                        InventTable.KJPCMPackingUnit);
+
+                unitRecIdFrom   = EcoResReleasedProductUnitConverter::findUnitRecIdBySymbol(InventTransferLine.UnitId);
+                unitRecIdTo     = EcoResReleasedProductUnitConverter::findUnitRecIdBySymbol(InventTable.KJPCMPackingUnit);
+                ecoResProduct   = EcoResProduct::findByDisplayProductNumber(InventTransferLine.ItemId);
+
+                // get conversion factor
+                unitOfMeasureConversion = UnitOfMeasureConversion::findByConversion(unitRecIdTo,unitRecIdFrom,ecoResProduct.RecId);
+
+                if(!unitOfMeasureConversion)
+                {
+                    unitOfMeasureConversion = UnitOfMeasureConversion::findByConversion(unitRecIdTo,unitRecIdFrom);
+                }
+
+                if(unitOfMeasureConversion && unitOfMeasureConversion.Factor != 0)
+                {
+                    fraction = InventTransferLine.QtyTransfer - generalJournalReportTemp.Quantity * unitOfMeasureConversion.Factor;
+                }
+
+                if(fraction > 0)
+                {
+                    fraction = decRound(fraction,2);
+
+                    generalJournalReportTemp.Fraction = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                                           InventTransferLine.ItemId,
+                                                           InventTransferLine.InventDimId,
+                                                           fraction,
+                                                           InventTransferLine.UnitId,
+                                                           inventTableModule.UnitId);
+                }
+            }
+
+            // set weight
+            if(inventTable.KJPCMPackagingWeight == 0)
+            {
+                generalJournalReportTemp.Weight = 0;
+            }
+            else
+            {
+                if(unitOfMeasureConversion && unitOfMeasureConversion.Factor != 0)
+                {
+                    generalJournalReportTemp.Weight = decRound(inventTable.KJPCMPackagingWeight / unitOfMeasureConversion.Factor * InventTransferLine.QtyTransfer,1);
+                }
+            }
+
+            generalJournalReportTemp.insert();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

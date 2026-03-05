@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventJournalMovementForm_EventHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// EventHandler of Form [InventJournalMovement].
+/// </summary>
+public final class KJP_SM_InventJournalMovementForm_EventHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>InventJournalTable_KJPSMHospitalCode_OnLookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// HospitalCode lookup EventHandler
+    /// </summary>
+    /// <param name="sender">FormControl</param>
+    /// <param name="e">FormControlEventArgs</param>
+    [FormControlEventHandler(formControlStr(InventJournalMovement, InventJournalTable_KJPSMHospitalCode), FormControlEventType::Lookup)]
+    public static void InventJournalTable_KJPSMHospitalCode_OnLookup(FormControl sender, FormControlEventArgs e)
+    {
+        FormControlCancelableSuperEventArgs cancelableSuperEvent = e as FormControlCancelableSuperEventArgs;
+        // Cancel call Super lookup method
+        cancelableSuperEvent.CancelSuperCall();
+        KJP_SM_HospitalMasterView::lookupHospitalMaster(sender);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

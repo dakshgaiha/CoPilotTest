@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ArrivalResultsTransferReceiptClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Transfer order receipt creation and post process.
+/// </summary>
+class KJP_SM_ArrivalResultsTransferReceiptClass
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>initInventTransferParmTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Create Transfer Order Parm table
+    /// </summary>
+    /// <param name = "_transferId">A transfer order No.</param>
+    /// <param name = "_transDate">Transfer date</param>
+    /// <returns>Transfer Order Parm table</returns>
+    public static InventTransferParmTable initInventTransferParmTable(InventTransferId _transferId, TransDate _transDate)
+    {
+        InventTransferTable         inventTransferTable;
+        InventTransferParmTable     inventTransferParmTable;
+
+        inventTransferTable = InventTransferTable::find(_transferId);
+
+        if (inventTransferTable.TransferId)
+        {
+            inventTransferParmTable.clear();
+            inventTransferParmTable.initParmDefault();
+            inventTransferParmTable.ParmId                  = RunBaseMultiParm::getSysParmId();
+            inventTransferParmTable.TransferId              = inventTransferTable.TransferId;
+            inventTransferParmTable.EditLines               = NoYes::Yes;
+            inventTransferParmTable.AutoReceiveQty          = NoYes::No;
+            inventTransferParmTable.UpdateType              = InventTransferUpdateType::Receive;
+            inventTransferParmTable.ReceiveUpdateQty        = InventTransferReceiveUpdateQty::Shipment;
+            inventTransferParmTable.TransDate               = _transDate;
+
+            inventTransferParmTable.insert(false);
+        }
+
+        return inventTransferParmTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initInventTransferParmLine</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Create Transfer Order Parm line
+    /// </summary>
+    /// <param name = "_inventTransferParmTable">Transfer Order Parm table</param>
+    /// <param name = "_transferInfo">Transfer order line information</param>
+    public static void initInventTransferParmLine(InventTransferParmTable _inventTransferParmTable, KJP_SM_ArrivalResultsTransferInfoClass _transferInfo)
+    {
+        InventTransferParmLine      inventTransferParmLine;
+
+        inventTransferParmLine.clear();
+        inventTransferParmLine.initFromInventTransferLine(_transferInfo.parmInventTransferLine());
+
+        inventTransferParmLine.InventTransId        = _transferInfo.parmInventTransIdReceive();
+        inventTransferParmLine.InventTransIdTransit = _transferInfo.parmInventTransIdTransitFrom();
+        inventTransferParmLine.LineNum              = _transferInfo.parmLineNum();
+
+        inventTransferParmLine.TransferId           = _inventTransferParmTable.TransferId;
+        inventTransferParmLine.ParmId               = _inventTransferParmTable.ParmId;
+
+        inventTransferParmLine.QtyReceiveNow        = _transferInfo.parmQtyTransfer();
+        inventTransferParmLine.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postTransferOrderReceive</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Transfer order receipt post process
+    /// </summary>
+    /// <param name = "_inventTransferParmTable">Transfer Order Parm table</param>
+    public static void postTransferOrderReceive(InventTransferParmTable _inventTransferParmTable)
+    {
+        InventTransferUpdReceive inventTransferUpdReceive;
+
+        inventTransferUpdReceive = InventTransferUpdReceive::newParmBuffer(_inventTransferParmTable);
+        inventTransferUpdReceive.run();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

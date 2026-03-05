@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DataOutputForPSIReportIntegrationContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFB-COG-0757
+/// data of CreatingMonthEndInventoryTableBatchDialog contract for <c>KJP_FI_CreatingMonthEndInventoryTableController</c>.
+/// </summary>
+[
+    DataContractAttribute,
+    SysOperationContractProcessingAttribute(classStr(KJP_SM_DataOutputForPSIReportIntegrationUIBuilder))
+]
+class KJP_SM_DataOutputForPSIReportIntegrationContract
+{
+    KJP_SM_Category     cBrand;
+    KJP_SM_ItemNameStd  cItemNameStd;
+    KJP_SM_Property     cProperty;
+    str                 cSepControl;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmBrand</Name>
+				<Source><![CDATA[
+    [
+        DataMemberAttribute(identifierStr(cBrand)),
+        SysOperationDisplayOrderAttribute('1'),
+        SysOperationLabel(literalStr("@KJP:KJP103773"))
+    ]
+    public KJP_SM_Category parmBrand(KJP_SM_Category _brand = cBrand)
+    {
+        cBrand = _brand;
+        return cBrand;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmItemNameStd</Name>
+				<Source><![CDATA[
+    [
+        DataMemberAttribute(identifierStr(cItemNameStd)),
+        SysOperationDisplayOrderAttribute('2'),
+        SysOperationLabel(literalStr("@KJP:KJP103144"))
+    ]
+    public KJP_SM_ItemNameStd parmItemNameStd(KJP_SM_ItemNameStd _itemNameStd = cItemNameStd)
+    {
+        cItemNameStd = _itemNameStd;
+        return cItemNameStd;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmProperty</Name>
+				<Source><![CDATA[
+    [
+        DataMemberAttribute(identifierStr(cProperty)),
+        SysOperationDisplayOrderAttribute('3'),
+        SysOperationLabel(literalStr("@SYS10344"))
+    ]
+    public KJP_SM_Property parmProperty(KJP_SM_Property _property = cProperty)
+    {
+        cProperty = _property;
+        return cProperty;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

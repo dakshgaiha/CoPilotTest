@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ForecastSalesFormEventHandler</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// EventHandler of Form [ForecastSales].
+/// </summary>
+internal final class KJP_SM_ForecastSalesFormEventHandler
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>ItemId_OnModified</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///ItemId_OnModified of EventHandler
+    /// </summary>
+    /// <param name="sender">sender</param>
+    /// <param name="e">e</param>
+    [FormDataFieldEventHandler(formDataFieldStr(ForecastSales, ForecastSales, ItemId), FormDataFieldEventType::Modified)]
+    public static void ItemId_OnModified(FormDataObject sender, FormDataFieldEventArgs e)
+    {
+        FormRun formRun = sender.dataSource().formRun();
+        ForecastSales forecastSales =
+            formRun.dataSource(formDataSourceStr(ForecastSales,ForecastSales)).cursor();
+        KJP_SM_InventTableForecastSalesView kJP_SM_InventTableForecastSalesView =
+            formRun.dataSource(formDataSourceStr(ForecastSales,KJP_SM_InventTableForecastSalesView)).cursor();
+
+        if (forecastSales.ItemId != '')
+        {
+            InventTable inventTable;
+            inventTable = InventTable::find(forecastSales.ItemId);
+
+            if (inventTable)
+            {
+                kJP_SM_InventTableForecastSalesView.PropertyId = inventTable.PropertyId;
+                kJP_SM_InventTableForecastSalesView.KJPCMSupervisingDepartment = inventTable.KJPCMSupervisingDepartment;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

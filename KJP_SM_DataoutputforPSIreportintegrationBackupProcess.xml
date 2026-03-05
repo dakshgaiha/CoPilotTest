@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DataoutputforPSIreportintegrationBackupProcess</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// KJP_SM_DataoutputforPSIreportintegrationBackup
+/// </summary>
+class KJP_SM_DataoutputforPSIreportintegrationBackupProcess
+{
+    KJP_SM_ExecutionMonth cPreviousMonth;
+    RecordInsertList cMonthlyQSTableRecordInsertList;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>previousMonthReplace</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// previousMonthReplace - main
+    /// </summary>
+    public void previousMonthReplace()
+    {
+        this.init(); 
+        this.deletePSIByMonthlyQuantitySummayTable();
+        this.setRecordInsertList();
+        cMonthlyQSTableRecordInsertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deletePSIByMonthlyQuantitySummayTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// deletePSIByMonthlyQuantitySummayTable
+    /// </summary>
+    private void deletePSIByMonthlyQuantitySummayTable()
+    {
+        KJP_SM_PSIByMonthlyQuantitySummaryTable dPSIByMonthlyQuantitySummayTable;
+
+        delete_from dPSIByMonthlyQuantitySummayTable
+            where dPSIByMonthlyQuantitySummayTable.ExecutionMonth == cPreviousMonth;
+            
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setRecordInsertList</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setRecordInsertList
+    /// </summary>
+    private void setRecordInsertList()
+    {
+        const str Colon = ':';
+
+        KJP_SM_PSIByMonthlyQuantitySummaryTable getPSIByMonthlyQuantitySummaryTable;
+        KJP_SM_PSIByMonthlyQuantitySummaryTable inPSIByMonthlyQuantitySummaryTable;
+        KJP_CM_GeneralPurposeMaster GPMPSITypeForBackup;
+
+        while select PSIReportKey,
+            PSIType,
+            ProductionGroup,
+            ItemId,
+            ItemName,
+            ItemDispName,
+            ItemNameStd,
+            Category,
+            Property,
+            CompanyCode,
+            CompanyName,
+            YearAndMonth,
+            UnitId,
+            Quantity,
+            ExecutionMonth
+            from getPSIByMonthlyQuantitySummaryTable
+            exists join GPMPSITypeForBackup
+            where GPMPSITypeForBackup.DestinationCode == getPSIByMonthlyQuantitySummaryTable.PSIType
+            && GPMPSITypeForBackup.Key == KJP_CM_ConstantHelper::KJP_SM_PSITypeForBackupKey
+        {
+            inPSIByMonthlyQuantitySummaryTable.PSIReportKey     = cPreviousMonth + Colon + getPSIByMonthlyQuantitySummaryTable.PSIReportKey;
+            inPSIByMonthlyQuantitySummaryTable.PSIType          = getPSIByMonthlyQuantitySummaryTable.PSIType;
+            inPSIByMonthlyQuantitySummaryTable.ProductionGroup  = getPSIByMonthlyQuantitySummaryTable.ProductionGroup;
+            inPSIByMonthlyQuantitySummaryTable.ItemId           = getPSIByMonthlyQuantitySummaryTable.ItemId;
+            inPSIByMonthlyQuantitySummaryTable.ItemName         = getPSIByMonthlyQuantitySummaryTable.ItemName;
+            inPSIByMonthlyQuantitySummaryTable.ItemDispName     = getPSIByMonthlyQuantitySummaryTable.ItemDispName;
+            inPSIByMonthlyQuantitySummaryTable.ItemNameStd      = getPSIByMonthlyQuantitySummaryTable.ItemNameStd;
+            inPSIByMonthlyQuantitySummaryTable.Category         = getPSIByMonthlyQuantitySummaryTable.Category;
+            inPSIByMonthlyQuantitySummaryTable.Property         = getPSIByMonthlyQuantitySummaryTable.Property;
+            inPSIByMonthlyQuantitySummaryTable.CompanyCode      = getPSIByMonthlyQuantitySummaryTable.CompanyCode;
+            inPSIByMonthlyQuantitySummaryTable.CompanyName      = getPSIByMonthlyQuantitySummaryTable.CompanyName;
+            inPSIByMonthlyQuantitySummaryTable.YearAndMonth     = getPSIByMonthlyQuantitySummaryTable.YearAndMonth;
+            inPSIByMonthlyQuantitySummaryTable.UnitId           = getPSIByMonthlyQuantitySummaryTable.UnitId;
+            inPSIByMonthlyQuantitySummaryTable.Quantity         = getPSIByMonthlyQuantitySummaryTable.Quantity;
+            inPSIByMonthlyQuantitySummaryTable.ExecutionMonth   = cPreviousMonth;
+
+            cMonthlyQSTableRecordInsertList.add(inPSIByMonthlyQuantitySummaryTable);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// init
+    /// </summary>
+    private void init()
+    {
+        cPreviousMonth = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_ExecutionMonthKey, KJP_CM_ConstantHelper::origCodeKJP_SM_ExecutionMonthKey_PreviousMonth).DestinationCode;
+        cMonthlyQSTableRecordInsertList = new RecordInsertList(tableNum(KJP_SM_PSIByMonthlyQuantitySummaryTable));
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

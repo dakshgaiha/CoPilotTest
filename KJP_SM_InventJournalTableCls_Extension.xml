@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventJournalTableCls_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Code Extension of Table [InventJournalTable].
+/// </summary>
+[ExtensionOf(tableStr(InventJournalTable))]
+public final class KJP_SM_InventJournalTableCls_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>modifiedField</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Executes on field modification
+    /// </summary>
+    /// <param name = "_fieldId">FieldId</param>
+    public void modifiedField(FieldId _fieldId)
+    {
+        next modifiedField(_fieldId);
+
+        switch (_fieldId)
+        {
+            case fieldNum(InventJournalTable, KJPSMHospitalControlFLG):
+                this.kjp_sm_modifiedKJPSMHospitalControlFLG();
+                break;
+            case fieldNum(InventJournalTable, KJPSMHospitalCode):
+                this.kjp_sm_modifiedKJPSMHospitalCode();
+                break;
+            default:
+                break;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_validateKJPSMHospitalField</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validate when hospital field modification
+    /// </summary>
+    /// <param name = "_fieldIdToCheck">FieldId</param>
+    /// <returns>boolean</returns>
+    public boolean kjp_sm_validateKJPSMHospitalField(FieldId _fieldIdToCheck)
+    {
+        boolean ret = true;
+
+        switch (_fieldIdToCheck)
+        {
+            case fieldNum(InventJournalTable, KJPSMHospitalName):
+            case fieldNum(InventJournalTable, KJPSMHospitalAddress):
+            case fieldNum(InventJournalTable, KJPSMHospitalPhoneNumber):
+            case fieldNum(InventJournalTable, KJPSMHospitalPostalCode):
+                // 値を取得できない場合は、エラーとする
+                if (!KJP_CM_Utils::mandatoryInputValidation(this.(_fieldIdToCheck)))
+                {
+                    DictField field = new DictField(tablenum(InventJournalTable), _fieldIdToCheck);
+                    // フィールド '%1' に入力する必要があります。
+                    ret = checkFailed(strFmt("@KJP:KJP500025", field.label())) && ret;
+                }
+                break;
+            default:
+                break;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_setKJPSMHospitalFields</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Set hospital field
+    /// </summary>
+    public void kjp_sm_setKJPSMHospitalFields()
+    {
+        KJP_SM_HospitalMasterView hospitalMasterView;
+
+        // 「払出先」を選択orコードを登録した場合は、「払出先名称」「払出先住所」「払出先電話番号」「払出先郵便番号」を営業病医院マスタから値を取得
+        if (KJP_SM_HospitalMasterView::exist(this.KJPSMHospitalCode))
+        {
+            hospitalMasterView = KJP_SM_HospitalMasterView::find(this.KJPSMHospitalCode);
+
+            this.KJPSMHospitalName        = hospitalMasterView.HospitalName;
+            this.KJPSMHospitalPostalCode  = hospitalMasterView.HospitalPostalCode;
+            this.KJPSMHospitalAddress     = hospitalMasterView.HospitalFullAddress;
+            this.KJPSMHospitalPhoneNumber = hospitalMasterView.HospitalTel;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_modifiedKJPSMHospitalControlFLG</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Executes on field [HospitalControlFLG] modification
+    /// </summary>
+    public void kjp_sm_modifiedKJPSMHospitalControlFLG()
+    {
+        // 払出制御フラグを「はい」から「いいえ」に変更時、「払出先」「払出先名称」「払出先住所」「払出先電話番号」「払出先郵便番号」はクリアされる。
+        if (!this.kjp_sm_isKJPSMHospitalControlFlgOn())
+        {
+            this.KJPSMHospitalCode = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalName = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalAddress = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalPhoneNumber = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalPostalCode = KJP_CM_ConstantHelper::blankValue;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_modifiedKJPSMHospitalCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Executes on field [HospitalCode] modification
+    /// </summary>
+    public void kjp_sm_modifiedKJPSMHospitalCode()
+    {
+        // 「払出先」をクリアすると「払出先名称」、「払出先住所」、「払出先電話番号」、「払出先郵便番号」もクリアされる。
+        if (!this.kjp_sm_isKJPSMHospitalCodeInputted())
+        {
+            this.KJPSMHospitalName = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalAddress = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalPhoneNumber = KJP_CM_ConstantHelper::blankValue;
+            this.KJPSMHospitalPostalCode = KJP_CM_ConstantHelper::blankValue;
+        }
+        else
+        {
+            // 「払出先」を選択orコードを登録した場合は、「払出先名称」「払出先住所」「払出先電話番号」「払出先郵便番号」を営業病医院マスタから値を取得
+            this.kjp_sm_setKJPSMHospitalFields();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_isDisposalJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Return whether the transfer journal is subject to disposal.
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean kjp_sm_isDisposalJournal()
+    {
+        KJP_CM_Key key = KJP_CM_ConstantHelper::keyRetireDescriptionCode;
+        KJP_CM_DestinationCode destinationCode = this.JournalNameId;
+
+        return key && destinationCode && (select RecId from KJP_CM_GeneralPurposeMaster
+                where KJP_CM_GeneralPurposeMaster.Key == key
+                && KJP_CM_GeneralPurposeMaster.DestinationCode == destinationCode).RecId != 0;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_isKJPSMHospitalControlFlgOn</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Return whether the HospitalControlFLG is Yes.
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean kjp_sm_isKJPSMHospitalControlFlgOn()
+    {
+        return this.KJPSMHospitalControlFLG == NoYes::Yes;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_sm_isKJPSMHospitalCodeInputted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Return whether the HospitalCode is not blank.
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean kjp_sm_isKJPSMHospitalCodeInputted()
+    {
+        return KJP_CM_Utils::mandatoryInputValidation(this.KJPSMHospitalCode);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

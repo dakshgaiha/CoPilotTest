@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AutoEndProductOrderClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFB-MFG-0686_AutoEndProductOrderClass
+/// </summary>
+class KJP_SM_AutoEndProductOrderClass extends KJP_CM_IFBatchBase
+{
+    private const str Key_KJP_SM_ProdPool = 'KJP_SM_ProdPool';
+    private const str OrigPoolIdofTakasaki = 'Takasaki';
+    private const str OrigPoolIdofUbe = 'Ube';
+    private const str QCFail = 'QCFail';
+    private const str GMPReject = 'GMPReject';
+    private const str Discon = 'Discon';
+    private const str BatchStatus = 'BatchStatus';
+    private TransDate lastMonth;
+    private TransDate firstDayofLastMonth;
+    private TransDate lastDayofLastMonth;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// processRun
+    /// </summary>
+    public void processRun()
+    {
+        ProdTable       prodTable;
+        InventTable     inventTable;
+        TransDate       finishDate;
+        InventBatch     inventBatch;
+        lastMonth = prevMth(DateTimeUtil::date(DateTimeUtil::applyTimeZoneOffset(
+            executionDateTime, DateTimeUtil::getUserPreferredTimeZone())));
+        firstDayofLastMonth = dateStartMth(lastMonth);
+        lastDayofLastMonth = dateEndMth(lastMonth);
+        TransDate       finishedDateBefore;
+
+        if (!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            Error(strFmt("@KJP:KJP500527", curExt()));
+            return;
+        }
+
+        ProdId PoolIdofTakasaki = KJP_CM_GeneralPurposeMaster::find(Key_KJP_SM_ProdPool, OrigPoolIdofTakasaki).DestinationCode;
+        ProdId PoolIdofUbe = KJP_CM_GeneralPurposeMaster::find(Key_KJP_SM_ProdPool, OrigPoolIdofUbe).DestinationCode;
+
+        PdsDispositionCode pdsQCFail = KJP_CM_GeneralPurposeMaster::find(BatchStatus, QCFail).DestinationCode;
+        PdsDispositionCode pdsGMPReject = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPReject).DestinationCode;
+        PdsDispositionCode pdsDiscon = KJP_CM_GeneralPurposeMaster::find(BatchStatus, Discon).DestinationCode;
+        
+        while select prodTable
+            order by prodTable.ProdId asc
+            join inventTable
+            where prodTable.ItemId == inventTable.ItemId
+            && prodTable.ProdStatus == ProdStatus::ReportedFinished
+            && (inventTable.ProdPoolId == PoolIdofTakasaki || inventTable.ProdPoolId == PoolIdofUbe)
+        {
+            finishDate = dateNull();
+
+            inventBatch = InventBatch::find(InventDim::find(prodTable.InventDimId).inventBatchId, prodTable.ItemId);
+
+            // pattern 5
+            if (inventBatch.PdsDispositionCode == pdsDiscon)
+            {
+                finishedDateBefore = prodTable.FinishedDate;
+
+                if(prodTable.FinishedDate != dateNull() && prodTable.FinishedDate < firstDayofLastMonth)
+                {
+                    finishDate = firstDayofLastMonth;
+                }
+                else
+                {
+                    finishDate = prodTable.FinishedDate;
+                }
+            }
+            // pattern 1
+            else if (inventTable.KJPSMQCTest == NoYes::No && inventTable.KJPSMGMPJudgment == NoYes::No && inventTable.KJPSMGQPJudgment == NoYes::No)
+            {
+                finishDate = this.updateIssuetoNextProcess(prodTable.ItemId, InventDim::find(prodTable.InventDimId).inventBatchId);
+                
+                if (finishDate != dateNull())
+                {
+                    finishedDateBefore = finishDate;
+                }
+
+                if (finishDate != dateNull() && finishDate < firstDayofLastMonth)
+                {
+                    finishDate = firstDayofLastMonth;
+                }
+            }
+
+            // pattern 2
+            else if (inventTable.KJPSMQCTest == NoYes::Yes && inventTable.KJPSMGMPJudgment == NoYes::No && inventTable.KJPSMGQPJudgment == NoYes::No)
+            {
+                finishedDateBefore = inventBatch.KJPSMQCTestDate;
+
+                if(inventBatch.KJPSMQCTestDate != dateNull() && inventBatch.KJPSMQCTestDate < firstDayofLastMonth)
+                {
+                    finishDate = firstDayofLastMonth;
+                }
+                else
+                {
+                    finishDate = inventBatch.KJPSMQCTestDate;
+                }
+            }
+
+            // pattern 3
+            else if (inventTable.KJPSMQCTest == NoYes::Yes && inventTable.KJPSMGMPJudgment == NoYes::Yes && inventTable.KJPSMGQPJudgment == NoYes::No)
+            {
+                if(inventBatch.KJPSMGMPJudgmentDate == dateNull() && inventBatch.PdsDispositionCode == pdsQCFail)
+                {
+                    finishDate = inventBatch.KJPSMQCTestDate;
+                }
+
+                if(inventBatch.KJPSMGMPJudgmentDate != dateNull())
+                {
+                    finishDate = inventBatch.KJPSMGMPJudgmentDate;
+                }
+
+                finishedDateBefore = finishDate;
+
+                if(finishDate != dateNull() && finishDate < firstDayofLastMonth)
+                {
+                    finishDate = firstDayofLastMonth;
+                }
+            }
+
+            // pattern 4
+            else if (inventTable.KJPSMQCTest == NoYes::Yes && inventTable.KJPSMGMPJudgment == NoYes::Yes && inventTable.KJPSMGQPJudgment == NoYes::Yes)
+            {
+                if(inventBatch.KJPSMGQPJudgmentDate == dateNull() && inventBatch.PdsDispositionCode == pdsQCFail)
+                {
+                    finishDate = inventBatch.KJPSMQCTestDate;               
+                }
+                if(inventBatch.KJPSMGQPJudgmentDate == dateNull() && inventBatch.PdsDispositionCode == pdsGMPReject)
+                {
+                    finishDate = inventBatch.KJPSMGMPJudgmentDate;
+                }
+                if(inventBatch.KJPSMGQPJudgmentDate != dateNull())
+                {
+                    finishDate = inventBatch.KJPSMGQPJudgmentDate;
+                }
+
+                finishedDateBefore = finishDate;
+
+                if(finishDate != dateNull() && finishDate < firstDayofLastMonth)
+                {
+                    finishDate = firstDayofLastMonth;
+                }
+            }
+            else
+            {
+                continue;
+            }
+
+            // update prodTable 
+            this.runPost(prodTable, finishDate, finishedDateBefore);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateIssuetoNextProcess</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get minimum Posted date of picklist
+    /// </summary>
+    /// <param name = "_itemId">ItemId</param>
+    /// <param name = "_inventBatchId">InventBatchId</param>
+    /// <returns>Posted date</returns>
+    private TransDate updateIssuetoNextProcess(ItemId _itemId, InventBatchId _inventBatchId)
+    {
+        ProdJournalBOM   prodJournalBOM;
+        ProdJournalTable prodJournalTable;
+        InventDim        inventDim;
+        TransDate        finishDate;
+        
+        select firstonly prodJournalBOM
+            order by prodJournalBOM.TransDate asc
+            where prodJournalBOM.ItemId == _itemId
+            && prodJournalBOM.TransDate <= lastDayofLastMonth
+            join inventDim
+            where inventDim.inventDimId == prodJournalBOM.InventDimId
+            && inventDim.inventBatchId == _inventBatchId            
+            join prodJournalTable
+            where prodJournalTable.JournalId == prodJournalBOM.JournalId
+            && prodJournalTable.Posted == NoYes::Yes;
+
+        if(!prodJournalBOM)
+        {
+            finishDate = dateNull();
+        }
+        else
+        {
+            finishDate = prodJournalBOM.TransDate;
+        }
+
+        return finishDate;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runPost</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post production order end.
+    /// </summary>
+    /// <param name = "_prodTable">ProdTable</param>
+    /// <param name = "_finishDate">FinishDate</param>
+    /// <param name = "_finishedDateBefore">FinishedDateBefore</param>
+    private void runPost(ProdTable _prodTable, TransDate _finishDate, TransDate _finishedDateBefore)
+    {
+        if(!_finishDate)
+        {
+            return;
+        }
+
+        if(_finishDate < firstDayofLastMonth || _finishDate > lastDayofLastMonth)
+        {
+            return;
+        }     
+
+        if (!ProdUpdHistoricalCost::checkNoProdEndBeforeConsumption(_prodTable.ProdId, _finishedDateBefore))
+        {
+            return;
+        }
+
+        try
+        {
+            ttsbegin;
+            ProdMultiHistoricalCost prodMultiHistoricalCost = ProdMultiHistoricalCost::construct(new Args());
+            RunBaseMultiParm::initParm(prodMultiHistoricalCost);
+            prodMultiHistoricalCost.insert(_prodTable, prodMultiHistoricalCost.defaultParmBuffer());
+
+            ProdParmHistoricalCost ProdParmHistoricalCost = ProdParmHistoricalCost::find(prodMultiHistoricalCost.parmId(), _prodTable.ProdId, true);
+            ProdParmHistoricalCost.CalcDate = _finishDate;
+            ProdParmHistoricalCost.update();
+
+            prodMultiHistoricalCost.runOperation();
+
+            ttscommit;
+
+            numberOfSuccess++;
+
+            // post successfully
+            Info(strFmt("@KJP:KJP500310", _prodTable.ProdId));
+        }
+        catch
+        {
+            SysInfologMessageStruct sysInfologMessageStruct;
+            SysInfologEnumerator sysInfologEnumerator = SysInfologEnumerator::newData(infolog.cut());
+            while (sysInfologEnumerator.moveNext())
+            {   
+                sysInfologMessageStruct = SysInfologMessageStruct::construct(sysInfologEnumerator.currentMessage());
+                error(strFmt("@SYS332066", strFmt("@SYS26199", _prodTable.ProdId), sysInfologMessageStruct.message()));
+            }            
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

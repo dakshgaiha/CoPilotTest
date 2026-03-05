@@ -1,0 +1,561 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AutoInvoicePostingIFService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///  Process SO Invoice
+/// </summary>
+class KJP_SM_AutoInvoicePostingIFService extends KJP_CM_IFBatchBase
+{
+    KJP_SM_InsertAutoInvoiceStagingDataSingleton singleton;
+    container               allTransactionTypesSalesOrderPool;
+    int64                   numberOfRecordsProcessed, numOfErrors;
+    KJP_SM_SequenceNo       seqNo;
+    container               conPickList, conSalesOrder;
+    Set                     salesOrderIssue = new Set(Types::String);
+    SetEnumerator           salesOrderSetEnumerator;
+
+    public static const str hyphen = '-';
+    public static const str functionName = KJP_CM_FunctionIdConst::dfbMfg0774_001;
+
+
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Process run method 
+    /// </summary>
+    void processRun()
+    {
+        
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+        KJP_SM_InvoiceStagingLine   stagingLine;
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster;
+        boolean                     isProcessStarted;
+        str                         pickList, salesOrders;
+        System.Exception            ex;
+        try
+        {
+            if(KJP_CM_Utils::checkCurExtIsKKC())
+            {
+                ttsbegin;
+                if(multipurposeParm)
+                {
+                    int pos         =  strFind(multipurposeParm, ':', 0, strLen(multipurposeParm));
+                    pickList        = subStr(multipurposeParm, 1, pos-1);
+                    salesOrders     = subStr(multipurposeParm, pos + 1, strLen(multipurposeParm));
+                    if (pickList != nullValueBaseType(Types::String))
+                    {
+                        conPickList     = str2con_RU(pickList, ',');
+                    }
+                    if (salesOrders != nullValueBaseType(Types::String))
+                    {
+                        conSalesOrder   = str2con_RU(salesOrders, ',');
+                    }
+                }
+                select pessimisticlock firstonly generalPurposeMaster
+                    where generalPurposeMaster.Key == KJP_CM_ConstantHelper::DuplicateProcessCheckKey
+                    && generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origCodeDuplicateProcessCheckKey;
+                if(generalPurposeMaster)
+                {
+                    select firstonly stagingHeader where 
+                        stagingHeader.InvoicePostStatus == KJP_SM_InvoicePostStatus::Executing;
+            
+                    if(stagingHeader.RecId)
+                    {
+                        KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName, executionDateTime,"@KJP:KJP500485",KJP_CM_LogType::Info);
+                
+                    }
+                    else
+                    {
+                        KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName, executionDateTime,"@KJP:KJP500486",KJP_CM_LogType::Info);
+                        this.processAutoInvoicePosting();
+                        isProcessStarted = true;
+                    }
+                }
+                else
+                {
+                    KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName, executionDateTime,"@KJP:KJP500485",KJP_CM_LogType::Info);  
+                }
+                ttscommit;
+                if(isProcessStarted)
+                {
+                    if(numberOfRecordsProcessed)
+                    {
+                        KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName,executionDateTime,"@KJP:KJP500487", KJP_CM_LogType::Info);
+                        this.processMultiThreadingTasks();
+                    }
+                }
+            }
+        }
+        catch(ex)
+        {
+            Global::exceptionTextFallThrough();
+            ttsbegin;
+            delete_from stagingHeader;
+            delete_from stagingLine;
+            ttscommit;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processMultiThreadingTasks</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Process multithreading task
+    /// </summary>
+    public void processMultiThreadingTasks()
+    {
+        BatchHeader                                 batchHeader;
+        SysOperationServiceController               controller;
+        int                                         threadCount;
+        
+        int totalNumberOfTasksNeeded = smmParametersTable::find().KJPSMInvoicePostingThreadCount;
+        if (totalNumberOfTasksNeeded > 0)
+        {
+            if(this.isExecutingInBatch())
+            {
+                batchHeader = this.getCurrentBatchHeader();
+                KJP_SM_MultiThreadingGetWorkItemContract contract;
+                for(threadCount = 1; threadCount <= totalNumberOfTasksNeeded; threadCount++)
+                {
+                    controller = KJP_SM_MultiThreadingGetWorkItemController::construct();
+                    contract = controller.getDataContractObject('_taskContract');
+                    contract.parmDateTime(executionDateTime);
+                    contract.parmJobId(jobId);
+                    contract.parmThread(threadCount);
+                    controller.batchInfo().parmCaption(jobId + ':' +int2Str(threadCount));
+                    batchHeader.addTask(controller);
+                    KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName,executionDateTime,strFmt("@KJP:KJP500492",threadCount),KJP_CM_LogType::Info);
+               
+                }
+                batchHeader.save();
+                this.batchHold();
+            }
+        }
+        else
+        {
+            throw Error(strFmt("@KJP:KJP500547", "@KJP:KJP102843", "@SYS36436"));
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pickLineMax</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Max line count
+    /// </summary>
+    /// <param name = "_salesId">SalesId</param>
+    /// <returns>True/False</returns>
+    private boolean pickLineMax(SalesId _salesId)
+    {
+        SalesLine  salesLine;
+        int maxLineCount = str2Int(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::SalesReservationKey, KJP_CM_ConstantHelper::origcodeSalesReservation_PickingLineMax).DestinationCode);
+
+        select count(RecId) from salesLine
+            where salesLine.SalesId == _salesId;
+
+        if (salesLine.RecId > maxLineCount)
+        {
+            KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName, executionDateTime, strFmt("@KJP:KJP500488", maxLineCount, _salesId), KJP_CM_LogType::Info);
+            return false;
+        }
+
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processAutoInvoicePosting</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Invoice posting process
+    /// </summary>
+    private void processAutoInvoicePosting()
+    {
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster;
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+        KJP_SM_InvoiceStagingLine   stagingLine;
+
+
+        seqNo = 1;
+        singleton       = KJP_SM_InsertAutoInvoiceStagingDataSingleton::instance();
+          
+
+        singleton.parmExecutionDateTime(executionDateTime);
+        singleton.setPoolIdDetails();
+        singleton.getcalendarId();
+        delete_from stagingHeader;
+        delete_from stagingLine;
+
+        while select DestinationCode from generalPurposeMaster
+            where generalPurposeMaster.Key == KJP_CM_ConstantHelper::KJP_SM_SalesAutomateInvoicePosting_SalesPoolKey
+            && generalPurposeMaster.OriginalCode != KJP_CM_ConstantHelper::origCodeKJP_SM_SalesAutomateInvoicePosting_SalesPoolKey_SalesOrder
+        {
+            this.getAllTypesSOPool(generalPurposeMaster.DestinationCode);
+        }
+        
+        if (conPickList != conNull())
+        {
+            this.processParmRecordsForPickingList();
+        }
+        if (conSalesOrder != conNull())
+        {
+            this.processParmRecordsForSalesOrders();
+        }
+        if (conSalesOrder == conNull() && conPickList == conNull())
+        {
+            this.processParmRecordsForPickingList();
+            this.processParmRecordsForSalesOrders();
+        }
+        this.updateErroredSalesOrderStatus();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processParmRecordsForPickingList</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Picking list data
+    /// </summary>
+    private void processParmRecordsForPickingList()
+    {
+        SalesTable              salesTable;
+        salesId                 salesId;
+        SalesLine               salesLine;
+        WMSOrderTrans           wmsOrderTrans;
+        WMSPickingRoute         wmsPickingRoute;
+        InventDim               inventDim;
+        QueryRun                qr;
+        QueryBuildDataSource    qbdsPickList;
+        int                     i;
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+        QueryBuildDataSource    qbdsWMSorderTrans;
+        Set                     wmsOrderPickSkip;
+
+        Query query = new Query(queryStr(KJP_SM_AutoInvoicePostingPickingList));
+
+        wmsOrderPickSkip      = new Set(Types::String);
+
+        qr = new QueryRun(query);
+        if(conPickList != conNull())
+        {
+            qbdsPickList = SysQuery::findOrCreateDataSource(qr.query(), tableNum(WMSPickingRoute));
+            for(i = 1; i <= conLen(conPickList); i++)
+            {
+                qbdsPickList.addRange(fieldNum(WMSPickingRoute, PickingRouteId)).value(conPeek(conPickList, i));
+            }
+        }
+        qbdsWMSorderTrans = SysQuery::findOrCreateDataSource(qr.query(), tableNum(wmsOrderTrans));
+        qbdsWMSorderTrans.addRange(fieldNum(WMSOrderTrans, dlvDate)).value(SysQuery::range(dateNull(), DateTimeUtil::date(executionDateTime)));
+        while(qr.next())
+        {
+        
+            salesTable      = qr.get(tableNum(SalesTable));
+            salesLine       = qr.get(tableNum(SalesLine));
+            wmsOrderTrans   = qr.get(tableNum(WMSOrderTrans));
+            inventDim       = qr.get(tableNum(InventDim));
+            wmsPickingRoute = qr.get(tableNum(WMSPickingRoute));
+            
+            if(!wmsOrderPickSkip.in(wmsPickingRoute.pickingRouteID) && singleton.checkTaxDetails(salesLine.SalesId, wmsPickingRoute.pickingRouteID))
+            {
+                select firstonly RecId from stagingHeader where stagingHeader.SalesId == salesLine.SalesId
+                    && stagingHeader.WMSPickingRouteRefId == wmsPickingRoute.RecId;
+                if(!stagingHeader.RecId)
+                {
+                    salesId = salesTable.SalesId;
+                    singleton.insertInvoiceStagingHeader(salesTable, salesLine, seqNo, wmsPickingRoute);
+                    seqNo++;
+                }
+                if(!singleton.insertStagingLines(salesLine,inventDim.inventBatchId,inventDim,0,
+                        wmsPickingRoute,wmsOrderTrans))
+                {
+                    if(salesId && !salesOrderIssue.in(salesId))
+                    {
+                        salesOrderIssue.add(salesId);
+                    }
+                }
+                else
+                {
+                    numberOfRecordsProcessed++;
+                }
+            }
+            else
+            {
+                if(!wmsOrderPickSkip.in(wmsPickingRoute.pickingRouteID))
+                {
+                    wmsOrderPickSkip.add(wmsPickingRoute.pickingRouteID);
+                }
+            }
+            
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processParmRecordsForSalesOrders</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// SO data
+    /// </summary>
+    private void processParmRecordsForSalesOrders()
+    {
+        SalesTable              salesTable;
+        salesId                 salesId;
+        SalesLine               salesLine;
+        InventDim               inventDim;
+        QueryRun                qr;
+        Set                     salesOrderSkip, salesOrderInclude;
+        QueryBuildDataSource    qbdsSalesOrder;
+        int                     i,j;
+        int                     loop;
+
+
+        salesOrderSkip      = new Set(Types::String);
+        salesOrderInclude   = new Set(Types::String);
+
+        Query query = new Query(queryStr(KJP_SM_AutoInvoicePostingSalesOrders));
+        qr = new QueryRun(query);
+        qbdsSalesOrder = SysQuery::findOrCreateDataSource(qr.query(), tableNum(SalesTable));
+        if(conSalesOrder != conNull())
+        {
+            for(i = 1; i <= conLen(conSalesOrder); i++)
+            {
+                qbdsSalesOrder.addRange(fieldNum(SalesTable, SalesId)).value(SysQuery::value(conPeek(conSalesOrder, i)));
+            }
+        }
+        for (j = 1; j <= conLen(allTransactionTypesSalesOrderPool); j++)
+        {
+            qbdsSalesOrder.addRange(fieldNum(SalesTable, SalesPoolId)).value(SysQuery::value(conPeek(allTransactionTypesSalesOrderPool, j)));
+        }
+            
+
+        while(qr.next())
+        {
+            salesTable      = qr.get(tableNum(SalesTable));
+            salesLine       = qr.get(tableNum(SalesLine));
+            inventDim       = qr.get(tableNum(InventDim));
+           
+            if(!salesOrderSkip.in(salesLine.SalesId))
+            {
+                if(salesId != salesLine.SalesId && singleton.validateHeaderData(salesLine) && this.pickLineMax(salesTable.SalesId))
+                {
+                    loop = 1;
+                    salesId = salesTable.SalesId;
+                    singleton.insertInvoiceStagingHeader(salesTable, salesLine, seqNo);
+                    seqNo ++;
+                    salesOrderInclude.add(salesId);
+                }
+                if(salesOrderInclude.in(salesLine.salesId))
+                {
+                    InventBatchId batchId = inventDim.inventBatchId;
+                    if(!singleton.insertStagingLines(salesLine,batchId,inventDim,loop))
+                    {
+                        if(salesId && !salesOrderIssue.in(salesId))
+                        {
+                            salesOrderIssue.add(salesId);
+                        }
+                    }
+                    numberOfRecordsProcessed ++;
+                }
+                else
+                {
+                    salesOrderSkip.add(salesLine.SalesId);
+                }
+            }
+            loop++;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runFromManualBatchProcess</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Process Manual batch process
+    /// </summary>
+    /// <param name = "_contract">Contract</param>
+    public void runFromManualBatchProcess(KJP_SM_AutoInvoicePostingDataContract _contract)
+    {   
+        str param = _contract.parmRecievedPickListNumber() + ':' + _contract.parmRecievedSalesOrderNumber();
+        KJP_CM_IFBatchDataContract contract = new KJP_CM_IFBatchDataContract();
+        contract.parmExecutionDateTime(DateTimeUtil::getSystemDateTime());
+        contract.parmMultipurposeParm(param);
+        contract.parmIsUrgent(false);
+        contract.parmfunctionId(functionName);
+        
+        this.run(contract);
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getAllTypesSOPool</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// All types Pool
+    /// </summary>
+    /// <param name = "_destinationCode">Destination code</param>
+    private void getAllTypesSOPool(KJP_CM_DestinationCode _destinationCode)
+    {
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster;
+      
+        while select DestinationCode from generalPurposeMaster
+           group by generalPurposeMaster.DestinationCode
+            where generalPurposeMaster.Key == _destinationCode
+        {
+            allTransactionTypesSalesOrderPool = allTransactionTypesSalesOrderPool +  generalPurposeMaster.DestinationCode;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>batchHold</Name>
+				<Source><![CDATA[
+    private void batchHold()
+    {
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+
+        do
+        {
+            select firstonly stagingHeader
+                where stagingHeader.InvoicePostStatus == KJP_SM_InvoicePostStatus::Executing;
+            if(stagingHeader)
+            {
+                sleep(10000);
+            }
+            else
+            {
+                this.updateSalesStatus();
+                this.processFinalTask();
+            }
+
+        }
+        while(stagingHeader);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processFinalTask</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Final task
+    /// </summary>
+    public  void processFinalTask()
+    {
+        KJP_CM_JobExecutionLogTable jobExecutionLogTable;
+        KJP_SM_InvoiceStagingHeader headerTable;
+        int i;
+
+        int  threadCountTotal = smmParametersTable::find().KJPSMInvoicePostingThreadCount;
+        for(i = 1; i <= threadCountTotal; i++)
+        {
+            infolog.add(Exception::Info, strFmt("@KJP:KJP500493",i,hyphen,hyphen));
+        }
+        
+        select count(RecId) from headerTable
+            where headerTable.InvoicePostStatus == KJP_SM_InvoicePostStatus::Success;
+
+        numberOfSuccess = headerTable.RecId;
+       
+        select firstonly jobExecutionLogTable
+            where jobExecutionLogTable.ExecutionDateTime == executionDateTime
+            && jobExecutionLogTable.CreatedBy == curUserId()
+            && jobExecutionLogTable.LogType == KJP_CM_LogType::Warning
+            && jobExecutionLogTable.JobId   == functionName;
+
+        if(jobExecutionLogTable)
+        {
+            infolog.add(Exception::Warning, "@KJP:KJP500490");
+        }
+        else
+        {
+            infolog.add(Exception::Info, "@KJP:KJP500489");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateErroredSalesOrderStatus</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Error updte
+    /// </summary>
+    private void updateErroredSalesOrderStatus()
+    {
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+
+        if(!salesOrderIssue.empty())
+        {
+            salesOrderSetEnumerator = salesOrderIssue.getEnumerator();
+            salesOrderSetEnumerator.reset();
+            while (salesOrderSetEnumerator.moveNext())
+            {
+                select firstonly forupdate stagingHeader
+                    where stagingHeader.SalesId == salesOrderSetEnumerator.current();
+
+                if (stagingHeader)
+                {
+                    stagingHeader.InvoicePostStatus = KJP_SM_InvoicePostStatus::Error;
+                    stagingHeader.update();
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateSalesStatus</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update sales status
+    /// </summary>
+    private void updateSalesStatus()
+    {
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+        SalesTable                  salesTable;
+        SalesLine                   salesLine;
+
+        ttsbegin;
+        while select stagingHeader
+            where stagingHeader.InvoicePostStatus == KJP_SM_InvoicePostStatus::Success
+            join salesTable
+                where salesTable.SalesId == stagingHeader.SalesId
+            && salesTable.SalesStatus != SalesStatus::Invoiced
+            notexists join salesLine
+                where salesLine.SalesId == salesTable.SalesId
+                && salesLine.SalesStatus != SalesStatus::Invoiced
+                && salesLine.SalesStatus != SalesStatus::Canceled
+        {
+            salesTable.reread();
+            salesTable.selectForUpdate(true);
+            salesTable.updateBackStatus();
+        }
+        ttscommit;
+
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DetailedScheduleToUbeClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFI-MFG-0167(Ube)
+/// Detailed schedule to Ube
+/// </summary>
+class KJP_SM_DetailedScheduleToUbeClass extends KJP_CM_IFBatchBase
+{
+    #ISOCountryRegionCodes
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        str getProdPoolId;
+        str getOprId;
+
+        if (!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            Error(strFmt("@KJP:KJP500527", curExt()));
+            return;
+        }
+
+        // get ProdPoolId and OprId from KJP_CM_GeneralPurposeMaster
+        getProdPoolId = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::ProdPoolKey
+            ,KJP_CM_ConstantHelper::origcodeProdPool_Ube).DestinationCode;
+
+        getOprId = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::OprIdKey
+            ,KJP_CM_ConstantHelper::origCodeOprIdKey_TestingAndShippingjudgment).DestinationCode;
+        
+        if(getProdPoolId && getOprId)
+        {
+            // 2.2.3 Select business table
+            KJP_SM_DetailedScheduleToCommonClass selectRecords = KJP_SM_DetailedScheduleToCommonClass::construct();
+            numberOfSuccess = selectRecords.selectProdTableRecords(getProdPoolId, getOprId, jobId, executionDateTime, true);
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

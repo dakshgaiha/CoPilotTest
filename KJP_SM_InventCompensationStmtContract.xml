@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompensationStmtContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The <c>KJP_SM_InventCompensationStmtContract</c> class is the data contract for the <c>KJP_SM_InventCompensationStmtReport</c> SSRS report.
+/// </summary>
+[DataContractAttribute]
+public class KJP_SM_InventCompensationStmtContract
+{
+    List inventCompensationStmtRecIdList = new List(Types::Int64);
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmInventCompensationStmtRecIdList</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the value of the datacontract parameter inventCompensationStmtRecIdList.
+    /// </summary>
+    /// <param name = "_inventCompensationStmtRecIdList">
+    /// Record Ids of the selected inventory compensation statement records.
+    /// </param>
+    /// <returns>
+    /// List containing record Ids of the selected inventory compensation statement records.
+    /// </returns>
+    [
+        DataMemberAttribute('InventCompensationStmtRecIdList'),
+        AifCollectionTypeAttribute('_inventCompensationStmtRecIdList', Types::Int64, extendedTypeStr(RecId)),
+        SysOperationControlVisibilityAttribute(False)
+    ]
+    public List parmInventCompensationStmtRecIdList(List _inventCompensationStmtRecIdList = inventCompensationStmtRecIdList)
+    {
+        inventCompensationStmtRecIdList = _inventCompensationStmtRecIdList;
+        return inventCompensationStmtRecIdList;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

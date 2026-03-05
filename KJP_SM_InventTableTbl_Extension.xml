@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTableTbl_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension class for inventTable Table for #66 and #67 common function FDD's table methods
+/// </summary>
+[ExtensionOf(tableStr(InventTable))]
+internal final class KJP_SM_InventTableTbl_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>kjp_SM_checkTransportMedicalItemClassification</Name>
+				<Source><![CDATA[
+     /// <summary>
+    /// Validation method for specialty drug registration check #66
+    /// </summary>
+    /// <param name = "_itemId">ItemId</param>
+    /// <returns>ret</returns>
+    public boolean kjp_SM_checkTransportMedicalItemClassification(ItemId _itemId)
+    {
+        InventTable                     inventTable;
+        KJP_CM_GeneralPurposeMaster     generalPurposeMaster;
+        boolean                         ret = false;
+
+        select firstonly RecId from inventTable
+            exists join generalPurposeMaster
+                where generalPurposeMaster.DestinationCode == inventTable.KJPCMTransportMedicalItemClassification
+                    && generalPurposeMaster.Key == KJP_CM_ConstantHelper::transportMedicalItemClassification
+                    && generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::specialMedicineItem
+                    && inventTable.ItemId == _itemId;
+        if (inventTable)
+        {
+            ret = true;
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>kjp_SM_checkStoppedFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validation method for discontinued product registration check #67
+    /// </summary>
+    /// <param name = "_itemId">ItemId</param>
+    /// <param name = "_inventDimId">InventDimId</param>
+    /// <returns>ret</returns>
+    public boolean kjp_SM_checkStoppedFlag(ItemId _itemId, InventDimId _inventDimId = KJP_CM_ConstantHelper::AllBlank)
+    {
+        InventItemSalesSetup inventItemSales;
+        boolean              ret = false;
+ 
+        select firstonly Stopped from inventItemSales
+            where inventItemSales.ItemId == _itemId
+                && inventItemSales.InventDimId == _inventDimId;
+
+        if (inventItemSales.Stopped == NoYes::Yes)
+        {
+            ret = true;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

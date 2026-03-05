@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CreateSalesLineFirstConfirmedHistory</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// CreateSalesLineFirstConfirmedHistory
+/// </summary>
+class KJP_SM_CreateSalesLineFirstConfirmedHistory
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// main
+    /// </summary>
+    public void main()
+    {
+        const str KKCDateArea = '0001';
+        changecompany(KKCDateArea)
+        {
+            RecordInsertList salesLineRecordInsertList = new RecordInsertList(tableNum(KJP_SM_SalesLineFirstConfirmedHistory));
+
+            SalesLine wkSalesLine;
+            KJP_SM_SalesLineFirstConfirmedHistory wkSalesLineFirstConfirmedHistory;
+
+
+            while select wkSalesLine
+                where wkSalesLine.ShippingDateConfirmed != dateNull()
+                notexists join wkSalesLineFirstConfirmedHistory
+                where wkSalesLine.RecId == wkSalesLineFirstConfirmedHistory.RecIdSalesLine
+            {
+                wkSalesLineFirstConfirmedHistory.RecIdSalesLine             = wkSalesLine.RecId;
+                wkSalesLineFirstConfirmedHistory.SalesId                    = wkSalesLine.SalesId;
+                wkSalesLineFirstConfirmedHistory.LineNum                    = wkSalesLine.LineNum;
+                wkSalesLineFirstConfirmedHistory.LineCreationSequenceNumber = wkSalesLine.LineCreationSequenceNumber;
+                wkSalesLineFirstConfirmedHistory.ItemId                     = wkSalesLine.ItemId;
+                wkSalesLineFirstConfirmedHistory.ShippingDateConfirmed      = wkSalesLine.ShippingDateConfirmed;
+                wkSalesLineFirstConfirmedHistory.SalesQty                   = wkSalesLine.SalesQty;
+
+                salesLineRecordInsertList.add(wkSalesLineFirstConfirmedHistory);
+            }
+
+            salesLineRecordInsertList.insertDatabase();
+        }
+
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

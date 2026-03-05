@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CustomerRelationMasterService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// The class is used to register and unregister Billing and Accounting customer
+/// </summary>
+Class KJP_SM_CustomerRelationMasterService extends KJP_CM_IFBatchBase
+{
+    KJP_SM_CustomerRelationMasterTable customerRelationMasterTable;
+    CustTable                          custTable;
+    boolean                            unRegistered;
+
+    int totalProcessedRecord = 0;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  processRun
+    /// </summary>
+    void processRun()
+    {
+        changecompany(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::companyCodeKey,KJP_CM_ConstantHelper::origCompanyCode_KKC).DestinationCode)
+        {
+            try
+            {
+                ttsbegin;
+                this.updateCustRelationMasterToExpire();
+                this.unRegisterCustomerMasterRelation();
+                this.registerCustomerMasterRelation();
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                error(any2Str(Exception::Error));
+                totalProcessedRecord = 0;
+            }
+            numberOfSuccess = totalProcessedRecord;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerCustomerMasterRelation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// registerCustomerMasterRelation
+    /// </summary>
+    protected void registerCustomerMasterRelation()
+    {
+        KJP_SM_CustomerRelationMasterTable regCustomerRelationMaster;
+        CustTable                          custTableLoc ,custTableUpdate; // Bug 115709 Fix
+ 
+        while select forupdate customerRelationMasterTable
+            order by CustomerRelationType desc, RelationFrom asc
+            where customerRelationMasterTable.RecordStartDate <= DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) &&
+             customerRelationMasterTable.ProcessingStatus == KJP_SM_ProcessingStatus::NotSet
+            join  custTable
+            where custTable.AccountNum == customerRelationMasterTable.RelationFrom
+        {
+            custTableUpdate = CustTable::find(custTable.AccountNum);// Bug 115709 Fix
+
+            if (customerRelationMasterTable.CustomerRelationType == KJP_SM_CustomerRelationType::AccountRelateBilling)
+            {
+                customerRelationMasterTable.ProcessingStatus = KJP_SM_ProcessingStatus::Applied;
+
+                select firstonly forupdate AccountNum,InvoiceAccount from custTableLoc
+                   exists join regCustomerRelationMaster
+                    where regCustomerRelationMaster.RelationFrom == custTableLoc.AccountNum
+                    && regCustomerRelationMaster.RelationTo == customerRelationMasterTable.RelationFrom
+                    && regCustomerRelationMaster.ProcessingStatus == KJP_SM_ProcessingStatus::Applied
+                    && regCustomerRelationMaster.RecordStartDate <= DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone())
+                    && regCustomerRelationMaster.CustomerRelationType == KJP_SM_CustomerRelationType::DeliveryRelateAccount;
+
+                if (custTableLoc)
+                {   
+                    custTableLoc.InvoiceAccount = customerRelationMasterTable.RelationTo;
+                    custTableLoc.update();
+                    // Bug 115709 Fix
+                    if(custTableUpdate.RecId == custTableLoc.RecId)
+                    {
+                        custTableUpdate = custTable::find(custTable.AccountNum);
+                    }
+                    // Bug 115709 Fix
+                }
+                custTableUpdate.InvoiceAccount = customerRelationMasterTable.RelationTo;// Bug 115709 Fix
+            }
+            else
+            {
+                unRegistered = false;
+                this.updateCustTableDimenssion(customerRelationMasterTable, custTableUpdate); // Bug 115709 Fix
+                customerRelationMasterTable.ProcessingStatus = KJP_SM_ProcessingStatus::Applied;
+
+                // Find A to C relation to register customer invoice
+                select firstonly regCustomerRelationMaster
+                    where regCustomerRelationMaster.RelationFrom == customerRelationMasterTable.RelationTo 
+                    && customerRelationMasterTable.ProcessingStatus == KJP_SM_ProcessingStatus::Applied
+                    && regCustomerRelationMaster.RecordStartDate <= DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone())
+                    && regCustomerRelationMaster.CustomerRelationType == KJP_SM_CustomerRelationType::AccountRelateBilling;
+ 
+                if (regCustomerRelationMaster)
+                {
+                    custTableUpdate.InvoiceAccount = regCustomerRelationMaster.RelationTo;   // Bug 115709 Fix
+                }
+            }
+            custTableUpdate.selectForUpdate(true); // Bug 115709 Fix
+            custTableUpdate.update();    // Bug 115709 Fix
+            customerRelationMasterTable.update();
+            totalProcessedRecord ++;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unRegisterCustomerMasterRelation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  unRegisterCustomerMasterRelation
+    /// </summary>
+    protected void unRegisterCustomerMasterRelation()
+    {
+        KJP_SM_CustomerRelationMasterTable unRegCustomerRelationMaster;
+        custTable                          custTableLoc ,custTableUpdate;  // Bug 115709 Fix
+        
+        while select forupdate customerRelationMasterTable
+            order by CustomerRelationType desc, RelationFrom asc 
+            where customerRelationMasterTable.RecordEndDate < DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) &&
+                  customerRelationMasterTable.ProcessingStatus == KJP_SM_ProcessingStatus::Applied
+        join  custTable
+            where custTable.AccountNum == customerRelationMasterTable.RelationFrom
+        {
+            custTableUpdate = CustTable::find(custTable.AccountNum);// Bug 115709 Fix
+
+            if (customerRelationMasterTable.CustomerRelationType == KJP_SM_CustomerRelationType::AccountRelateBilling)
+            {
+                customerRelationMasterTable.ProcessingStatus = KJP_SM_ProcessingStatus::Expired;
+ 
+                //find A to C relation to ungister customer financial dimemsion
+                select forupdate unRegCustomerRelationMaster
+                    where unRegCustomerRelationMaster.RelationTo == customerRelationMasterTable.RelationFrom
+                    && unRegCustomerRelationMaster.ProcessingStatus == KJP_SM_ProcessingStatus::Applied
+                    && unRegCustomerRelationMaster.RecordEndDate < DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone())
+                    && unRegCustomerRelationMaster.CustomerRelationType == KJP_SM_CustomerRelationType::DeliveryRelateAccount
+                    join custTableLoc
+                    where custTableLoc.AccountNum == unRegCustomerRelationMaster.RelationFrom;
+ 
+                if (unRegCustomerRelationMaster)
+                {
+                    unRegistered                = true;
+                    custTableLoc.InvoiceAccount = KJP_CM_ConstantHelper::blankValue; // ungister customer invoice
+                    this.updateCustTableDimenssion(unRegCustomerRelationMaster, custTableLoc); // unregister customer dimension
+                    unRegCustomerRelationMaster.ProcessingStatus = KJP_SM_ProcessingStatus::Expired;
+                    custTableLoc.selectForUpdate(true);
+                    unRegCustomerRelationMaster.update();
+                    custTableLoc.update();
+
+                    // Bug 115709 Fix
+                    if(custTableUpdate.RecId == custTableLoc.RecId)
+                    {
+                        custTableUpdate = custTable::find(custTable.AccountNum);
+                    }
+                    // Bug 115709 Fix
+                }
+                custTableUpdate.InvoiceAccount = KJP_CM_ConstantHelper::blankValue;       // unregister customer invoice Bug 115709 Fix
+            }
+            else
+            {
+                unRegistered             = true;
+                custTableUpdate.InvoiceAccount = KJP_CM_ConstantHelper::blankValue;  // Bug 115709 Fix
+                this.updateCustTableDimenssion(customerRelationMasterTable, custTableUpdate, NoYes::No); // Bug 115709 Fix
+                customerRelationMasterTable.ProcessingStatus = KJP_SM_ProcessingStatus::Expired;
+            }
+
+            custTableUpdate.selectForUpdate(true);  // Bug 115709 Fix
+            custTableUpdate.update();    // Bug 115709 Fix
+            customerRelationMasterTable.update();
+            totalProcessedRecord ++;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateCustTableDimenssion</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// this method is used to update customer financial dimension 
+    /// </summary>
+    /// <param name = "_customerRelationMaster">_customerRelationMaster</param>
+    /// <param name = "_custTable">Customer Table</param>
+    /// <param name = "_register">Boolean</param>
+    protected void updateCustTableDimenssion(KJP_SM_CustomerRelationMasterTable _customerRelationMaster , CustTable _custTable, boolean _register = NoYes::Yes)
+    {
+        DimensionAttributeValueSetStorage dimStorage;
+        DimensionAttributeValueSetStorage newDimStorage;
+        DimensionAttributeValue           dimAttrValue;
+        DimensionAttribute                dimAttr;
+        boolean                           checkCustDim;
+        CustAccount                       custAccLoc;
+ 
+        CustTable custTableDimemsionUpdate = _custTable ;
+        custAccLoc = _register ? _customerRelationMaster.RelationTo : KJP_CM_ConstantHelper::blankValue;
+        if (custTableDimemsionUpdate.RecId)
+        {
+            // Get the current financial dimension set
+            dimStorage = DimensionAttributeValueSetStorage::find(custTableDimemsionUpdate.DefaultDimension);
+ 
+            // Create a new dimension storage
+            newDimStorage = new DimensionAttributeValueSetStorage();
+            // Iterate through the dimension values in the storage
+            if (dimStorage.elements())
+            {
+                for (int i = 1; i <= dimStorage.elements(); i++)
+                {
+                    dimAttrValue = DimensionAttributeValue::find(dimStorage.getValueByIndex(i));
+                    dimAttr = DimensionAttribute::find(dimStorage.getAttributeByIndex(i));
+                    if (dimAttr.Name == KJP_CM_ConstantHelper::customer)
+                    {
+                        checkCustDim = true;
+                        if(!unRegistered)
+                        {
+                            dimAttrValue = DimensionAttributeValue::findByDimensionAttributeAndValue(dimAttr,custAccLoc);
+                            newDimStorage.addItem(dimAttrValue);
+                        }
+                    }
+                    else
+                    {
+                        newDimStorage.addItem(dimAttrValue);
+                    }
+                }
+            }
+ 
+            if (!checkCustDim)
+            {
+                dimAttrValue = DimensionAttributeValue::findByDimensionAttributeAndValue(DimensionAttribute::findByName(KJP_CM_ConstantHelper::customer),custAccLoc);
+                newDimStorage.addItem(dimAttrValue);
+            }
+            // Save the new dimension set
+            newDimStorage.save();
+            custTableDimemsionUpdate.DefaultDimension = newDimStorage.save();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateCustRelationMasterToExpire</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// This method is used to update customer relation master expired which status is notSet and end date already expired
+    /// </summary>
+    protected void  updateCustRelationMasterToExpire()
+    {
+        KJP_SM_CustomerRelationMasterTable custRelationMaster;
+       
+        while select forupdate ProcessingStatus from custRelationMaster
+        where custRelationMaster.RecordEndDate < DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()) &&
+              custRelationMaster.ProcessingStatus == KJP_SM_ProcessingStatus::NotSet
+        {
+            custRelationMaster.ProcessingStatus = KJP_SM_ProcessingStatus::Expired;
+            custRelationMaster.update();
+            totalProcessedRecord ++;
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

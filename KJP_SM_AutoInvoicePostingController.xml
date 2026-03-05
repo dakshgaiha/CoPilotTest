@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AutoInvoicePostingController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller class
+/// </summary>
+class KJP_SM_AutoInvoicePostingController extends SysOperationServiceController
+{
+
+    const KJP_CM_JobId jobId = 'BSMA00774';
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// New method
+    /// </summary>
+    protected void new()
+    {
+        super(classStr(KJP_SM_AutoInvoicePostingIFService),
+            methodStr(KJP_SM_AutoInvoicePostingIFService, runFromManualBatchProcess), SysOperationExecutionMode::Synchronous);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>defaultCaption</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Default captiion
+    /// </summary>
+    /// <returns>Default caption</returns>
+    public ClassDescription defaultCaption()
+    {
+        return "@KJP:KJP102824";
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Constructor Class
+    /// </summary>
+    /// <param name = "_executionMode">Mode</param>
+    /// <returns>Instance of class</returns>
+    public static KJP_SM_AutoInvoicePostingController construct(SysOperationExecutionMode _executionMode = SysOperationExecutionMode::Synchronous)
+    {
+        KJP_SM_AutoInvoicePostingController controller = new KJP_SM_AutoInvoicePostingController();
+        controller.parmExecutionMode(_executionMode);
+        return controller;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// main method
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_AutoInvoicePostingController multiThreadingCreateTasksController = KJP_SM_AutoInvoicePostingController::construct();
+        multiThreadingCreateTasksController.parmArgs(_args);
+        multiThreadingCreateTasksController.startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>mustGoBatch</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Must always run in batch
+    /// </summary>
+    /// <returns>True</returns>
+    public boolean mustGoBatch()
+    {
+        return true;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

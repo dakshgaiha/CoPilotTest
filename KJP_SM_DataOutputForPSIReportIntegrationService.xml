@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DataOutputForPSIReportIntegrationService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFB-COG-0757
+/// The <c>KJP_SM_DataOutputForPSIReportIntegrationService</c> is a service for <c>KJP_SM_DataOutputForPSIReportIntegrationController</c>,
+/// </summary>
+
+class KJP_SM_DataOutputForPSIReportIntegrationService extends KJP_CM_IFBatchBase
+{
+    KJP_SM_Category     cBrand;
+    KJP_SM_ItemNameStd  cItemNameStd;
+    KJP_SM_Property     cProperty;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>runDataOutputForPSIReportIntegrationController</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Process IF batch base operaitons
+    /// </summary>
+    /// <param name="_dataContract">KJP_FI_CreatingMonthEndInventoryTableContract</param>
+    public void runDataOutputForPSIReportIntegrationController(KJP_SM_DataOutputForPSIReportIntegrationContract _dataContract)
+    {
+        const str wkFunctionid = KJP_CM_FunctionIdConst::dfbMfg0798_001; // DFB-MFG-0798-001
+        KJP_CM_IFBatchDataContract contract = new KJP_CM_IFBatchDataContract();
+        Contract.parmfunctionId(wkFunctionid);
+        contract.parmExecutionDateTime(DateTimeUtil::getSystemDateTime());
+        contract.parmIsUrgent(false);
+        cBrand = _dataContract.parmBrand();
+        cItemNameStd = _dataContract.parmItemNameStd();
+        cProperty = _dataContract.parmProperty();
+        this.run(contract);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point of the class
+    /// </summary>
+    public void processRun()
+    {
+        System.Exception ex;
+        this.parmIsInfo2SysLog(true);
+
+        try
+        {
+            ttsbegin;
+
+            KJP_SM_CreatePSIBySlipLineTableDate createPSIBySlipLineTableDate = new KJP_SM_CreatePSIBySlipLineTableDate(cProperty, cBrand, cItemNameStd);
+            createPSIBySlipLineTableDate.main();
+
+            KJP_SM_ReplaceCurrentMonthlyQuantitySummary replaceCMQSummary = new KJP_SM_ReplaceCurrentMonthlyQuantitySummary(cProperty, cBrand, cItemNameStd);
+            replaceCMQSummary.currentMontheReplace();
+
+            KJP_SM_CreatePSIBySlipLineTableRemoval createPSIBySlipLineTableRemoval = new KJP_SM_CreatePSIBySlipLineTableRemoval(cProperty, cBrand, cItemNameStd);
+            createPSIBySlipLineTableRemoval.main();
+
+            KJP_SM_CreatePSIBySlipLineTableEndOfMonthInventory createPSIBySlipLineTableEndOfMonthInventory = new KJP_SM_CreatePSIBySlipLineTableEndOfMonthInventory(cProperty, cBrand, cItemNameStd);
+            createPSIBySlipLineTableEndOfMonthInventory.main();
+
+            KJP_SM_InventoryStandardAndWeekCalculation inventoryStandardAndWeekCalculation = new KJP_SM_InventoryStandardAndWeekCalculation(cProperty, cBrand, cItemNameStd);
+            inventoryStandardAndWeekCalculation.main();
+
+            ttscommit;
+
+        }
+        catch (ex)
+        {
+            Global::exceptionTextFallThrough();
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

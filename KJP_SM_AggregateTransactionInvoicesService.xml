@@ -1,0 +1,682 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AggregateTransactionInvoicesService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///  Class to populate monthly invoice data
+/// </summary> 
+
+class KJP_SM_AggregateTransactionInvoicesService extends KJP_CM_IFBatchBase
+{
+    FiscalCalendarPeriod fisCalPeriod;
+    KJP_CM_DestinationCode  currencyCodeForMonthlySettlement, 
+                            consolidationofMainAccount, 
+                            invoiceUnitTaxRounding, 
+                            numberseqCode,
+                            monthlyBillingSalesTaxDifference,
+                            custTransTxtForPaymentDataOfMonthlyInvoicestrans;
+    AmountCur   salesAmount, amountReturned, amountDiscounted;
+    int64       numberOfProcessedRecords;
+   
+    
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    void processRun()
+    {
+        try
+        {
+            if (KJP_CM_Utils::checkCurExtIsKKC())
+            {
+                ttsbegin;
+                this.setPrerequisiteData();
+                this.clearData();
+                this.registerMonthlyInvoiceDataCurMth();
+                this.registerMonthlyInvoiceDataPrevMth();
+                numberOfSuccess = numberOfProcessedRecords;
+                ttscommit;
+            }
+        }
+        catch
+        {
+            Global::exceptionTextFallThrough();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getcalendarPeriod</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get calendar period
+    /// </summary>
+    public void getcalendarPeriod()
+    {
+        LedgerFiscalCalendarPeriod      ledgerFiscalCalendarPeriod;
+        LedgerPeriodModuleAccessControl moduleAccessControl;
+
+        LedgerRecId             ledger = Ledger::primaryLedger(CompanyInfo::findDataArea(curExt()).RecId);
+
+        select firstonly fisCalPeriod
+                order by fisCalPeriod.StartDate asc
+                where fisCalPeriod.Type == FiscalPeriodType::Operating
+                exists join ledgerFiscalCalendarPeriod
+                where ledgerFiscalCalendarPeriod.FiscalCalendarPeriod == fisCalPeriod.RecId
+                && ledgerFiscalCalendarPeriod.Status == FiscalPeriodStatus::Open
+                && ledgerFiscalCalendarPeriod.Ledger == ledger
+                exists join moduleAccessControl
+                where moduleAccessControl.LedgerFiscalCalendarPeriod == ledgerFiscalCalendarPeriod.RecId
+                && moduleAccessControl.SalesAccessLevel != ModulePeriodStat::All;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPrerequisiteData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Set prerequisite data
+    /// </summary>
+    public void setPrerequisiteData()
+    {
+        currencyCodeForMonthlySettlement    = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::AggregateTransactionInvoicesToAgent_ConstantsKey,
+                                                KJP_CM_ConstantHelper::origCodeAggregateTransactionInvoicesToAgent_ConstantsKey_CurrencyCodeForMonthlySettlement).DestinationCode;
+        consolidationofMainAccount          = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::AggregateTransactionInvoicesToAgent_ConstantsKey,
+                                                KJP_CM_ConstantHelper::origCodeAggregateTransactionInvoicesToAgent_ConstantsKey_ConsolidationMainAccount).DestinationCode;
+        invoiceUnitTaxRounding              = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::AggregateTransactionInvoicesToAgent_ConstantsKey,
+                                                KJP_CM_ConstantHelper::origCodeAggregateTransactionInvoicesToAgent_ConstantsKey_TaxRoundingRule).DestinationCode;
+        numberseqCode                       =  KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::AggregateTransactionInvoicesToAgent_ConstantsKey, 
+                                                KJP_CM_ConstantHelper::origCodeAggregateTransactionInvoicesToAgent_MonthlyInvoiceNoSequenceId).DestinationCode;
+        monthlyBillingSalesTaxDifference    = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::AggregateTransactionInvoicesToAgent_ConstantsKey,
+                                                KJP_CM_ConstantHelper::origCodeAggregateTransactionInvoicesToAgent_ConstantsKey_MonthlyBillingSalesTaxDifference).DestinationCode;
+        
+        custTransTxtForPaymentDataOfMonthlyInvoicestrans =  KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::AggregateTransactionInvoicesToAgent_ConstantsKey,
+                                                             KJP_CM_ConstantHelper::origCodeAggregateTransactionInvoicesToAgent_ConstantsKey_CustTransTxtForPaymentDataOfMonthlyInvoices).DestinationCode;
+        this.getcalendarPeriod();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>clearData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Delete uncessary data
+    /// </summary>
+    public void clearData()
+    {
+        KJP_SM_MonthlyInvoiceHeaderTable headerTable;
+        KJP_SM_MonthlyInvoiceDetailTable detailsTable;
+        KJP_SM_MonthlySalesTaxTable      salesTaxTable;
+
+        str yearMnth = subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(fisCalPeriod.EndDate, DateSeparator::None), 1, 6);
+
+        delete_from detailsTable
+           exists join headerTable
+           where headerTable.MonthlyInvoiceNo == detailsTable.MonthlyInvoiceNo
+           && headerTable.InvoiceYearAndMonth == yearMnth;
+
+        delete_from salesTaxTable
+            where salesTaxTable.InvoiceYearAndMonth == yearMnth
+            exists join headerTable
+            where headerTable.MonthlyInvoiceNo == salesTaxTable.MonthlyInvoiceNo
+            && headerTable.InvoiceYearAndMonth == yearMnth;
+
+        delete_from headerTable
+            where headerTable.InvoiceYearAndMonth == yearMnth;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerMonthlyInvoiceDataCurMth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Register invoice data
+    /// </summary>
+    private void registerMonthlyInvoiceDataCurMth()
+    {
+        CustInvoiceJour                     custInvoiceJour;
+        KJP_SM_MonthlyInvoiceHeaderTable    monthlyInvoiceHeaderTableCur;
+
+        while select InvoiceAccount from custInvoiceJour
+            order by custInvoiceJour.InvoiceAccount asc
+            group by custInvoiceJour.InvoiceAccount
+            where custInvoiceJour.InvoiceDate >= fisCalPeriod.StartDate
+            && custInvoiceJour.InvoiceDate <= fisCalPeriod.EndDate
+            && custInvoiceJour.CurrencyCode == currencyCodeForMonthlySettlement
+            && custInvoiceJour.KJPSMTradeType != nullValueBaseType(Types::String)
+          
+        {
+          
+            // insert into Header table
+            monthlyInvoiceHeaderTableCur.clear();
+            monthlyInvoiceHeaderTableCur.InvoiceYearAndMonth            =   subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(fisCalPeriod.EndDate, DateSeparator::None), 1, 6);
+            monthlyInvoiceHeaderTableCur.InvoiceStartDate               =   fisCalPeriod.StartDate;
+            monthlyInvoiceHeaderTableCur.InvoiceEndDate                 =   fisCalPeriod.EndDate;
+            monthlyInvoiceHeaderTableCur.MonthlyInvoiceNo               =   NumberSeq::newReserveNumFromCode(numberseqCode).num();
+            monthlyInvoiceHeaderTableCur.InvoiceAccount                 =   custInvoiceJour.InvoiceAccount;
+            monthlyInvoiceHeaderTableCur.Currency                       =   currencyCodeForMonthlySettlement;
+          
+
+            if (monthlyInvoiceHeaderTableCur.validateWrite())
+            {
+                monthlyInvoiceHeaderTableCur.insert();
+                //Calculate and resgister invoice details per invoice account aggregated by CompanyChainId
+                this.calculateAndRegisterUnitInvoiceInformation(custInvoiceJour.InvoiceAccount, 
+                    monthlyInvoiceHeaderTableCur.RecId, 
+                    monthlyInvoiceHeaderTableCur.MonthlyInvoiceNo);
+                //Calulate and register tax amount per invoice per invoice account
+                this.calculateAndRegisterSalesTax(custInvoiceJour.InvoiceAccount,
+                    monthlyInvoiceHeaderTableCur.RecId,
+                    monthlyInvoiceHeaderTableCur.MonthlyInvoiceNo);
+                //Calculate and register settlement amount
+                this.calculateAndRegisterCustomerSettlement(custInvoiceJour.InvoiceAccount,
+                    monthlyInvoiceHeaderTableCur.RecId);
+                //Calculate and update the invoice amount
+                this.calculateAndUpdateInvoicingAmount(monthlyInvoiceHeaderTableCur.RecId, custInvoiceJour.InvoiceAccount);
+                numberOfProcessedRecords++;
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calculateAndRegisterUnitInvoiceInformation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Populate invoice details
+    /// </summary>
+    /// <param name = "_invoiceAccount">Invoice Account</param>
+    /// <param name = "_monthlyInvoiceHeaderTableCur">RecId</param>
+    /// <param name = "_invoiceNo">Invoice Num</param>
+    private void calculateAndRegisterUnitInvoiceInformation(CustAccount _invoiceAccount, RecId _monthlyInvoiceHeaderTableCur, KJP_SM_MonthlyInvoiceNumber _invoiceNo)
+    {
+        CustTable                           custTable;
+        KJP_CM_GeneralPurposeMaster         generalPurposeMaster;
+        CustInvoiceJour                     custInvoiceJour;
+        CustInvoiceTrans                    custInvoiceTrans;
+        KJP_SM_MonthlyInvoiceHeaderTable    monthlyInvoiceHeader;
+
+        Query                   query;
+        QueryRun                qr;
+        QueryBuildDataSource    qbds;
+
+        smmChainId  chainId;
+        query = new Query(queryStr(KJP_SM_AggregateTransactionInvoiceUnit));
+
+        qr = new QueryRun(query);
+        qbds = SysQuery::findOrCreateDataSource(qr.query(), tableNum(CustInvoiceJour));
+        qbds.addRange(fieldNum(CustInvoiceJour, InvoiceDate)).value(SysQueryRangeUtil::dateRange(fisCalPeriod.StartDate,fisCalPeriod.EndDate));
+        qbds.addRange(fieldNum(CustInvoiceJour, InvoiceAccount)).value(_invoiceAccount);
+        qbds.addRange(fieldNum(CustInvoiceJour, CurrencyCode)).value(currencyCodeForMonthlySettlement);
+        while(qr.next())
+        {
+            custTable               = qr.get(tableNum(CustTable));
+            generalPurposeMaster    = qr.get(tableNum(KJP_CM_GeneralPurposeMaster));
+            custInvoiceTrans        = qr.get(tableNum(CustInvoiceTrans));
+            if(chainId == nullValueBaseType(Types::String))
+            {
+                chainId = custTable.CompanyChainId;
+                this.setAmountsByTransCategory(generalPurposeMaster.DestinationCode, custInvoiceTrans.LineAmount, true);
+            }
+            else if(chainId == custTable.CompanyChainId)
+            {
+                this.setAmountsByTransCategory(generalPurposeMaster.DestinationCode, custInvoiceTrans.LineAmount);
+            }
+            else
+            {
+                this.registerDetailTable(_invoiceNo, chainId);
+                chainId = custTable.CompanyChainId;
+                this.setAmountsByTransCategory(generalPurposeMaster.DestinationCode, custInvoiceTrans.LineAmount, true);
+            }
+        }
+        if(chainId)
+        {
+            this.registerDetailTable(_invoiceNo, chainId);
+        }
+        custInvoiceJour.skipDataMethods(true);
+        update_recordset custInvoiceJour
+            setting KJPSMMonthlyInvoiceNo = _invoiceNo
+            where custInvoiceJour.InvoiceDate >= fisCalPeriod.StartDate
+            && custInvoiceJour.InvoiceDate <= fisCalPeriod.EndDate
+            && custInvoiceJour.InvoiceAccount == _invoiceAccount
+            && custInvoiceJour.CurrencyCode == currencyCodeForMonthlySettlement
+            && custInvoiceJour.KJPSMTradeType != nullValueBaseType(Types::String);
+
+        select firstonly forupdate monthlyInvoiceHeader
+            where monthlyInvoiceHeader.RecId == _monthlyInvoiceHeaderTableCur;
+        if(monthlyInvoiceHeader)
+        {
+            container amount = this.getAggregatedAmount(_invoiceNo);
+            monthlyInvoiceHeader.SalesAmount                    = conPeek(amount, 1);
+            monthlyInvoiceHeader.AmountOfReturnsAndDiscounts    = conPeek(amount, 2);
+            monthlyInvoiceHeader.NetSales                       = conPeek(amount, 3);
+
+            if(monthlyInvoiceHeader.validateWrite())
+            {
+                
+                monthlyInvoiceHeader.update();
+                
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerDetailTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Populate data in detail table
+    /// </summary>
+    /// <param name = "_invoiceNo">Invoice No</param>
+    /// <param name = "_chainId">Chain id</param>
+    private void registerDetailTable(KJP_SM_MonthlyInvoiceNumber _invoiceNo, smmChainId  _chainId)
+    {
+        KJP_SM_MonthlyInvoiceDetailTable detailTable;
+        
+        detailTable.clear();
+        detailTable.MonthlyInvoiceNo                =   _invoiceNo;
+        detailTable.CompanyGroupOfTradingPartner    =   _chainId;
+        detailTable.SalesAmount                     =   salesAmount;
+        detailTable.AmountOfReturns                 =   amountReturned;
+        detailTable.AmountOfDiscounts               =   amountDiscounted;
+        detailTable.NetSales                        =   salesAmount + amountReturned + amountDiscounted;
+        if(detailTable.validateWrite())
+        {
+            detailTable.insert();
+        }
+        else
+        {
+            throw Exception::Warning;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setAmountsByTransCategory</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Summation of amount bsed on types
+    /// </summary>
+    /// <param name = "_destinationCode">Destinatin Code</param>
+    /// <param name = "_lineAmount">Line Amount</param>
+    /// <param name = "_resetAmounts">Reset Amounts</param>
+    private void setAmountsByTransCategory(KJP_CM_DestinationCode _destinationCode,
+            AmountCur _lineAmount,
+            boolean _resetAmounts = false)
+    {
+       
+        KJP_SM_TransactionCategoryForMonthlyInvoice  transCatForMonthlyInvoice;
+ 
+        
+
+        transCatForMonthlyInvoice = any2Enum(str2Int(_destinationCode));
+        if(_resetAmounts)
+        {
+            salesAmount         =   0;
+            amountDiscounted    =   0;
+            amountReturned      =   0;
+        }
+
+        switch(transCatForMonthlyInvoice)
+        {
+            case KJP_SM_TransactionCategoryForMonthlyInvoice::Sales:
+                salesAmount         += _lineAmount;
+                break;
+            case KJP_SM_TransactionCategoryForMonthlyInvoice::Return:
+                amountReturned      += _lineAmount;
+                break;
+            case KJP_SM_TransactionCategoryForMonthlyInvoice::Discount:
+                amountDiscounted    += _lineAmount;
+                break;
+            default:
+                break;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getAggregatedAmount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Get aggregated amount
+    /// </summary>
+    /// <param name = "_invoiceNo">Invoice no</param>
+    /// <returns>Container</returns>
+    private container getAggregatedAmount(KJP_SM_MonthlyInvoiceNumber _invoiceNo)
+    {
+        KJP_SM_MonthlyInvoiceDetailTable detailTable;
+        AmountCur netSales;
+
+        select sum(SalesAmount), sum(AmountOfReturns), sum(AmountOfDiscounts) from detailTable
+            where detailTable.MonthlyInvoiceNo == _invoiceNo;
+
+        netSales = detailTable.SalesAmount + detailTable.AmountOfReturns + detailTable.AmountOfDiscounts;
+
+        return [detailTable.SalesAmount, detailTable.AmountOfReturns + detailTable.AmountOfDiscounts, netSales];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calculateAndRegisterSalesTax</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Calculate and populate sales tax
+    /// </summary>
+    /// <param name = "_invoiceAccount">Invoice account</param>
+    /// <param name = "_monthlyInvoiceHeaderTableCur">RecId</param>
+    /// <param name = "_invoiceNo">Invoice No</param>
+    private void calculateAndRegisterSalesTax(CustAccount _invoiceAccount, RecId _monthlyInvoiceHeaderTableCur, KJP_SM_MonthlyInvoiceNumber _invoiceNo)
+    {
+        KJP_SM_MonthlySalesTaxTable         monthlySalesTaxTable;
+        KJP_SM_MonthlyInvoiceHeaderTable    headerTable;
+        TaxTrans                            txTrans;
+        KJP_CM_GeneralPurposeMaster         generalPurposeMaster;
+        TaxValue                            totalTaxRate;
+        TaxAmount                           totalTaxAmount;
+        TaxBase                             taxBaseAmount;
+        QueryBuildDataSource                qbdsCustInvoiceJour, qbdsTaxTrans;
+        KJP_SM_TransactionCategoryForMonthlyInvoice transCategory;
+        RoundOffType                        roundType;
+        
+        Query query = new Query(queryStr(KJP_SM_AggregateSalesTaxInvoiceUnit));
+
+        QueryRun qr = new QueryRun(query);
+        qbdsTaxTrans        = SysQuery::findOrCreateDataSource(qr.query(), tableNum(TaxTrans));
+        qbdsCustInvoiceJour = SysQuery::findOrCreateDataSource(qr.query(), tableNum(CustInvoiceJour));
+        qbdsTaxTrans.addRange(fieldNum(TaxTrans, TransDate)).value(SysQueryRangeUtil::dateRange(fisCalPeriod.StartDate, fisCalPeriod.EndDate));
+        qbdsTaxTrans.addRange(fieldNum(TaxTrans, CurrencyCode)).value(SysQuery::value(currencyCodeForMonthlySettlement));
+        qbdsCustInvoiceJour.addRange(fieldNum(CustInvoiceJour, InvoiceAccount)).value(SysQuery::value(_invoiceAccount));
+        qbdsCustInvoiceJour.addRange(fieldNum(CustInvoiceJour, CurrencyCode)).value(currencyCodeForMonthlySettlement);
+        str yearMnth = subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(fisCalPeriod.EndDate, DateSeparator::None), 1, 6);
+        while(qr.next())
+        {
+            txTrans                 =   qr.get(tableNum(TaxTrans));
+            generalPurposeMaster    =   qr.get(tableNum(KJP_CM_GeneralPurposeMaster));
+            transCategory           =   any2Enum(str2Int(generalPurposeMaster.DestinationCode));
+           
+            roundType               =   any2Enum(str2Int(invoiceUnitTaxRounding));
+
+            if(!KJP_SM_MonthlySalesTaxTable::checkexist(_invoiceNo, txTrans.TaxValue))
+            {
+                monthlySalesTaxTable.clear();
+                monthlySalesTaxTable.MonthlyInvoiceNo           =   _invoiceNo;
+                monthlySalesTaxTable.SalesTaxRate               =   txTrans.TaxValue;
+                monthlySalesTaxTable.InvoiceYearAndMonth        =   yearMnth;
+                taxBaseAmount                                   =   txTrans.TaxBaseAmount * -1;
+                totalTaxAmount                                  =   txTrans.TaxAmount * -1;
+                if (transCategory  == KJP_SM_TransactionCategoryForMonthlyInvoice::Sales)
+               
+                {
+                    monthlySalesTaxTable.SalesAmount            =   taxBaseAmount;
+                    monthlySalesTaxTable.RecordedSalesTax       =   totalTaxAmount;
+                    totalTaxRate                                =   (monthlySalesTaxTable.SalesAmount * txTrans.TaxValue) / 100;
+                    monthlySalesTaxTable.SalesTax               =   CurrencyExchange::roundWithRule(totalTaxRate,
+                                                                                                    1.0,
+                                                                                                    roundType);
+                }
+                                                                        
+                else
+                {
+                    monthlySalesTaxTable.AmountOfReturnsAndDiscounts            =   taxBaseAmount;
+                    monthlySalesTaxTable.RecordedSalesTaxOfReturnsAndDiscounts  =   totalTaxAmount;
+                    totalTaxRate                                                =   (monthlySalesTaxTable.AmountOfReturnsAndDiscounts * txTrans.TaxValue) / 100;
+                    monthlySalesTaxTable.SalesTaxOfReturnsAndDiscounts          =   CurrencyExchange::roundWithRule(totalTaxRate,
+                                                                                        1.0,
+                                                                                        roundType);
+                }
+            
+                if(monthlySalesTaxTable.validateWrite())
+                {
+                    monthlySalesTaxTable.insert();
+                }
+                else
+                {
+                    throw Exception::Warning;
+                }
+            }
+            else
+            {
+                monthlySalesTaxTable.selectForUpdate(true);
+                taxBaseAmount                                   =   txTrans.TaxBaseAmount * -1;
+                totalTaxAmount                                  =   txTrans.TaxAmount * -1;
+                if (transCategory  == KJP_SM_TransactionCategoryForMonthlyInvoice::Sales)
+               
+                {
+                    monthlySalesTaxTable.SalesAmount            +=   taxBaseAmount;
+                    monthlySalesTaxTable.RecordedSalesTax       +=   totalTaxAmount;
+                    totalTaxRate                                =   (monthlySalesTaxTable.SalesAmount * txTrans.TaxValue) / 100;
+                    monthlySalesTaxTable.SalesTax               =   CurrencyExchange::roundWithRule(totalTaxRate,
+                                                                      1.0,
+                                                                      roundType);
+                }
+                else
+                {
+                    monthlySalesTaxTable.AmountOfReturnsAndDiscounts            +=   taxBaseAmount;
+                    monthlySalesTaxTable.RecordedSalesTaxOfReturnsAndDiscounts  +=   totalTaxAmount;
+                    totalTaxRate                                                =   (monthlySalesTaxTable.AmountOfReturnsAndDiscounts * txTrans.TaxValue) / 100;
+                    monthlySalesTaxTable.SalesTaxOfReturnsAndDiscounts          =   CurrencyExchange::roundWithRule(totalTaxRate,
+                                                                                        1.0,
+                                                                                        roundType);
+                }
+                if(monthlySalesTaxTable.validateWrite())
+                {
+                   
+                    monthlySalesTaxTable.update();
+                    
+                }
+                else
+                {
+                    throw Exception::Warning;
+                }
+            }
+        }
+        container salesTax = this.getAggregateSalesTax(_invoiceNo);
+        select firstonly forupdate headerTable 
+            where headerTable.RecId == _monthlyInvoiceHeaderTableCur;
+        if (headerTable)
+        {
+            headerTable.SalesTax                        = conPeek(salesTax, 1);
+            headerTable.SalesTaxOfReturnsAndDiscounts   = conPeek(salestax, 2);
+            headerTable.SalesTaxOfNetSales              = conPeek(salesTax, 1) + conPeek(salesTax, 2);
+            headerTable.DifferenceInSalesTax            = (headerTable.SalesTax - conPeek(salesTax ,3)) + (headerTable.SalesTaxOfReturnsAndDiscounts - conPeek(salesTax, 4));
+            if (headerTable.validateWrite())
+            {
+               
+                headerTable.update();
+               
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+        }
+
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getAggregateSalesTax</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get sales tax
+    /// </summary>
+    /// <param name = "_invoiceNo">Invoice Num</param>
+    /// <returns>Container</returns>
+    private container getAggregateSalesTax(KJP_SM_MonthlyInvoiceNumber _invoiceNo)
+    {
+        KJP_SM_MonthlySalesTaxTable taxTable;
+
+        select sum(SalesTax), sum(SalesTaxOfReturnsAndDiscounts), sum(RecordedSalesTax), sum(RecordedSalesTaxOfReturnsAndDiscounts) from taxTable
+            where taxTable.MonthlyInvoiceNo == _invoiceNo;
+
+        return [taxTable.SalesTax, taxTable.SalesTaxOfReturnsAndDiscounts, taxTable.RecordedSalesTax, taxTable.RecordedSalesTaxOfReturnsAndDiscounts];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calculateAndRegisterCustomerSettlement</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Calculate settlement amount
+    /// </summary>
+    /// <param name = "_invoiceAccount">Invoice account</param>
+    /// <param name = "_monthlyInvoiceHeaderTableCur">RecId</param>
+    private void calculateAndRegisterCustomerSettlement(CustAccount _invoiceAccount, RecId _monthlyInvoiceHeaderTableCur)
+    {
+        CustTrans                           trans;
+        GeneralJournalEntry                 generalJournalentry;
+        GeneralJournalAccountEntry          generalJournalAccountEntry;
+        MainAccount                         mainAccount;
+        KJP_SM_MonthlyInvoiceHeaderTable    headerTable;
+
+        select sum(AmountCur) from trans
+            where trans.AccountNum == _invoiceAccount
+            && trans.Closed >= fisCalPeriod.StartDate
+            && trans.Closed <= fisCalPeriod.EndDate
+            && (trans.TransType == LedgerTransType::Sales 
+                ||((trans.TransType == LedgerTransType::None
+                    || trans.TransType == LedgerTransType::GeneralJournal)
+                && (trans.Txt like monthlyBillingSalesTaxDifference ||
+                    (custTransTxtForPaymentDataOfMonthlyInvoicestrans != nullValueBaseType(Types::String) 
+                    && trans.Txt  like custTransTxtForPaymentDataOfMonthlyInvoicestrans))))
+            && trans.CurrencyCode == currencyCodeForMonthlySettlement
+            join RecId from generalJournalentry
+            where generalJournalentry.SubledgerVoucher == trans.Voucher
+            && generalJournalentry.SubledgerVoucherDataAreaId == curExt()
+            join MainAccount from generalJournalAccountEntry
+            where generalJournalAccountEntry.GeneralJournalEntry == generalJournalentry.RecId
+            exists join mainAccount
+            where mainAccount.RecId == generalJournalAccountEntry.MainAccount
+            && mainAccount.ConsolidationMainAccount == consolidationofMainAccount;
+
+        select firstonly forupdate headerTable
+            where headerTable.RecId == _monthlyInvoiceHeaderTableCur;
+        if (headerTable)
+        {
+            headerTable.SettleAmount = trans.AmountCur;
+            if(headerTable.validateWrite())
+            {
+                
+                headerTable.update();
+               
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>calculateAndUpdateInvoicingAmount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Update Invoicing amount
+    /// </summary>
+    /// <param name = "_monthlyInvoiceHeader">Header record id</param>
+    /// <param name = "_invoiceAccount">InvoiceNumber</param>
+    private void calculateAndUpdateInvoicingAmount(RecId _monthlyInvoiceHeader, CustAccount _invoiceAccount)
+    {
+        KJP_SM_MonthlyInvoiceHeaderTable headerTable, monthlyInvoiceHeaderTablePrev;
+
+        select firstonly monthlyInvoiceHeaderTablePrev
+                where monthlyInvoiceHeaderTablePrev.InvoiceYearAndMonth == subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(prevMth(fisCalPeriod.EndDate),DateSeparator::None), 1, 6)
+                && monthlyInvoiceHeaderTablePrev.InvoiceAccount == _invoiceAccount;
+
+        select firstonly forupdate headerTable
+            where headerTable.RecId == _monthlyInvoiceHeader;
+        if (headerTable)
+        {
+            headerTable.AmountCarriedOverFromLastMonth  =  monthlyInvoiceHeaderTablePrev.InvoiceAmountForCurrentMonth;
+            headerTable.InvoiceAmountForCurrentMonth    = headerTable.AmountCarriedOverFromLastMonth - headerTable.SettleAmount + headerTable.NetSales + headerTable.SalesTaxOfNetSales;
+            if (headerTable.validateWrite())
+            {
+                
+                headerTable.update();
+                
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerMonthlyInvoiceDataPrevMth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Incase there is no invoice for target month create monthly invoice for carried over month
+    /// </summary>
+    private void registerMonthlyInvoiceDataPrevMth()
+    {
+        KJP_SM_MonthlyInvoiceHeaderTable headerTable, monthlyInvoiceHeaderTablePrev, monthlyInvoiceHeaderTableCur;
+       
+        str yearMnth = subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(fisCalPeriod.EndDate, DateSeparator::None), 1, 6);
+
+        while select monthlyInvoiceHeaderTablePrev order by  monthlyInvoiceHeaderTablePrev.InvoiceAccount asc
+            where monthlyInvoiceHeaderTablePrev.InvoiceYearAndMonth == subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(prevMth(fisCalPeriod.EndDate),DateSeparator::None), 1, 6)
+            && monthlyInvoiceHeaderTablePrev.InvoiceAmountForCurrentMonth > 0
+            notexists join headerTable
+            where headerTable.InvoiceAccount == monthlyInvoiceHeaderTablePrev.InvoiceAccount
+            && headerTable.InvoiceYearAndMonth == yearMnth
+        {
+            monthlyInvoiceHeaderTableCur.clear();
+            monthlyInvoiceHeaderTableCur.InvoiceYearAndMonth            =   subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(fisCalPeriod.EndDate, DateSeparator::None), 1, 6);
+            monthlyInvoiceHeaderTableCur.InvoiceStartDate               =   fisCalPeriod.StartDate;
+            monthlyInvoiceHeaderTableCur.InvoiceEndDate                 =   fisCalPeriod.EndDate;
+            monthlyInvoiceHeaderTableCur.MonthlyInvoiceNo               =   NumberSeq::newReserveNumFromCode(numberseqCode).num();
+            monthlyInvoiceHeaderTableCur.InvoiceAccount                 =   monthlyInvoiceHeaderTablePrev.InvoiceAccount;
+            monthlyInvoiceHeaderTableCur.Currency                       =   currencyCodeForMonthlySettlement;
+            if (monthlyInvoiceHeaderTableCur.validateWrite())
+            {
+                monthlyInvoiceHeaderTableCur.insert();
+                //Calculate and register settlement amount
+                this.calculateAndRegisterCustomerSettlement(monthlyInvoiceHeaderTablePrev.InvoiceAccount,
+                    monthlyInvoiceHeaderTableCur.RecId);
+                //Calculate and update the invoice amount
+                this.calculateAndUpdateInvoicingAmount(monthlyInvoiceHeaderTableCur.RecId, monthlyInvoiceHeaderTablePrev.InvoiceAccount);
+                numberOfProcessedRecords++;
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+          
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

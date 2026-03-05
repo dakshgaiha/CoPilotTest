@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AgentConvCodesA_Service</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// service class to insert records from IF table to Master table and capture error message in Error log table.
+/// </summary>
+class KJP_SM_AgentConvCodesA_Service extends KJP_CM_IFBatchBase
+{
+    date currentDate;
+    
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Process to validate IF table, insert records from IF table to Master table and capture error message in Error log table
+    /// </summary>
+    void processRun()
+    {
+        changecompany(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::companyCodeKey,KJP_CM_ConstantHelper::origCompanyCode_KKC).DestinationCode)
+        {
+            try
+            {
+                currentDate = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+                ttsbegin;
+                if (this.validate())
+                {
+                    this.insertIntoAgentConversionCodesAMaster();
+                }
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                error(any2Str(Exception::Error));
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate IF table records
+    /// </summary>
+    /// <returns>boolean</returns>
+    protected boolean validate()
+    {
+        boolean                               ret = true;
+        KJP_SM_AgentConversionCodesAIfTable   agentConversionCodesAIfTable;
+
+        select firstonly RecId from agentConversionCodesAIfTable;
+
+        if (!agentConversionCodesAIfTable.RecId)
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500062", "@KJP:KJP100549"));
+        }
+
+        if (ret)
+        {
+            agentConversionCodesAIfTable.clear();
+            
+            while select count(RecId), UniversalWholesaleCodeFlagStr, WholesaleCode, TargetBusinessClassification,
+                           DataExchangeClassification from agentConversionCodesAIfTable
+                group by UniversalWholesaleCodeFlagStr, WholesaleCode, TargetBusinessClassification, DataExchangeClassification
+                where agentConversionCodesAIfTable.RecordStartDate <= currentDate &&
+                         agentConversionCodesAIfTable.RecordEndDate >= currentDate
+            {
+                if (agentConversionCodesAIfTable.RecId > 1)
+                {
+                
+                    ret = checkFailed(strFmt("@KJP:KJP500018", "@KJP:KJP100589", agentConversionCodesAIfTable.UniversalWholesaleCodeFlagStr, "@KJP:KJP100590", AgentConversionCodesAIfTable.WholesaleCode,
+                                             "@KJP:KJP100600", agentConversionCodesAIfTable.TargetBusinessClassification, "@KJP:KJP100601", AgentConversionCodesAIfTable.DataExchangeClassification));
+                }
+            }
+        }
+        
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertIntoAgentConversionCodesAMaster</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Delete complete records from Master table, insert records from IF table to Master table and capture error message in Error log table
+    /// </summary>
+    protected void insertIntoAgentConversionCodesAMaster()
+    {
+        KJP_SM_AgentConversionCodesAIfTable  agentConversionCodesAIfTable;
+        KJP_SM_AgentConversionCodesAMaster   agentConversionCodesAMaster;
+        RecordInsertList                     agentConversionCodesAMasterList = new RecordInsertList(tableNum(KJP_SM_AgentConversionCodesAMaster));
+
+        delete_from agentConversionCodesAMaster;
+
+        while select agentConversionCodesAIfTable
+            where agentConversionCodesAIfTable.RecordStartDate <= currentDate &&
+                  agentConversionCodesAIfTable.RecordEndDate >= currentDate
+        {
+            agentConversionCodesAMaster.UniversalWholesaleCodeFlag               = any2Enum(agentConversionCodesAIfTable.UniversalWholesaleCodeFlagStr);
+            agentConversionCodesAMaster.WholesaleCode                            = agentConversionCodesAIfTable.WholesaleCode;
+            agentConversionCodesAMaster.TargetBusinessClassification             = agentConversionCodesAIfTable.TargetBusinessClassification;
+            agentConversionCodesAMaster.DataExchangeClassification               = agentConversionCodesAIfTable.DataExchangeClassification;
+            agentConversionCodesAMaster.RecordStartDate                          = agentConversionCodesAIfTable.RecordStartDate;
+            agentConversionCodesAMaster.RecordEndDate                            = agentConversionCodesAIfTable.RecordEndDate;
+            agentConversionCodesAMaster.AgentIdentifyValueDigitPosition          = agentConversionCodesAIfTable.AgentIdentifyValueDigitPosition;
+            agentConversionCodesAMaster.AgentIdentifyValueLength                 = agentConversionCodesAIfTable.AgentIdentifyValueLength;
+            agentConversionCodesAMaster.AgentIdentifyValueApplyDate              = agentConversionCodesAIfTable.AgentIdentifyValueApplyDate;
+            agentConversionCodesAMaster.OldAgentIdentifyValueDigitPosition       = agentConversionCodesAIfTable.OldAgentIdentifyValueDigitPosition;
+            agentConversionCodesAMaster.OldAgentIdentifyValueLength              = agentConversionCodesAIfTable.OldAgentIdentifyValueLength;
+            agentConversionCodesAMaster.OldAgentIdentifyValueApplyDate           = agentConversionCodesAIfTable.OldAgentIdentifyValueApplyDate;
+            agentConversionCodesAMaster.ProductCodeIdentifyValueDigitPosition    = agentConversionCodesAIfTable.ProductCodeIdentifyValueDigitPosition;
+            agentConversionCodesAMaster.ProductCodeIdentifyValueLength           = agentConversionCodesAIfTable.ProductCodeIdentifyValueLength;
+            agentConversionCodesAMaster.ProductCodeIdentifyValueApplyDate        = agentConversionCodesAIfTable.ProductCodeIdentifyValueApplyDate;
+            agentConversionCodesAMaster.OldProductCodeIdentifyValueDigitPosition = agentConversionCodesAIfTable.OldProductCodeIdentifyValueDigitPosition;
+            agentConversionCodesAMaster.OldProductCodeIdentifyValueLength        = agentConversionCodesAIfTable.OldProductCodeIdentifyValueLength;
+            agentConversionCodesAMaster.OldProductCodeIdentifyValueApplyDate     = agentConversionCodesAIfTable.OldProductCodeIdentifyValueApplyDate;
+
+            agentConversionCodesAMasterList.add(agentConversionCodesAMaster);
+        }
+
+        agentConversionCodesAMasterList.insertDatabase();
+
+        select count(RecId) from agentConversionCodesAMaster;
+        numberOfSuccess = agentConversionCodesAMaster.RecId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

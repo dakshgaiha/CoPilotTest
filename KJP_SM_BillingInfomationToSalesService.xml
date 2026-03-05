@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_BillingInfomationToSalesService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Service class with actual logic of Custom Batch job.
+/// To process monthly billing data so sales infrastructure system.
+/// </summary>
+class KJP_SM_BillingInfomationToSalesService extends KJP_CM_IFBatchBase
+{
+    RecordInsertList insertList = new RecordInsertList(tablenum(KJP_SM_DWHBillingDataIfTable));
+    boolean errorOccured;
+    int seqNo;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Executes the billing information transfer process to the sales system. 
+    /// The method calls createBillingInformationToSales() to perform the main processing logic.
+    /// </summary>
+    void processRun()
+    {
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            try
+            {
+                ttsbegin;
+                this.createBillingInformationToSales();
+                ttscommit;
+            }
+            catch (Exception::Error)
+            {
+                Global::exceptionTextFallThrough();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createBillingInformationToSales</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// CreateBillingInformationToSales method to prepares and triggers. 
+    /// The generation of monthly billing records for the Data KJP_SM_DWHBillingDataIfTable.
+    /// </summary>
+    public void createBillingInformationToSales()
+    {
+        KJP_SM_InvoiceYearAndMonth  yearMonth;
+        container                   departments;
+        date                        periodEndDate;
+
+        periodEndDate = this.getClosedFiscalPeriodOffsetBy(this.getTargetNoOfMonth());       
+
+        if (DateTimeUtil::newDateTime(periodEndDate, 0) != DateTimeUtil::minValue())
+        {
+            int monthInt = DateTimeUtil::month(DateTimeUtil::newDateTime(periodEndDate, KJP_CM_ConstantHelper::numberZero));
+
+            str month = monthInt > KJP_CM_ConstantHelper::numberNine ? strFmt('%1', int2Str(monthInt)) : 
+                                   KJP_CM_ConstantHelper::zero + strFmt('%1', int2Str(monthInt));
+
+            yearMonth = strFmt('%1%2', Year(periodEndDate), month);
+            departments = this.getTargetDepartments();
+            
+            if (yearMonth && departments)
+            {
+                this.generateDWHBillingIfRecords(departments, yearMonth);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getClosedFiscalPeriodOffsetBy</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get n'th (noOfMonth from general purpose master) closed fisacal period date 
+    /// </summary>
+    /// <param name = "_noOfMonths">NoOfMonths</param>
+    /// <returns>EndDate</returns>
+    private Date getClosedFiscalPeriodOffsetBy(int _noOfMonths)
+    {
+        LedgerFiscalCalendarPeriod          ledgerFiscalCalendarPeriod;
+        LedgerPeriodModuleAccessControl     ledgerPeriodModuleAccessControl;
+        FiscalCalendarPeriod                fiscalCalendarPeriod;
+        int                                 counter = KJP_CM_ConstantHelper::numberZero;
+
+        while select EndDate from fiscalCalendarPeriod
+        order by EndDate desc
+        join ledgerFiscalCalendarPeriod
+            where fiscalCalendarPeriod.RecId == ledgerFiscalCalendarPeriod.FiscalCalendarPeriod
+               && fiscalCalendarPeriod.FiscalCalendar == Ledger::fiscalCalendar(CompanyInfo::current())
+               && fiscalCalendarPeriod.Type == FiscalPeriodType::Operating
+               && fiscalCalendarPeriod.StartDate <= DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone())
+        join ledgerPeriodModuleAccessControl
+            where ledgerPeriodModuleAccessControl.LedgerFiscalCalendarPeriod == ledgerFiscalCalendarPeriod.RecId
+               && (ledgerFiscalCalendarPeriod.Status != FiscalPeriodStatus::Open
+               || ledgerPeriodModuleAccessControl.SalesAccessLevel != ModulePeriodStat::All)
+        {
+            counter++;
+            if (counter == _noOfMonths)
+            {
+                return fiscalCalendarPeriod.EndDate;
+            } 
+        }
+
+        return DateTimeUtil::date(DateTimeUtil::minValue());
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getTargetNoOfMonth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get target no of month from General purpose master
+    /// </summary>
+    /// <returns>noOfMonth</returns>
+    private int getTargetNoOfMonth()
+    {
+        KJP_CM_DestinationCode noOfMonth = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_DWHMonthlyBillingDataKey,
+            KJP_CM_ConstantHelper::origCodeKJP_SM_DWHMonthlyBillingDataKey_NumberOfMonthsPriorDataToBeSent).DestinationCode;
+
+        return str2Int(noOfMonth);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getTargetDepartments</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get target department from General purpose master
+    /// </summary>
+    /// <returns>Departments</returns>
+    private container getTargetDepartments()
+    {
+        KJP_CM_DestinationCode departmentList = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_DWHMonthlyBillingDataKey,
+            KJP_CM_ConstantHelper::origCodeKJP_SM_DWHMonthlyBillingDataKey_TargetCustomerMainUseDepartment
+        ).DestinationCode;
+
+        return str2con(departmentList, KJP_CM_ConstantHelper::semiColon, false);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>generateDWHBillingIfRecords</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Determines the target fiscal period and departments, then generates monthly billing data for the DWH interface table.
+    /// </summary>
+    /// <param name = "_departments">Departments</param>
+    /// <param name = "_yearMonth">YearMonth</param>
+    private void generateDWHBillingIfRecords(container _departments, KJP_SM_InvoiceYearAndMonth _yearMonth)
+    {
+        CustTable                        custTable;
+        KJP_SM_MonthlyInvoiceHeaderTable monthlyInvoiceHeaderTable;
+        KJP_SM_DWHBillingDataIfTable     dWHBillingDataIfTable;
+        int                              numberOfProcessedRecord;
+        KJP_FI_IndustryUnitCode          dept;
+        Set                              departmentSet = new Set(Types::String);
+
+        for (int i = 1; i <= conLen(_departments); i++)
+        {
+            dept = conPeek(_departments, i);
+
+            if (dept != KJP_CM_ConstantHelper::blankValue)
+            {
+                departmentSet.add(conPeek(_departments, i));
+            }
+        }
+
+        while select InvoiceAccount, InvoiceYearAndMonth, InvoiceAmountForCurrentMonth, AmountCarriedOverFromLastMonth, SettleAmount
+            from monthlyInvoiceHeaderTable order by InvoiceAccount asc
+            join KJPCMBusinessPartnerUseDepartment from custTable
+            where custTable.AccountNum == monthlyInvoiceHeaderTable.InvoiceAccount
+            && monthlyInvoiceHeaderTable.InvoiceYearAndMonth == _yearMonth
+        {
+            if (departmentSet.in(custTable.KJPCMBusinessPartnerUseDepartment))
+            {
+                dWHBillingDataIfTable.CustomerAccount       = monthlyInvoiceHeaderTable.InvoiceAccount;
+                dWHBillingDataIfTable.InvoiceYearAndMonth   = monthlyInvoiceHeaderTable.InvoiceYearAndMonth;
+                dWHBillingDataIfTable.InvoiceAmount         = any2Str(monthlyInvoiceHeaderTable.InvoiceAmountForCurrentMonth ? monthlyInvoiceHeaderTable.InvoiceAmountForCurrentMonth : 0);
+                
+                real carriedForwardAmount = monthlyInvoiceHeaderTable.AmountCarriedOverFromLastMonth - monthlyInvoiceHeaderTable.SettleAmount;
+                dWHBillingDataIfTable.CarriedForwardAmount  = any2Str(carriedForwardAmount ? carriedForwardAmount : 0);
+                
+                seqNo                                       = seqNo + 1;
+                dWHBillingDataIfTable.SEQNo                 = seqNo;
+                dWHBillingDataIfTable.JobId                 = jobId;
+                dWHBillingDataIfTable.ExecutionDateTime     = executionDateTime;
+
+                if (dWHBillingDataIfTable.validateWrite())
+                {
+                    insertList.add(dWHBillingDataIfTable);
+                    numberOfProcessedRecord++;
+                }
+                else
+                {
+                    throw Exception::Warning;
+                }
+            }
+        }
+
+        insertList.insertDatabase();
+        numberOfSuccess = numberOfProcessedRecord;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

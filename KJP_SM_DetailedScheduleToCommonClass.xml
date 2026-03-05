@@ -1,0 +1,466 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DetailedScheduleToCommonClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Utility class for Detailed schedule common functions
+/// </summary>
+class KJP_SM_DetailedScheduleToCommonClass
+{
+    public int64 insertCount = 0;
+    public int64 countOfSuccess = 0;
+    const str updateCategoryNew = '1';
+    const str updateCategoryDelete = '3';
+    const str OprNumZero = '0';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Creat KJP_SM_DetailedScheduleToCommonClass Object
+    /// </summary>
+    /// <returns>KJP_SM_DetailedScheduleToCommonClass</returns>
+    public static KJP_SM_DetailedScheduleToCommonClass construct()
+    {
+        return new KJP_SM_DetailedScheduleToCommonClass();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>selectProdTableRecords</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 2.2.3.1 Select business table
+    /// </summary>
+    /// <param name = "_getProdPoolId">_getProdPoolId</param>
+    /// <param name = "_getOprId">_getOprId</param>
+    /// <param name = "_jobid">_jobid</param>
+    /// <param name = "_executionDateTime">_executionDateTime</param>
+    /// <param name = "_ubeExecuteFlg">_ubeExecuteFlg</param>
+    /// <returns>int64</returns>
+    public int64 selectProdTableRecords(
+        str _getProdPoolId
+        , str _getOprId
+        , KJP_CM_JobId _jobid
+        , KJP_CM_ExecutionDateTime _executionDateTime
+        , boolean _ubeExecuteFlg)
+    {
+        ProdTable prodTable;
+        ProdRoute prodRoute;
+        KJP_SM_InstructionNo instructionNoStr;
+        str getRouteId;
+
+        // get RouteId from KJP_CM_GeneralPurposeMaster
+        if(_ubeExecuteFlg)
+        {
+            getRouteId = KJP_CM_GeneralPurposeMaster::find(
+                KJP_CM_ConstantHelper::MESOutboundRecordKey
+                ,KJP_CM_FunctionIdConst::dfiMfg0167_002).DestinationCode;
+        }
+        else
+        {
+            getRouteId = KJP_CM_GeneralPurposeMaster::find(
+                KJP_CM_ConstantHelper::MESOutboundRecordKey
+                ,KJP_CM_FunctionIdConst::dfiMfg0167_001).DestinationCode;
+        }
+
+        if(getRouteId)
+        {
+            while select prodTable
+                where prodTable.ProdStatus == ProdStatus::StartedUp
+                && prodTable.ProdPoolId == _getProdPoolId
+                join prodRoute
+                where prodTable.ProdId == prodRoute.ProdId
+                && prodRoute.OprId != _getOprId
+            {
+                // 2.2.3.2 get existing records from KJP_SM_InstructionNoConversionTable
+                container conResults = this.getInstructionNoConversionTableRecords(prodTable.ProdId, prodRoute.OprId);
+                boolean findProdResultFlg = conPeek(conResults,1);
+                str getOprNum;
+                str oprNumToStr = int2Str(prodRoute.OprNum);
+
+                // processing OprNum
+                if (strLen(oprNumToStr) < 2)
+                {
+                    getOprNum = strRFix(oprNumToStr, 2, OprNumZero);
+                }
+                else if (strLen(oprNumToStr) > 2)
+                {
+                    getOprNum = subStr(oprNumToStr, 1, 2);
+                }
+                else
+                {
+                    getOprNum = oprNumToStr;
+                }
+
+                // get the lastest letter for instructionNo of KJP_SM_InstructionNoConversionTable
+                str instructionNoFirst = _getProdPoolId + subStr(prodTable.ProdId,2,6) + getOprNum;
+                str getLetter = KJP_SM_DetailedScheduleToCommonClass::getLetterSeq(instructionNoFirst);
+
+                if(getLetter != KJP_CM_ConstantHelper::blankValue)
+                {
+                    instructionNoStr = instructionNoFirst + getLetter;
+                }
+                else
+                {
+                    // According to the method [getLetterSeq], if the return is empty, the current record will not be sent.
+                    // There is already record with the letter 'Z' in the database.
+                    continue;
+                }
+
+                try
+                {
+                    // Have existing records in the KJP_SM_InstructionNoConversionTable
+                    // The Processing Distinction is [update]
+                    if(findProdResultFlg)
+                    {
+                        str getQty = num2Str(prodTable.QtySched,2,3,0,0);
+                        str getFromDate = date2Str(prodRoute.FromDate, 321,DateDay::Digits2,DateSeparator::None,DateMonth::Digits2,DateSeparator::None,DateYear::Digits4);
+                        str getToDate = date2Str(prodRoute.ToDate, 321,DateDay::Digits2,DateSeparator::None,DateMonth::Digits2,DateSeparator::None,DateYear::Digits4);
+
+                        if(prodTable.KJPSMItemPattern != conPeek(conResults,2)
+                        || prodTable.KJPSMTemporaryBatchNumber != conPeek(conResults,3)
+                        || getQty != conPeek(conResults,4)
+                        || getFromDate != conPeek(conResults,5)
+                        || getToDate != conPeek(conResults,6))
+                        {
+                            // LineInformationConversion connot be retrieved using ItemId of ProdTable and OprId of ProdRoute. Error message should be output for Ube factory.
+                            if (_ubeExecuteFlg && !KJP_SM_LineInfomationConversionMaster::exist(prodTable.ItemId, prodRoute.OprId))
+                            {
+                                checkFailed(strFmt("@KJP:KJP500626", prodTable.ItemId, prodRoute.OprId));
+                                continue;
+                            }
+
+                            ttsbegin;
+                            // Update deleteFlg of InstructionNoConversionTable / KJP_SM_DetailedScheduleIfTable
+                            this.updateRecordsForTable(prodTable.ProdId, prodRoute, _ubeExecuteFlg, _jobid, _executionDateTime);
+
+                            // 2.2.4 The racords of KJP_SM_InstructionNoConversionTable Create
+                            // 2.2.5 The racords of KJP_SM_DetailedScheduleIfTable Create
+                            this.insertNewRecords(
+                                prodTable
+                                , prodRoute, 
+                                instructionNoStr, 
+                                _jobid, 
+                                _executionDateTime, 
+                                _ubeExecuteFlg, 
+                                getRouteId);
+                            ttscommit;
+                        }
+                        else
+                        {
+                            // no change date
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // LineInformationConversion connot be retrieved using ItemId of ProdTable and OprId of ProdRoute. Error message should be output for Ube factory.
+                        if (_ubeExecuteFlg && !KJP_SM_LineInfomationConversionMaster::exist(prodTable.ItemId, prodRoute.OprId))
+                        {
+                            checkFailed(strFmt("@KJP:KJP500626", prodTable.ItemId, prodRoute.OprId));
+                            continue;
+                        }
+
+                        ttsbegin;
+                        // The Processing Distinction is [new add]
+                        // 2.2.4 The racords of KJP_SM_InstructionNoConversionTable Create
+                        // 2.2.5 The racords of KJP_SM_DetailedScheduleIfTable Create
+                        this.insertNewRecords(
+                                prodTable
+                                , prodRoute,
+                                instructionNoStr,
+                                _jobid,
+                                _executionDateTime,
+                                _ubeExecuteFlg,
+                                getRouteId);
+                        ttscommit;
+                    }
+                    countOfSuccess++;
+                }
+                catch
+                {
+                    // When unexpected errors occur
+                    continue;
+                }
+            }
+            return countOfSuccess;
+        }
+        else
+        {
+            // Unable to obtain [getRouteId]
+            return KJP_CM_ConstantHelper::numberZero;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getInstructionNoConversionTableRecords</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// search old InstructionNoConversionTable records
+    /// </summary>
+    /// <param name = "_prodid">_prodid</param>
+    /// <param name = "_oprId">_oprId</param>
+    /// <returns>conResult</returns>
+    public container getInstructionNoConversionTableRecords(ProdId _prodid, RouteOprId _oprId)
+    {
+
+        KJP_SM_InstructionNoConversionTable instructionNoConversionTable;
+        container conResult;
+
+        select firstonly instructionNoConversionTable
+            where instructionNoConversionTable.ProdId == _prodid
+            && instructionNoConversionTable.OprId == _oprId
+            && instructionNoConversionTable.DeletionFlag == NoYes::No;
+
+        if(instructionNoConversionTable.RecId)
+        {
+            conResult = conIns(conResult,1,true);
+            conResult = conIns(conResult,2,instructionNoConversionTable.ItemPattern);
+            conResult = conIns(conResult,3,instructionNoConversionTable.LotNo);
+            conResult = conIns(conResult,4,instructionNoConversionTable.QtySched);
+            conResult = conIns(conResult,5,instructionNoConversionTable.SchedStartDate);
+            conResult = conIns(conResult,6,instructionNoConversionTable.SchedEndDate);
+        }
+        else
+        {
+            conResult = conIns(conResult,1,false);
+        }
+        return conResult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertNewRecords</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Create InstructionNoConversionTable and KJP_SM_DetailedScheduleIfTable
+    /// </summary>
+    /// <param name = "_getProdTable">_getProdTable</param>
+    /// <param name = "_getProdRoute">_getProdRoute</param>
+    /// <param name = "_instructionNoStr">_instructionNoStr</param>
+    /// <param name = "_jobid">_jobid</param>
+    /// <param name = "_executionDateTime">_executionDateTime</param>
+    /// <param name = "_ubeExecuteFlg">_ubeExecuteFlg</param>
+    /// <param name = "_getRouteId">_getRouteId</param>
+    public void insertNewRecords(
+        ProdTable _getProdTable
+        , ProdRoute _getProdRoute
+        , KJP_SM_InstructionNo _instructionNoStr
+        , KJP_CM_JobId _jobid
+        , KJP_CM_ExecutionDateTime _executionDateTime
+        , boolean _ubeExecuteFlg
+        , str _getRouteId)
+    {
+        KJP_SM_InstructionNoConversionTable instructionNoConversionTable;
+        KJP_SM_DetailedScheduleIfTable insertDetailedScheduleIfTable;
+
+        // insert to InstructionNoConversionTable
+        instructionNoConversionTable.clear();
+
+        // RecordIdForInstrNoConv
+        instructionNoConversionTable.RecordIdForInstrNoConv = NumberSeq::newGetNumFromCode(_getRouteId).num();
+        // InstructionNo
+        instructionNoConversionTable.InstructionNo = _instructionNoStr;
+        // Prodid
+        instructionNoConversionTable.ProdId = _getProdTable.ProdId;
+        // ItemID
+        instructionNoConversionTable.ItemCD = _getProdTable.ItemId;
+        // ItemPattern
+        instructionNoConversionTable.ItemPattern = _getProdTable.KJPSMItemPattern;
+        // LotNo
+        instructionNoConversionTable.LotNo = _getProdTable.KJPSMTemporaryBatchNumber;
+        // QtySched
+        instructionNoConversionTable.QtySched = num2Str(_getProdTable.QtySched,2,3,0,0);
+        // Unit
+        instructionNoConversionTable.Unit = InventTable::find(_getProdTable.ItemId).inventUnitId();
+        // SchedStartDate
+        instructionNoConversionTable.SchedStartDate
+            = date2Str(_getProdRoute.FromDate, 321,DateDay::Digits2,DateSeparator::None,DateMonth::Digits2,DateSeparator::None,DateYear::Digits4);
+        // SchedEndDate
+        instructionNoConversionTable.SchedEndDate
+            = date2Str(_getProdRoute.ToDate, 321,DateDay::Digits2,DateSeparator::None,DateMonth::Digits2,DateSeparator::None,DateYear::Digits4);
+        // OprId
+        instructionNoConversionTable.OprId = _getProdRoute.OprId;
+        // OprNum
+        instructionNoConversionTable.OprNum = int2Str(_getProdRoute.OprNum);
+        // DeletionFlag
+        // In newly added situations, set fixed value [No].
+        instructionNoConversionTable.DeletionFlag = NoYes::No;
+
+        instructionNoConversionTable.insert();
+
+        // insert to KJP_SM_DetailedScheduleIfTable
+        insertDetailedScheduleIfTable.clear();
+
+        insertCount++;
+        insertDetailedScheduleIfTable.RecordIdForDetailedSchedule = instructionNoConversionTable.RecordIdForInstrNoConv;
+        // In newly added situations, set fixed value [1].
+        insertDetailedScheduleIfTable.ProcessingClassification = updateCategoryNew;
+        insertDetailedScheduleIfTable.InstructionNo = instructionNoConversionTable.InstructionNo;
+        insertDetailedScheduleIfTable.ProdId = instructionNoConversionTable.ProdId;
+        insertDetailedScheduleIfTable.OprNum = instructionNoConversionTable.OprNum;
+        // In the case of ube, set the following [OprId] and [LineInfo]
+        if(_ubeExecuteFlg)
+        {
+            insertDetailedScheduleIfTable.OprId = subStr(instructionNoConversionTable.OprId,1,6);
+            //insertDetailedScheduleIfTable.LineInfo = instructionNoConversionTable.OprId;
+            insertDetailedScheduleIfTable.LineInfo = KJP_SM_LineInfomationConversionMaster::find(_getProdTable.ItemId, _getProdRoute.OprId).LineInfomation;
+        }
+        else
+        {
+            insertDetailedScheduleIfTable.OprId = instructionNoConversionTable.OprId;
+        }
+        insertDetailedScheduleIfTable.ItemCD = instructionNoConversionTable.ItemCD;
+        insertDetailedScheduleIfTable.VersionNo = instructionNoConversionTable.ItemPattern;
+        insertDetailedScheduleIfTable.ConfigurationPattern = instructionNoConversionTable.ItemPattern;
+        insertDetailedScheduleIfTable.LotNo = instructionNoConversionTable.LotNo;
+        insertDetailedScheduleIfTable.Quantity = any2Real(instructionNoConversionTable.QtySched);
+        insertDetailedScheduleIfTable.Unit = instructionNoConversionTable.Unit;
+        insertDetailedScheduleIfTable.SchedStartDate = instructionNoConversionTable.SchedStartDate;
+        insertDetailedScheduleIfTable.SchedEndDate =  instructionNoConversionTable.SchedEndDate;
+        insertDetailedScheduleIfTable.JobId = _jobid;
+        insertDetailedScheduleIfTable.ExecutionDateTime = _executionDateTime;
+        insertDetailedScheduleIfTable.SEQNo = insertCount;
+
+        insertDetailedScheduleIfTable.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateRecordsForTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update DeletionFlag[YES] and ProcessingClassifications[3]
+    /// </summary>
+    /// <param name = "_getProdId">_getProdId</param>
+    /// <param name = "_getProdRoute">_getProdRoute</param>
+    /// <param name = "_ubeExecuteFlg">_ubeExecuteFlg</param>
+    /// <param name = "_jobid">_jobid</param>
+    /// <param name = "_executionDateTime">_executionDateTime</param>
+    public void updateRecordsForTable(
+        ProdId _getProdId, 
+        ProdRoute _getProdRoute, 
+        boolean _ubeExecuteFlg,
+        KJP_CM_JobId _jobid,
+        KJP_CM_ExecutionDateTime _executionDateTime)
+    {
+        KJP_SM_InstructionNoConversionTable updateInstructionNoConversionTable;
+        KJP_SM_DetailedScheduleIfTable insertDetailedScheduleIfTableForDelete;
+
+        // get record for KJP_SM_InstructionNoConversionTable
+        select firstonly forupdate updateInstructionNoConversionTable
+            where updateInstructionNoConversionTable.ProdId == _getProdId
+            && updateInstructionNoConversionTable.OprId == _getProdRoute.OprId
+            && updateInstructionNoConversionTable.OprNum == int2Str(_getProdRoute.OprNum)
+            && updateInstructionNoConversionTable.DeletionFlag == NoYes::No;
+
+        if(updateInstructionNoConversionTable.RecId)
+        {
+            // Update DeletionFlag[YES] for KJP_SM_InstructionNoConversionTable
+            updateInstructionNoConversionTable.DeletionFlag = NoYes::Yes;
+            updateInstructionNoConversionTable.doUpdate();
+
+            // insert DetailedScheduleIfTable records for [ProcessingClassification = 3]
+            insertCount++;
+            insertDetailedScheduleIfTableForDelete.clear();
+            insertDetailedScheduleIfTableForDelete.RecordIdForDetailedSchedule = updateInstructionNoConversionTable.RecordIdForInstrNoConv;
+            // In deleted situations, set fixed value [3].
+            insertDetailedScheduleIfTableForDelete.ProcessingClassification = updateCategoryDelete;
+            insertDetailedScheduleIfTableForDelete.InstructionNo = updateInstructionNoConversionTable.InstructionNo;
+            insertDetailedScheduleIfTableForDelete.ProdId = updateInstructionNoConversionTable.ProdId;
+            insertDetailedScheduleIfTableForDelete.OprNum = updateInstructionNoConversionTable.OprNum;
+            // In the case of ube, set the following [OprId] and [LineInfo]
+            if(_ubeExecuteFlg)
+            {
+                insertDetailedScheduleIfTableForDelete.OprId = subStr(updateInstructionNoConversionTable.OprId,1,6);
+                //insertDetailedScheduleIfTableForDelete.LineInfo = updateInstructionNoConversionTable.OprId;
+                insertDetailedScheduleIfTableForDelete.LineInfo = KJP_SM_LineInfomationConversionMaster::find(
+                    updateInstructionNoConversionTable.ItemCD,
+                    updateInstructionNoConversionTable.OprId).LineInfomation;
+            }
+            else
+            {
+                insertDetailedScheduleIfTableForDelete.OprId = updateInstructionNoConversionTable.OprId;
+            }
+            insertDetailedScheduleIfTableForDelete.ItemCD = updateInstructionNoConversionTable.ItemCD;
+            insertDetailedScheduleIfTableForDelete.VersionNo = updateInstructionNoConversionTable.ItemPattern;
+            insertDetailedScheduleIfTableForDelete.ConfigurationPattern = updateInstructionNoConversionTable.ItemPattern;
+            insertDetailedScheduleIfTableForDelete.LotNo = updateInstructionNoConversionTable.LotNo;
+            insertDetailedScheduleIfTableForDelete.Quantity = any2Real(updateInstructionNoConversionTable.QtySched);
+            insertDetailedScheduleIfTableForDelete.Unit = updateInstructionNoConversionTable.Unit;
+            insertDetailedScheduleIfTableForDelete.SchedStartDate = updateInstructionNoConversionTable.SchedStartDate;
+            insertDetailedScheduleIfTableForDelete.SchedEndDate =  updateInstructionNoConversionTable.SchedEndDate;
+            insertDetailedScheduleIfTableForDelete.JobId = _jobid;
+            insertDetailedScheduleIfTableForDelete.ExecutionDateTime = _executionDateTime;
+            insertDetailedScheduleIfTableForDelete.SEQNo = insertCount;
+
+            insertDetailedScheduleIfTableForDelete.insert();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getLetterSeq</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get last letter
+    /// </summary>
+    /// <param name = "_instructionNoFirst">_instructionNoFirst</param>
+    /// <returns>getLastLetterSeq</returns>
+    public static str getLetterSeq(str _instructionNoFirst)
+    {
+        KJP_SM_InstructionNoConversionTable getInstructionNoMax;
+        KJP_SM_InstructionNo maxInstructionNoStr;
+        int nextCharCode;
+        str fixedValueZ = 'Z';
+        str getLastLetterSeq = '';
+        str parameterSql = '%1%2';
+        str asterisk = '*';
+
+        select firstonly getInstructionNoMax
+            order by getInstructionNoMax.InstructionNo desc
+            where getInstructionNoMax.InstructionNo like strFmt(parameterSql, _instructionNoFirst, asterisk);
+
+        if(!getInstructionNoMax.RecId)
+        {
+            return 'A';
+        }
+        else
+        {
+            maxInstructionNoStr = getInstructionNoMax.InstructionNo;
+        }
+
+        str lastLetterSeq = subStr(maxInstructionNoStr, strLen(maxInstructionNoStr), 1);
+
+        if(lastLetterSeq == fixedValueZ)
+        {
+            str errorMessage = strFmt("@KJP:KJP500473",
+                getInstructionNoMax.ProdId,
+                getInstructionNoMax.OprNum);
+            // Write Error Log tables
+            Error(errorMessage);
+        }
+        else
+        {
+            nextCharCode = char2Num(lastLetterSeq,1) + 1;
+            getLastLetterSeq = num2Char(nextCharCode);
+        }
+        return getLastLetterSeq;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

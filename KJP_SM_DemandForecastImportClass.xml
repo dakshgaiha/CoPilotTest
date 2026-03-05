@@ -1,0 +1,1629 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DemandForecastImportClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using System.IO.Stream;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelPackage;
+using OfficeOpenXml.ExcelRange;
+
+/// <summary>
+/// DemandForecast Import from Excel
+/// </summary>
+class KJP_SM_DemandForecastImportClass extends RunBase
+{
+    Dialog   dialog;
+    Filename filename;
+    
+    private ExcelRange range;
+    private List headerCellList = new List(Types::String);
+
+    private Args importArgs;
+    // Define error msg list
+    private List errorMsgList = new List(Types::String);
+
+    private container itemIdCon;
+    private container itemIdConCopy;
+
+    // Define button name
+    private const str availableTypes = '.xlsx';
+    private const str okButtonName = 'OkButton';
+    private const str fileUploadName = 'FileUpload';
+    private const str forecastSalesImportExportHeaderLayout
+        = 'KJP_SM_ForecastSalesImportExportHeaderLayout';
+
+    // Define Column for Excel
+    private const str modelColumn = 'A';
+    private const str dateColumn = 'B';
+    private const str CustAccountIdColumn = 'C';
+    private const str itemNumberColumn = 'D';
+    private const str bomVersionColumn = 'E';
+    private const str siteColumn = 'F';
+    private const str warehouseColumn = 'G';
+    private const str salesQtyColumn = 'H';
+    private const str salesUnitIdColumn = 'I';
+    private const str commentColumn = 'J';
+    private const str propertyColumn = 'K';
+    private const str activeColumn = 'L';
+    private const str routeIdColumn = 'M';
+    private const str recordIdColumn = 'N';
+    private const str deletionFlagColumn = 'O';
+    
+    // Define varrable
+    private const str blank = '';
+    private const int num_0 = 0;
+    private const int num_1 = 1;
+    private const int num_2 = 2;
+    private const int num_3 = 3;
+    private const int num_4 = 4;
+    private const int num_5 = 5;
+    private const int num_6 = 6;
+    private const int num_7 = 7;
+    private const int num_8 = 8;
+    private const int num_9 = 9;
+    private const int num_10 = 10;
+    private const int num_11 = 11;
+    private const int num_12 = 12;
+    private const int num_13 = 13;
+    private const int num_14 = 14;
+    private const int num_15 = 15;
+    private const int num_20 = 20;
+    private const int num_80 = 80;
+    private const int HeaderLine = 1;
+    private const str backSlash = '　/　';
+    private const str squareBracketL = '[';
+    private const str squareBracketR = ']';
+    private const str dateNullStr ='1900/01/01';
+
+    // Define judgment Flg
+    boolean blankCheckFlg = true;
+    boolean existCheckFlg = true;
+    boolean modelCheckFlg = true;
+    boolean dateCheckFlg = true;
+    boolean itemNumberCheckFlg = true;
+    boolean bomVersionCheckFlg = true;
+    boolean siteCheckFlg = true;
+    boolean warehouseCheckFlg = true;
+    boolean salesQtyCheckFlg = true;
+    boolean commentCheckFlg = true;
+    boolean deletionFlagCheckFlg = true;
+    boolean recIdCheckFlg = true;
+    boolean resultCheckFlg = true;
+    boolean custAccountIdCheckFlg = true;
+    boolean salesUnitIdCheckFlg = true;
+    boolean routeIdCheckFlg = true;
+    boolean activeCheckFlg = true;
+    boolean lifeCycleCheckFlg = true;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_DemandForecastImportClass obj = new KJP_SM_DemandForecastImportClass();
+
+        if(obj.prompt())
+        {
+            obj.setArgs(_args);
+            obj.runOperation();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setArgs</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set Args from
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public void setArgs(Args _args)
+    {
+        importArgs = _args;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog initialization
+    /// </summary>
+    /// <returns>Object</returns>
+    public Object dialog()
+    {
+        DialogGroup      dialogGroup;
+        FormBuildControl formBuildControl;
+        FileUploadBuild  dialogFileUpload;
+
+        dialog = super();
+
+        dialog.caption("@KJP:KJP102378");
+
+        dialogGroup = dialog.addGroup();
+        formBuildControl = dialog.formBuildDesign().control(dialogGroup.name());
+
+        dialogFileUpload = formBuildControl.addControlEx(classstr(FileUpload), fileUploadName);
+        dialogFileUpload.style(FileUploadStyle::MinimalWithFilename);
+        dialogFileUpload.baseFileUploadStrategyClassName(classstr(FileUploadTemporaryStorageStrategy));
+        dialogFileUpload.fileTypesAccepted(availableTypes);
+
+        dialogFileUpload.browseText("@KJP:KJP101464");
+        dialogFileUpload.fileNameLabel("@KJP:KJP101307");
+
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialogPostRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog Post Run process
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    public void dialogPostRun(DialogRunbase _dialog)
+    {
+        FileUpload fileUpload = this.getFormControl(_dialog, fileUploadName);
+        fileUpload.notifyUploadCompleted += eventhandler(this.uploadCompleted);
+        this.setDialogOkButtonEnabled(_dialog, false);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>uploadCompleted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// upload Completed process
+    /// </summary>
+    protected void uploadCompleted()
+    {
+        FileUpload fileUpload = this.getFormControl(dialog, fileUploadName);
+        FileUploadTemporaryStorageResult uploadResult = fileUpload.getFileUploadResult();
+         
+        if (uploadResult.getUploadStatus())
+        {
+            fileUpload.notifyUploadCompleted -= eventhandler(this.UploadCompleted);
+            filename = fileUpload.fileName();
+
+            this.setDialogOkButtonEnabled(dialog, true);
+        }
+        else
+        {
+            warning(uploadResult.getLogMessage());
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDialogOkButtonEnabled</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set Dialog Ok Button Enabled
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    /// <param name = "_isEnabled">boolean</param>
+    protected void setDialogOkButtonEnabled(DialogRunbase _dialog, boolean _isEnabled)
+    {
+        FormControl okButtonControl = this.getFormControl(_dialog, okButtonName);
+        if (okButtonControl)
+        {
+            okButtonControl.enabled(_isEnabled);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFormControl</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get Form Control
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    /// <param name = "_controlName">str</param>
+    /// <returns>FormControl</returns>
+    protected FormControl getFormControl(DialogRunbase _dialog, str _controlName)
+    {
+        return _dialog.formRun().control(_dialog.formRun().controlId( _controlName));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// run
+    /// </summary>
+    public void run()
+    {
+        try
+        {
+            ttsbegin;
+
+            // check  data
+            this.processExcFile();
+
+            ttscommit;
+        }
+        catch
+        {
+            // When unexpected errors occur
+            errorMsgList.addEnd(Exception::Error);
+        }
+        finally
+        {
+            // Go to finish process
+            this.demandForecastImportFinishProcess();
+        }
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processExcFile</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Choose the ForecastSales Import upload files.
+    /// </summary>
+    public void processExcFile()
+    {
+        FileUpload fileUploadControl;
+        FileUploadTemporaryStorageResult fileUploadResult ;
+        Stream localStream;
+
+        fileUploadControl = this.getFormControl(dialog, fileUploadName);
+        fileUploadResult = fileUploadControl.getFileUploadResult();
+        localStream = fileUploadResult.openResult();
+
+        this.readExcelData(localStream);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readExcelData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// DemandForecast Import upload file check
+    /// </summary>
+    /// <param name = "_localStream">Stream</param>
+    public void readExcelData(Stream _localStream)
+    {
+        int excelRowCount;
+        container rangeCon;
+        
+        ExcelPackage   package = new ExcelPackage(_localStream);
+        package.Load(_localStream);
+        ExcelWorksheet worksheet = package.get_Workbook().get_Worksheets().get_Item(num_1);
+        ExcelAddressBase dimension = worksheet.Dimension;
+        str type_str = 'System.String';
+        str type_dateTime = 'System.DateTime';
+        OfficeOpenXml.ExcelRange cell;
+
+        if(!dimension)
+        {
+            str errorMsg;
+            errorMsg = strFmt("@KJP:KJP500199");
+            errorMsgList.addEnd(errorMsg);
+
+            // 2.2.5 Finish Process
+            return;
+        }
+        else
+        {
+            range = worksheet.Cells;
+
+            // Define header
+            this.listHeaderCell();
+
+            //2	入力ファイル
+            //Input file	インポート項目チェック
+            //ファイルの項目順序、項目名が定義と異なる場合、
+            //エラーメッセージを表示する。#M2Before Save Process
+            if (!this.checkHeaderCell())
+            {
+                // 2.2.5 Finish Process
+                return;
+            }
+            else
+            {
+                excelRowCount = dimension.End.Row - dimension.Start.Row + num_1;
+                Map fieldMapping = new Map(Types::Integer, Types::Container);
+                // Start with 2 due to header excluded.
+                for (int i = num_2; i <= excelRowCount; i++)
+                {
+                    rangeCon = conNull();
+
+                    rangeCon += any2Str(range.get_Item(modelColumn + int2Str(i)).Value);
+
+                    cell = range.get_Item(dateColumn + int2Str(i));
+
+                    if(cell.Value == null)
+                    {
+                        rangeCon += any2Str(range.get_Item(dateColumn + int2Str(i)).Value);
+                    }
+                    else
+                    {
+                        switch(cell.Value.GetType())
+                        {
+                            case System.Type::GetType(type_str):
+                                rangeCon += any2Str(range.get_Item(dateColumn + int2Str(i)).Value);
+                                break;
+                            case System.Type::GetType(type_dateTime):
+                                rangeCon += datetime2Str(range.get_Item(dateColumn + int2Str(i)).Value);
+                                break;
+                            default:
+                                rangeCon += any2Str(range.get_Item(dateColumn + int2Str(i)).Text);
+                                break;
+                        }
+                    }
+
+                    rangeCon += any2Str(range.get_Item(CustAccountIdColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(itemNumberColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(bomVersionColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(siteColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(warehouseColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(salesQtyColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(salesUnitIdColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(commentColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(propertyColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(activeColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(routeIdColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(recordIdColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(deletionFlagColumn + int2Str(i)).Value);
+
+                    // check excel content
+                    if (!this.checkExcelContent(rangeCon, i))
+                    {
+                        resultCheckFlg = false;
+                    }
+                    fieldMapping.add(i, rangeCon);
+                }
+                if (resultCheckFlg)
+                {
+                    this.fromExcFileToForecastSalesForCUD(excelRowCount, fieldMapping);
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// can Run In New Session
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listHeaderCell</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Define header layout
+    /// </summary>
+    private void listHeaderCell()
+    {
+        headerCellList.addEnd(modelColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(dateColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(CustAccountIdColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(itemNumberColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(bomVersionColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(siteColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(warehouseColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(salesQtyColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(salesUnitIdColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(commentColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(propertyColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(activeColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(routeIdColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(recordIdColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(deletionFlagColumn + any2Str(HeaderLine));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkHeaderCell</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check header layout
+    /// </summary>
+    /// <returns>boolean</returns>
+    private boolean checkHeaderCell()
+    {
+        str errorMsg;
+        boolean chkReasult = true;
+
+        ListEnumerator headerCellListEnumerator = headerCellList.getEnumerator();
+        while (headerCellListEnumerator.moveNext())
+        {
+            str headerValue = KJP_CM_GeneralPurposeMaster::find(
+                forecastSalesImportExportHeaderLayout,
+                headerCellListEnumerator.current()).DestinationCode;
+            str excelValue = range.get_Item(headerCellListEnumerator.current()).Value;
+
+            //ファイル[A1]～[J1]の値がモデル、日付、品目番号、サイト、
+            //倉庫、販売数量、コメント、プロパティ、レコードID、削除フラグ、
+            //2	入力ファイル
+            //Input file	インポート項目チェック
+            //ファイルの項目順序、項目名が定義と異なる場合、エラーメッセージを表示する。	#M2	Before Save Process
+            //#M2	KJP500223	ファイルの項目が正しくありません。
+            //The file items is invalid.
+            if (headerValue != excelValue)
+            {
+                errorMsg = strFmt("@KJP:KJP500448", headerCellListEnumerator.current(), headerValue);
+                errorMsgList.addEnd(errorMsg);
+                chkReasult = false;
+            }
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkExcelContent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content
+    /// </summary>
+    /// <param name = "_con">container</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean checkExcelContent(container _con, int _row)
+    {
+        //3	入力ファイル.モデル
+        //Input file.Model	モデル存在チェック
+        //入力値が予測モデルに存在しない場合、エラーメッセージを表示する。	#M3	Before Save Process
+        modelCheckFlg = this.validateModelExitCheck(conPeek(_con, num_1), _row);
+        //4	入力ファイル.日付
+        //Input file.Date	日付不正チェック
+        //入力値が日付形式ではない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        dateCheckFlg = this.validateDateCheck(conPeek(_con, num_2), _row);
+        //14	入力ファイル. 顧客 ID
+        //Input file.CustAccountId	顧客存在チェック
+        // 入力値が顧客に存在しない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        custAccountIdCheckFlg = this.validateCustAccountIdCheck(conPeek(_con, num_3), _row);
+        //5	入力ファイル.品目番号
+        //Input file.Item Number	品目存在チェック
+        //入力値が品目に存在しない場合、エラーメッセージを表示する。	#M4	Before Save Process
+        itemNumberCheckFlg = this.validateItemNumberExitCheck(conPeek(_con, num_4), _row);
+        bomVersionCheckFlg = this.validateBomVersionExitCheck(conPeek(_con, num_4), conPeek(_con, num_5), _row);
+        //6	入力ファイル.サイト
+        //Input file.Site	サイト存在チェック
+        //入力値がサイトに存在しない場合、エラーメッセージを表示する。	#M5	Before Save Process
+        siteCheckFlg = this.validateSiteExitCheck(conPeek(_con, num_6), _row);
+        //7	入力ファイル.倉庫
+        //Input file.Warehouse	倉庫存在チェック
+        //入力値が倉庫に存在しない場合、エラーメッセージを表示する。	#M6	Before Save Process
+        warehouseCheckFlg = this.validateWarehouseExitCheck(conPeek(_con, num_7), _row);
+        //8	入力ファイル.販売数量
+        //Input file.SalesQty	数量不正チェック
+        //入力値が数値形式ではない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        salesQtyCheckFlg = this.validateSalesQtyCheck(conPeek(_con, num_8), _row);
+        //15 入力ファイル. 単位
+        //Input file.SalesUnitId	単位存在チェック
+        //  入力値が単位に存在しない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        salesUnitIdCheckFlg = this.validateSalesUnitIdCheck(conPeek(_con, num_4), conPeek(_con, num_9), _row);
+        //Comment Lengh不正チェック
+        commentCheckFlg = this.validateCommentCheck(conPeek(_con, num_10), _row);
+        //16	入力ファイル. 工順番号
+        //Input file.RouteId	工順番号存在チェック
+        //入力値が工順番号に存在しない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        routeIdCheckFlg = this.validateRouteIdCheck(conPeek(_con, num_4), conPeek(_con, num_2),
+            conPeek(_con, num_8), conPeek(_con, num_13), _row);
+        //9	入力ファイル.削除フラグ
+        //Input file.Deletion Flag	フラグ不正チェック
+        //入力値が未入力,0,1ではない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        deletionFlagCheckFlg = this.validateDeletionFlagCheck(conPeek(_con, num_15), _row);
+        //11	入力ファイル.RECID
+        //Input file.RECID	既存レコード存在チェック
+        //入力ファイルのRECIDが入力ありの場合で、該当レコードが存在しない場合、エラーメッセージを表示する。	#M8	Before Save Process
+        //Input file.RECID	複数行チェック
+        //入力ファイルのRECIDが入力ありの場合で、同じRECIDが複数行ある場合、エラーメッセージを表示する。
+        //Input file.Deletion Flag	新規登録＆削除フラグチェック
+        //入力ファイルのRECIDが入力なしの場合で、削除フラグが1の場合、エラーメッセージを表示する。
+        recIdCheckFlg = this.validateRecIDExitCheck(conPeek(_con, num_14), conPeek(_con, num_15), _row);
+        //17	入力ファイル.有効
+        //Input file.Active	有効不正チェック
+        //入力値が未入力,0,1ではない場合、エラーメッセージを表示する。	#M0	Before Save Process
+        activeCheckFlg = this.validateActiveCheck(conPeek(_con, num_12), _row);
+
+        //Block Rule Check
+        lifeCycleCheckFlg = this.validateLifeCycleStatusCheck(conPeek(_con, num_4),
+            conPeek(_con, num_2), conPeek(_con, num_6), conPeek(_con, num_7), _row);
+
+        if (modelCheckFlg && dateCheckFlg && itemNumberCheckFlg && bomVersionCheckFlg && siteCheckFlg
+            && warehouseCheckFlg && salesQtyCheckFlg && commentCheckFlg && deletionFlagCheckFlg && recIdCheckFlg
+            && custAccountIdCheckFlg && salesUnitIdCheckFlg && routeIdCheckFlg && activeCheckFlg && lifeCycleCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateLifeCycleStatusCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate Life Cycle Status Check
+    /// </summary>
+    /// <param name = "_itemNumber">_itemNumber</param>
+    /// <param name = "_date">_date</param>
+    /// <param name = "_siteId">_siteId</param>
+    /// <param name = "_WarehouseId">_WarehouseId</param>
+    /// <param name = "_row">_row</param>
+    /// <returns>true/false</returns>
+    private boolean validateLifeCycleStatusCheck(str _itemNumber, str _date, str _siteId, str _WarehouseId, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101383") ;
+        str errorExistMsg;
+        str errorAllMsg = blank;
+        TransDate startDate = str2Date(_date, 321);
+        InventDim   inventDim;
+        InventDimId inventDimId;
+        KJP_SM_CheckLifeCycleStatusRuleBlock checkLifeCycleStatusRuleBlock = new KJP_SM_CheckLifeCycleStatusRuleBlock();
+
+        inventDim.InventSiteId = _siteId;
+        inventDim.InventLocationId = _WarehouseId;
+        inventDimId = InventDim::findOrCreate(inventDim).inventDimId;
+
+        if (checkLifeCycleStatusRuleBlock.isBlocked(_itemNumber, inventDimId, startDate))
+        {
+            errorExistMsg = checkLifeCycleStatusRuleBlock.parmErrorMsg();
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateModelExitCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of _model
+    /// </summary>
+    /// <param name = "_model">_model</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateModelExitCheck (str _model, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220", _row, "@KJP:KJP102377") ;
+        str errorExistMsg = strFmt("@KJP:KJP500224", _model);
+        str errorAllMsg = blank;
+
+        // Exist check in ForecastModel Table.
+        if(!ForecastModel::exist(HeadingSub::Heading, _model, _model))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateDateCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of Date
+    /// </summary>
+    /// <param name = "_date">Date</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateDateCheck(str _date, int _row)
+    {
+        blankCheckFlg = true;
+        dateCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220", _row, "@KJP:KJP101405") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101405");
+        str errorFormatMsg = strFmt("@KJP:KJP500172", _date);
+        str errorAllMsg = blank;
+
+        date strDate = str2Date(_date, 321);
+
+        // Date blank check
+        if (blank == _date || _date == dateNullStr)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            blankCheckFlg = false;
+        }
+        else
+        {
+            // Date Format check
+            if (!strDate)
+            {
+                if (blank == errorAllMsg)
+                {
+                    errorAllMsg = errorHeaderMsg + squareBracketL + errorFormatMsg + squareBracketR;
+                }
+                else
+                {
+                    errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorFormatMsg + squareBracketR;
+                }
+                dateCheckFlg = false;
+            }
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (blankCheckFlg && dateCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateItemNumberExitCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of itemNumber
+    /// </summary>
+    /// <param name = "_itemNumber">itemNumber</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateItemNumberExitCheck(str _itemNumber, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101383") ;
+        str errorExistMsg = strFmt("@KJP:KJP500225", _itemNumber);
+        str errorAllMsg = blank;
+
+        // Exist check in InventTable Table.
+        if (!InventTable::exist(_itemNumber))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateBomVersionExitCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of _bomVersion
+    /// </summary>
+    /// <param name = "_itemNumber">itemNumber</param>
+    /// <param name = "_bomVersion">bomVersion</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateBomVersionExitCheck(str _itemNumber, str _bomVersion, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220", _row , "@SYS67777") ;
+        str errorExistMsg = strFmt("@KJP:KJP500447", _bomVersion);
+        str errorAllMsg = blank;
+
+        // Exist check in InventTable Table.
+        if (_bomVersion != blank && !BOMVersion::existBomId(_bomVersion, _itemNumber))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSiteExitCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of siteid
+    /// </summary>
+    /// <param name = "_siteId">siteId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateSiteExitCheck(str _siteId, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101172") ;
+        str errorExistMsg = strFmt("@KJP:KJP500171", _siteId);
+        str errorAllMsg = blank;
+
+        // Exist check in InventSite Table.
+        if(!InventSite::exist(_siteId))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWarehouseExitCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of WarehouseId
+    /// </summary>
+    /// <param name = "_WarehouseId">WarehouseId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateWarehouseExitCheck(str _WarehouseId, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101390") ;
+        str errorExistMsg = strFmt("@KJP:KJP500170", _WarehouseId);
+        str errorAllMsg = blank;
+
+        if(!InventLocation::exist(_WarehouseId))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSalesQtyCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of salesQty
+    /// </summary>
+    /// <param name = "_salesQty">salesQty</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateSalesQtyCheck(str _salesQty, int _row)
+    {
+        blankCheckFlg = true;
+        salesQtyCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101406") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101406");
+        str errorValueMsg = strFmt("@KJP:KJP500172", _salesQty);
+        str errorAllMsg = blank;
+
+        real quantityStringToReal;
+        str  quantityRealToString;
+
+        quantityStringToReal = any2Real(_salesQty);
+        quantityRealToString = any2Str(quantityStringToReal);
+
+        // Mandatory check
+        if(blank == _salesQty)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            blankCheckFlg = false;
+        }
+        else
+        {
+            // Number check and Value check
+            if(quantityStringToReal <= num_0 || _salesQty != quantityRealToString)
+            {
+                if (blank == errorAllMsg)
+                {
+                    errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+                }
+                else
+                {
+                    errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+                }
+                salesQtyCheckFlg = false;
+            }
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (blankCheckFlg && salesQtyCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateCommentCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of comment
+    /// </summary>
+    /// <param name = "_comment">comment</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateCommentCheck(str _comment, int _row)
+    {
+        commentCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP100735") ;
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@KJP:KJP100735");
+        str errorAllMsg = blank;
+        int commentLengh = strLen(_comment);
+
+        // Lengh check (Max : 80)
+        if(commentLengh > num_80)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            commentCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (commentCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateDeletionFlagCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of DeletionFlag
+    /// </summary>
+    /// <param name = "_deletionFlag">DeletionFlag</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateDeletionFlagCheck(str _deletionFlag, int _row)
+    {
+        deletionFlagCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP100748") ;
+        str errorValueMsg = strFmt("@KJP:KJP500172", _deletionFlag);
+        str errorAllMsg = blank;
+
+        if(_deletionFlag != int2Str(enum2int(NoYes::Yes)) && _deletionFlag != int2Str(enum2int(NoYes::No)))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            deletionFlagCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (deletionFlagCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateRecIDExitCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of RecID
+    /// </summary>
+    /// <param name = "_recID">RecID</param>
+    /// <param name = "_deletionFlag">deletionFlag</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateRecIDExitCheck(str _recID, str _deletionFlag, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP100749") ;
+        str errorExistMsg = strFmt("@KJP:KJP500226", _recID);
+        str errorDoubleExistMsg = strFmt("@KJP:KJP500453", _recID);
+        str errorRecIDAnddeletionFlagMsg = strFmt("@KJP:KJP500459");
+        str errorAllMsg = blank;
+
+        if (_recID != blank)
+        {
+            //既存レコード存在チェック
+            if ( !ForecastSales::findRecId(any2Int64(_recID)))
+            {
+                if (blank == errorAllMsg)
+                {
+                    errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+                }
+                else
+                {
+                    errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+                }
+                existCheckFlg = false;
+            }
+            //複数行チェック
+            if (!nullValue(itemIdCon) && conLen(itemIdCon) > 0)
+            {
+                for (int i = 1; i <= conLen(itemIdCon); i++)
+                {
+                    if (_recID == conPeek(itemIdCon, i))
+                    {
+                        if (blank == errorAllMsg)
+                        {
+                            errorAllMsg = errorHeaderMsg + squareBracketL + errorDoubleExistMsg + squareBracketR;
+                        }
+                        else
+                        {
+                            errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorDoubleExistMsg + squareBracketR;
+                        }
+                        existCheckFlg = false;
+                    }
+                    else
+                    {
+                        if (conFind(itemIdConCopy, _recID) == 0)
+                        {
+                            itemIdConCopy += _recID;
+                        }
+                    }
+                }
+                itemIdCon = itemIdConCopy;
+            }
+            else
+            {
+                if (conFind(itemIdCon, _recID) == 0)
+                {
+                    itemIdCon += _recID;
+                    itemIdConCopy += _recID;
+                }
+            }
+        }
+        else
+        {
+            //新規登録＆削除フラグチェック
+            if (_deletionFlag == int2Str(enum2int(NoYes::Yes)))
+            {
+                if (blank == errorAllMsg)
+                {
+                    errorAllMsg = errorHeaderMsg + squareBracketL + errorRecIDAnddeletionFlagMsg + squareBracketR;
+                }
+                else
+                {
+                    errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorRecIDAnddeletionFlagMsg + squareBracketR;
+                }
+                existCheckFlg = false;
+            }
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateCustAccountIdCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of _custAccountId
+    /// </summary>
+    /// <param name = "_custAccountId">_custAccountId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateCustAccountIdCheck (str _custAccountId, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220", _row, "@SYS7149") ;
+        str errorExistMsg = strFmt("@SYP4986038", "@SYS7149", _custAccountId, "@SYS11307");
+        str errorAllMsg = blank;
+
+        // Exist check in ForecastModel Table.
+        if(_custAccountId != blank && !CustTable::exist(_custAccountId))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSalesUnitIdCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of _salesUnitId
+    /// </summary>
+    /// <param name = "_itemId">_itemId</param>
+    /// <param name = "_excelUnitId">_excelUnitId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateSalesUnitIdCheck (str _itemId, str _excelUnitId, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220", _row, "@KJP:KJP101389") ;
+        str errorExistMsg = strFmt("@SYP4986038", "@KJP:KJP101389", _excelUnitId, "@KJP:KJP100706");
+        str errorConvertMsg;
+        str errorAllMsg = blank;
+        UnitOfMeasureFromRecId fromRecId;
+        UnitOfMeasureFromRecId toRecId;
+        boolean canConvert;
+        boolean ret = true;
+
+        if (_excelUnitId == blank)
+        {
+            return true;
+        }
+
+        // UnitID exists check
+        if (!UnitOfMeasure::findBySymbol(_excelUnitId).RecId)
+        {
+            errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            errorMsgList.addEnd(errorAllMsg);
+
+            return false;
+        }
+
+        // get InventUnitId
+        UnitOfMeasureSymbol inventUnitId = InventTableModule::find(_itemId, ModuleInventPurchSales::Invent).UnitId;
+
+        // only InventUnitId exist
+        if (inventUnitId != blank)
+        {
+            if (_excelUnitId == inventUnitId)
+            {
+                ret = true;
+            }
+            else
+            {
+                fromRecId = UnitOfMeasure::findBySymbol(_excelUnitId).RecId;
+                toRecId = UnitOfMeasure::findBySymbol(inventUnitId).RecId;
+                canConvert = UnitOfMeasureConverter::canBeConverted(fromRecId, toRecId, inventTable::itemProduct(_itemId));
+                if (!canConvert)
+                {
+                    errorConvertMsg = strFmt("@SYS310324", _excelUnitId, inventUnitId, _itemId);
+                    errorAllMsg = errorHeaderMsg + squareBracketL + errorConvertMsg + squareBracketR;
+                    errorMsgList.addEnd(errorAllMsg);
+                    ret = false;
+                }
+            }
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateRouteIdCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of _routeId
+    /// </summary>
+    /// <param name = "_itemId">_itemId</param>
+    /// <param name = "_date">_date</param>
+    /// <param name = "_fromQty">_fromQty</param>
+    /// <param name = "_routeId">_routeId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateRouteIdCheck (str _itemId, str _date,
+        str _fromQty, str _routeId, int _row)
+    {
+        existCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220", _row, "@SYS21709") ;
+        str errorExistMsg = strFmt("@SYP4986038", "@SYS21709", _routeId, "@SYS22809");
+        str errorAllMsg = blank;
+
+        // Exist check in ForecastModel Table.
+        if(_routeId != blank &&
+            !RouteVersion::exist(_itemId, _routeId, true, any2Date(_date), dateNull(), str2Int(_fromQty)))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            existCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (existCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateActiveCheck</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of Active
+    /// </summary>
+    /// <param name = "_active">_active</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateActiveCheck(str _active, int _row)
+    {
+        deletionFlagCheckFlg = true;
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@Sys14584") ;
+        str errorValueMsg = strFmt("@KJP:KJP500172", _active);
+        str errorAllMsg = blank;
+
+        if(_active != blank && _active != int2Str(enum2int(NoYes::Yes))
+            && _active != int2Str(enum2int(NoYes::No)))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            deletionFlagCheckFlg = false;
+        }
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+        if (deletionFlagCheckFlg)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fromExcFileToForecastSalesForCUD</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Excel Data to forecastSsles
+    /// </summary>
+    /// <param name = "_excelRowCount">excelRowCount</param>
+    /// <param name = "_fieldMapping">fieldMapping</param>
+    private void fromExcFileToForecastSalesForCUD(Integer _excelRowCount, Map _fieldMapping)
+    {
+        container rangeCon;
+
+        ForecastSales forecastSales;
+        InventDim newInventDim;
+
+        // Start with 2 due to header excluded.
+        for (int i = num_2; i <= _excelRowCount; i++)
+        {
+            rangeCon = conNull();
+            forecastSales.clear();
+            newInventDim.clear();
+            rangeCon = _fieldMapping.lookup(i);
+            if (blank == conPeek(rangeCon, num_14))
+            {
+                //モデル
+                forecastSales.ModelId = conPeek(rangeCon, num_1);
+                forecastSales.Cov = ForecastModel::find(HeadingSub::Heading, forecastSales.ModelId).Cov;
+                //日付
+                forecastSales.StartDate = str2Date(conPeek(rangeCon, num_2), 321);
+                //顧客 ID
+                forecastSales.CustAccountId = conPeek(rangeCon, num_3);
+                //顧客グループ
+                forecastSales.CustGroupId = CustTable::find(conPeek(rangeCon, num_3)).CustGroup;
+                forecastSales.TaxGroupId = CustTable::find(conPeek(rangeCon, num_3)).TaxGroup;
+                //品目番号
+                forecastSales.ItemId = conPeek(rangeCon, num_4);
+                InventTable inventTable = InventTable::find(forecastSales.ItemId);
+                //BOM
+                forecastSales.ItemBOMId = conPeek(rangeCon, num_5);
+                //サイト
+                newInventDim.InventSiteId = conPeek(rangeCon, num_6);
+                //倉庫
+                newInventDim.InventLocationId = conPeek(rangeCon, num_7);
+                forecastSales.InventDimId = InventDim::findOrCreate(newInventDim).inventDimId;
+                forecastSales.CostPrice = inventTable.costPcsPrice(forecastSales.InventDimId,
+                    InventDim::find(forecastSales.InventDimId), null, forecastSales.StartDate);
+                //販売数量
+                forecastSales.SalesQty = conPeek(rangeCon, num_8);
+                               
+                //販売単位
+                forecastSales.SalesUnitId = conPeek(rangeCon, num_9);
+
+                //在庫数量
+                forecastSales.InventQty = this.getInventQty(forecastSales.ItemId, forecastSales.SalesQty, forecastSales.SalesUnitId);
+
+                //コメント
+                forecastSales.Comment = conPeek(rangeCon, num_10);
+
+                forecastSales.TaxItemGroupId =
+                    InventTableModule::find(forecastSales.ItemId, ModuleInventPurchSales::Sales).TaxItemGroupId;
+                forecastSales.ProjCategoryId = inventTable.ProjCategoryId;
+                forecastSales.DefaultDimension = inventTable.DefaultDimension;
+
+                //品目番号紐付く項目
+                forecastSales.salesPurchLineInterface().setPriceAgreement(newInventDim,true);
+                forecastSales.updateAmount();
+                if (forecastSales.ProjId)
+                {
+                    forecastSales.ProjLinePropertyId = ProjLinePropertySetup::findLinePropertyId(forecastSales.ProjId,forecastSales.ProjCategoryId);
+                }
+                forecastSales.PdsCWUnitId = PdsCatchWeightItem::pdsCWUnitId(forecastSales.ItemId);
+                //販売通貨
+                forecastSales.Currency = Ledger::accountingCurrency(CompanyInfo::current());
+                //品目グループ
+                forecastSales.ItemGroupId = inventTable.itemGroupId();
+                //有効
+                if (conPeek(rangeCon, num_12) == blank)
+                {
+                    forecastSales.Active = NoYes::Yes;
+                }
+                else
+                {
+                    forecastSales.Active = conPeek(rangeCon, num_12);
+                }
+
+                forecastSales.ItemRouteId = conPeek(rangeCon, num_13);
+
+                //登録
+                forecastSales.insert();
+            }
+            else
+            {
+                //「削除フラグ」に1が入った状態でインポートすると、
+                //「RECID」をキー項目としてD365内の既存レコードを削除する
+                if (conPeek(rangeCon, num_15) == int2Str(enum2int(NoYes::Yes)))
+                {
+                    select forupdate forecastSales
+                        where forecastSales.RecId == any2Int64(conPeek(rangeCon, num_14));
+
+                    if (forecastSales.RecId)
+                    {
+                        forecastSales.delete();
+                    }
+                }
+                else
+                {
+                    while select forUpdate forecastSales
+                        where forecastSales.RecId == any2Int64(conPeek(rangeCon, num_14))
+                    {
+                        //モデル
+                        forecastSales.ModelId = conPeek(rangeCon, num_1);
+                        forecastSales.Cov = ForecastModel::find(HeadingSub::Heading, forecastSales.ModelId).Cov;
+                        //日付
+                        forecastSales.StartDate = str2Date(conPeek(rangeCon, num_2), 321);
+                        //顧客 ID
+                        forecastSales.CustAccountId = conPeek(rangeCon, num_3);
+                        //顧客グループ
+                        forecastSales.CustGroupId = CustTable::find(conPeek(rangeCon, num_3)).CustGroup;
+                        forecastSales.TaxGroupId = CustTable::find(conPeek(rangeCon, num_3)).TaxGroup;
+                        //品目番号
+                        forecastSales.ItemId = conPeek(rangeCon, num_4);
+                        InventTable inventTable = InventTable::find(forecastSales.ItemId);
+                        //BOM
+                        forecastSales.ItemBOMId = conPeek(rangeCon, num_5);
+                        //サイト
+                        newInventDim.InventSiteId = conPeek(rangeCon, num_6);
+                        //倉庫
+                        newInventDim.InventLocationId = conPeek(rangeCon, num_7);
+                        forecastSales.InventDimId = InventDim::findOrCreate(newInventDim).inventDimId;
+                        forecastSales.CostPrice = inventTable.costPcsPrice(forecastSales.InventDimId,
+                            InventDim::find(forecastSales.InventDimId), null, forecastSales.StartDate);
+                        //販売数量
+                        forecastSales.SalesQty = conPeek(rangeCon, num_8);
+
+                        //販売単位
+                        forecastSales.SalesUnitId = conPeek(rangeCon, num_9);
+
+                        //在庫数量
+                        forecastSales.InventQty = this.getInventQty(forecastSales.ItemId, forecastSales.SalesQty, forecastSales.SalesUnitId);
+
+                        //コメント
+                        forecastSales.Comment= conPeek(rangeCon, num_10);
+
+                        forecastSales.TaxItemGroupId =
+                            InventTableModule::find(forecastSales.ItemId, ModuleInventPurchSales::Sales).TaxItemGroupId;
+                        forecastSales.ProjCategoryId = inventTable.ProjCategoryId;
+                        forecastSales.DefaultDimension = inventTable.DefaultDimension;
+
+                        //品目番号紐付く項目
+                        forecastSales.salesPurchLineInterface().setPriceAgreement(newInventDim,true);
+                        forecastSales.updateAmount();
+                        if (forecastSales.ProjId)
+                        {
+                            forecastSales.ProjLinePropertyId = ProjLinePropertySetup::findLinePropertyId(forecastSales.ProjId,forecastSales.ProjCategoryId);
+                        }
+                        forecastSales.PdsCWUnitId = PdsCatchWeightItem::pdsCWUnitId(forecastSales.ItemId);
+                        //品目グループ
+                        forecastSales.ItemGroupId = inventTable.itemGroupId();
+                        //有効
+                        if (conPeek(rangeCon, num_12) == blank)
+                        {
+                            forecastSales.Active = NoYes::Yes;
+                        }
+                        else
+                        {
+                            forecastSales.Active = conPeek(rangeCon, num_12);
+                        }
+
+                        forecastSales.ItemRouteId = conPeek(rangeCon, num_13);
+
+                        //更新
+                        forecastSales.update();
+                    }
+                    
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getInventQty</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get InventQty
+    /// </summary>
+    /// <param name = "_itemId">_itemId</param>
+    /// <param name = "_salesQty">_salesQty</param>
+    /// <param name = "_unitId">_unitId</param>
+    /// <returns>InventQty</returns>
+    private InventQty getInventQty(ItemId _itemId, SalesQty _salesQty, UnitOfMeasureSymbol _unitId)
+    {
+        InventQty inventQty;
+
+        // get InventUnitId
+        UnitOfMeasureSymbol inventUnitId = InventTableModule::find(_itemId, ModuleInventPurchSales::Invent).UnitId;
+
+        if (_unitId && inventUnitId)
+        {
+            inventQty =
+                UnitOfMeasureConverter::convert(_salesQty,
+                UnitOfMeasure::unitOfMeasureIdBySymbol(_unitId),
+                UnitOfMeasure::unitOfMeasureIdBySymbol(inventUnitId),
+                NoYes::Yes, inventTable::itemProduct(_itemId));
+        }
+        else
+        {
+            inventQty = _salesQty;
+        }
+
+        return inventQty;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>demandForecastImportFinishProcess</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Finish Process
+    /// </summary>
+    private void demandForecastImportFinishProcess()
+    {
+        if (dialog.closedOk())
+        {
+            Args args = new Args();
+
+            args.caller(importArgs);
+            args.parmObject(errorMsgList);
+            args.parmEnum(NoYes::No);
+            
+            new MenuFunction(menuItemDisplayStr(KJP_SM_DemandForecastImportResult), MenuItemType::Display).run(args);
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

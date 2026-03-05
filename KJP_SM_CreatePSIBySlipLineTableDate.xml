@@ -1,0 +1,1825 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CreatePSIBySlipLineTableDate</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// CreatePSIBySlipLineTableDate
+/// </summary>
+internal final class KJP_SM_CreatePSIBySlipLineTableDate
+{
+    const str StrZero                       = '0';
+    const int NullTime                      = 0;
+    const str LanguageIdJa                  = 'ja';
+    const str LanguageIdEnUs                = 'en-US';
+    const str LanguageIdEnusLow             = 'en-us';
+    const str Blank                         = '';
+
+    RecordInsertList                cPSIBySlipLineTableInsertList;
+    date                            cCurYearMonth;
+    utcdatetime                     cCurYearMonthUtc;
+    Map                             cPsiTypesMap = new Map(Types::String, Types::String);
+    str                             cDemandForecast;
+    str                             cSupplyRequest;
+    RecId                           cERCHProductHierarchyRecid;
+    PropertyId                      cITProperty;
+    EcoResCategoryCommodityCode     cERCParentCode;
+    EcoResCategoryCommodityCode     cERCCode;
+    RouteOprId                      cRouteOprId;
+    int                             cOperatingHours;
+    KJP_CM_DestinationCode          GPMITPPIdSCM;
+    KJP_CM_DestinationCode          GPMITPPIdTakasaki;
+    KJP_CM_DestinationCode          GPMITPPIdUbe;
+    KJP_CM_DestinationCode          GPMPRODIDFP;
+    KJP_CM_DestinationCode          GPMPRODIDBP;
+    KJP_CM_DestinationCode          GPMPRODIDNP;
+    KJP_CM_DestinationCode          GPMPRODIDNPINSP;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// CreatePSIBySlipLineTableDate main
+    /// </summary>
+    public void main()
+    {
+        this.getPSITypesMap();
+        this.getERCHProductHierarchyRecid();
+
+        date curDate = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        utcdatetime curDatetime = DateTimeUtil::newDateTime(curDate, NullTime);
+        cCurYearMonth = mkDate(1, DateTimeUtil::month(curDateTime), DateTimeUtil::year(curDateTime));
+        cCurYearMonthUtc = DateTimeUtil::newDateTime(cCurYearMonth, NullTime);
+
+        cPSIBySlipLineTableInsertList = new RecordInsertList(tableNum(KJP_SM_PSIBySlipLineTable));
+
+        cDemandForecast = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_ForecastModelKey, KJP_CM_ConstantHelper::origCodeKJP_SM_ForecastModelKey_ForecastModel_A).DestinationCode;
+        cSupplyRequest  = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_ForecastModelKey, KJP_CM_ConstantHelper::origCodeKJP_SM_ForecastModelKey_ForecastModel_B).DestinationCode;
+
+        GPMITPPIdSCM        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ProdPoolKey, KJP_CM_ConstantHelper::origcodeProdPool_SCM).DestinationCode;         // OriginalCode = 'SCM'
+        GPMITPPIdTakasaki   = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ProdPoolKey, KJP_CM_ConstantHelper::origcodeProdPool_Takasaki).DestinationCode;    // OriginalCode = 'Takasaki'
+        GPMITPPIdUbe        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ProdPoolKey, KJP_CM_ConstantHelper::origcodeProdPool_Ube).DestinationCode;         // OriginalCode = 'Ube'
+        GPMPRODIDFP        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey, KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_FP).DestinationCode;
+        GPMPRODIDBP        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey, KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_BP).DestinationCode;
+        GPMPRODIDNP        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey, KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_NP).DestinationCode;
+        GPMPRODIDNPINSP    = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey, KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_NP_Insp).DestinationCode;
+
+        
+        cRouteOprId = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::OprIdKey, KJP_CM_ConstantHelper::origCodeOprIdKey_TestingAndShippingjudgment).DestinationCode;
+
+        cOperatingHours = str2int(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_OperatingHoursKey,KJP_CM_ConstantHelper::origCodeKJP_SM_OperatingHoursKey_OperatingHours).DestinationCode);
+
+
+        this.deleteKJP_SM_PSIBySlipLineTable();
+
+        this.setSupplyAndShippingPlanDate();
+
+        this.setAdditionalSupplyDate();
+
+        this.setPlannedManufacturingAndPurchDate();
+
+        this.setProdOrderAndCompReportDate();
+
+        this.setPurchOrderDate();
+
+        this.setSalesOrderPreProcessDate();
+
+        this.setReqTransInterCompanyDate();
+
+        this.setReqTransDate();
+
+        // insert record list
+        cPSIBySlipLineTableInsertList.insertDatabase();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deleteKJP_SM_PSIBySlipLineTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// deleteKJP_SM_PSIBySlipLineTable
+    /// </summary>
+    private void deleteKJP_SM_PSIBySlipLineTable()
+    {
+        EcoResCategoryFriendlyName wkCategoryFriendlyNameJa;
+        EcoResCategoryFriendlyName wkCategoryFriendlyNameUsEn;
+
+        if (cERCParentCode)
+        {
+            EcoResCategory wkERCCategory;
+            EcoResCategoryTranslation wkERCTCategory;
+
+            while select LanguageId, Category, FriendlyName from wkERCTCategory
+                where wkERCTCategory.LanguageId == LanguageIdJa
+                || wkERCTCategory.LanguageId == LanguageIdEnusLow
+                join RecId, code from wkERCCategory
+                where wkERCTCategory.Category == wkERCCategory.RecId
+                && wkERCCategory.code == cERCParentCode
+            {
+                if (wkERCTCategory.LanguageId == LanguageIdJa)
+                {
+                    wkCategoryFriendlyNameJa = wkERCTCategory.FriendlyName;
+                }
+                else
+                {
+                    wkCategoryFriendlyNameUsEn = wkERCTCategory.FriendlyName;
+                }
+            }
+        }
+
+        EcoResCategoryFriendlyName wkTItemNameStdFriendlyNameJa;
+        EcoResCategoryFriendlyName wkTItemNameStdFriendlyNameEnUs;
+
+        if (cERCCode)
+        {
+            EcoResCategory wkERCItemNameStd;
+            EcoResCategoryTranslation wkERCTItemNameStd;
+
+            while select LanguageId, Category, FriendlyName from wkERCTItemNameStd
+                where wkERCTItemNameStd.LanguageId == LanguageIdJa
+                ||      wkERCTItemNameStd.LanguageId == LanguageIdEnusLow
+                join RecId, code from wkERCItemNameStd
+                where wkERCTItemNameStd.Category == wkERCItemNameStd.RecId
+                &&      wkERCItemNameStd.Code == cERCCode
+            {
+                if (wkERCTItemNameStd.LanguageId == LanguageIdJa)
+                {
+                    wkTItemNameStdFriendlyNameJa = wkERCTItemNameStd.FriendlyName;
+                }
+                else
+                {
+                    wkTItemNameStdFriendlyNameEnUs = wkERCTItemNameStd.FriendlyName;
+                }
+            }
+        }
+
+        KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+        delete_from wkPSIBySlipLineTable
+                    where (((wkPSIBySlipLineTable.ItemNameStd == wkTItemNameStdFriendlyNameJa
+                        || wkPSIBySlipLineTable.ItemNameStd == wkTItemNameStdFriendlyNameEnUs)
+                        && cERCCode != Blank)
+                        || cERCCode == Blank)
+                    &&  (((wkPSIBySlipLineTable.Category == wkCategoryFriendlyNameJa
+                        || wkPSIBySlipLineTable.Category == wkCategoryFriendlyNameUsEn)
+                        && cERCParentCode != Blank)
+                        || cERCParentCode == Blank)
+                    &&  ((wkPSIBySlipLineTable.Property == cITProperty
+                        && cITProperty != Blank)
+                        || cITProperty == Blank);
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getPSITypesMap</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getPSITypes
+    /// </summary>
+    private void getPSITypesMap()
+    {
+        KJP_CM_GeneralPurposeMaster wkGeneralPurposeMaster;
+
+        while select OriginalCode, DestinationCode from wkGeneralPurposeMaster
+            where wkGeneralPurposeMaster.Key == KJP_CM_ConstantHelper::KJP_SM_PSITypeKey
+        {
+            cPsiTypesMap.add(wkGeneralPurposeMaster.OriginalCode, wkGeneralPurposeMaster.DestinationCode);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getERCHProductHierarchyRecid</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getERCHProductHierarchyRecid
+    /// </summary>
+    private void getERCHProductHierarchyRecid()
+    {
+        EcoResCategoryHierarchy wkEcoResCategoryHierarchy;
+
+        str wkGPMDCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_CategoryHierarchyKey,  KJP_CM_ConstantHelper::origCodeKJP_SM_CategoryHierarchyKey_CategoryHierarchy).DestinationCode;
+
+        select firstonly RecId, Name from wkEcoResCategoryHierarchy
+            where wkEcoResCategoryHierarchy.Name  == wkGPMDCode;
+
+        cERCHProductHierarchyRecid = wkEcoResCategoryHierarchy.Recid;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getYearAndMonth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get YYYY/MM  ZeroPadding MM
+    /// </summary>
+    /// <param name = "_date">date</param>
+    /// <returns>KJP_SM_YearAndMonth</returns>
+    private KJP_SM_YearAndMonth getYearAndMonth(date _date)
+    {
+        const str ReplaseBaseYearAndMonth       = '%1/%2';
+        const int ZeroPaddingDigitYearAndMonth  = 2;
+
+        // type conversion date to datetime
+        int wkYear = DateTimeUtil::year(DateTimeUtil::newDateTime(_date, NullTime));
+        int tmpMonth = DateTimeUtil::month(DateTimeUtil::newDateTime(_date, NullTime));
+
+        // zero padding for month
+        str wkMonth = strRFix(int2Str(tmpMonth), ZeroPaddingDigitYearAndMonth, StrZero);
+
+        KJP_SM_YearAndMonth YearAndMonth = strFmt(ReplaseBaseYearAndMonth, wkYear, wkMonth);
+
+        return YearAndMonth;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>UMConvert</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// UMConvert Purch to Sales
+    /// </summary>
+    /// <param name = "_itemId">ItemId</param>
+    /// <param name = "_inventDimId">InventDimId</param>
+    /// <param name = "_value">Qty</param>
+    /// <param name = "_UMSymbolP">UnitOfMeasureSymbol</param>
+    /// <param name = "_UMSymbolI">UnitOfMeasureSymbol</param>
+    /// <param name = "_UMSymbolS">UnitOfMeasureSymbol</param>
+    /// <returns>ConverQty</returns>
+    private SalesQty UMConvert(
+        ItemId                  _itemId,                        
+        InventDimId             _inventDimId,
+        real                    _value,
+        UnitOfMeasureSymbol     _UMSymbolP,
+        UnitOfMeasureSymbol     _UMSymbolI,
+        UnitOfMeasureSymbol     _UMSymbolS)
+    {
+        Qty retQty = _value;
+
+        if (_UMSymbolP 
+            && _UMSymbolI 
+            && _UMSymbolS 
+            && (_UMSymbolP != _UMSymbolS 
+            || _UMSymbolI != _UMSymbolS))
+        {
+            Qty convPtoIQty = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(_itemId, _inventDimId, _value, _UMSymbolP, _UMSymbolI);
+            Qty convItoSQty = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(_itemId, _inventDimId, convPtoIQty, _UMSymbolI, _UMSymbolS);
+            retQty = convItoSQty;
+        }
+
+        return retQty;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>mergeStrSepColon</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// mergeStrSepColon
+    /// </summary>
+    /// <param name = "_con">container</param>
+    /// <returns>str</returns>
+    private str mergeStrSepColon(container _con)
+    {
+        const str Colon = ':';
+
+        str retStr;
+        int wkNum = 1;
+        for (int i = 1; i <= conLen(_con); i++)
+        {
+            if (conPeek(_con,i))
+            {
+                if (wkNum == 1)
+                {
+                    retStr = strFmt('%1', conPeek(_con, i));
+                }
+                else
+                {
+                    retStr = retStr + Colon + strFmt('%1', conPeek(_con, i));
+                }
+
+                wkNum++;
+
+            }
+
+        }
+
+        return retStr;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>selectFriendlyName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// selectFriendlyName
+    /// </summary>
+    /// <param name = "_ecoResCategoryTranslationJa">EcoResCategoryTranslation ja</param>
+    /// <param name = "_ecoResCategoryTranslationLang">EcoResCategoryTranslation other</param>
+    /// <returns>EcoResCategoryFriendlyName</returns>
+    private EcoResCategoryFriendlyName selectFriendlyName(EcoResCategoryTranslation _ecoResCategoryTranslationJa, EcoResCategoryTranslation _ecoResCategoryTranslationLang)
+    {
+        EcoResCategoryFriendlyName retFriendlyName;
+
+        if (_ecoResCategoryTranslationJa.FriendlyName)
+        {
+            retFriendlyName = _ecoResCategoryTranslationJa.FriendlyName;
+        }
+        else
+        {
+            retFriendlyName = _ecoResCategoryTranslationLang.FriendlyName;
+        }
+
+        return retFriendlyName;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>selectItemName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// selectItemName
+    /// </summary>
+    /// <param name = "_ecoResProductTranslationJa">EcoResProductTranslation ja</param>
+    /// <param name = "_ecoResProductTranslationLang">EcoResProductTranslation</param>
+    /// <returns>KJP_SM_ItemName100</returns>
+    private KJP_SM_ItemName100 selectItemName(EcoResProductTranslation _ecoResProductTranslationJa, EcoResProductTranslation _ecoResProductTranslationLang)
+    {
+        KJP_SM_ItemName100 retName;
+
+        if (_ecoResProductTranslationJa.Name)
+        {
+            retName = _ecoResProductTranslationJa.Name;
+        }
+        else
+        {
+            retName = _ecoResProductTranslationLang.Name;
+        }
+            
+        return retName;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setSupplyAndShippingPlanDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setSupplyAndShippingPlanDate
+    /// </summary>
+    private void setSupplyAndShippingPlanDate()
+    {
+        ForecastSales                   wkForecastSales;
+        InventTable                     wkInventTable;
+        InventTableModule               wkInventTableModuleSales;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId;    //ProdGroupId
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterForecastModel;   //ForecastModel
+        EcoResProduct                   wkEcoResProduct;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        CustTable                       wkCustTable;
+        InterCompanyTradingPartner      wkInterCompanyTradingPartner;
+        DirPartyTable                   wkDirPartyTable;
+
+        while select ItemId	,CustAccountId, ForecastEntryNumber, StartDate,	SalesQty, SalesUnitId, InventDimId, ModelId from wkForecastSales                                 
+            where wkForecastSales.StartDate >= cCurYearMonth
+            join ProdGroupId, ItemId, Product, PropertyId from wkInventTable                     
+            where wkForecastSales.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType, DisplayProductNumber from wkEcoResProduct                                                                                                                      
+            where wkInventTable.Product == wkEcoResProduct.RecId                                           
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId                                                                                                                       
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode                                                             
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey                                     
+            join DestinationCode, Key, OriginalCode from wkGeneralPurposeMasterForecastModel                                                               
+            where wkForecastSales.ModelId == wkGeneralPurposeMasterForecastModel.DestinationCode
+                && wkGeneralPurposeMasterForecastModel.Key == KJP_CM_ConstantHelper::KJP_SM_ForecastModelKey
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleSales                                                                            
+            where wkInventTable.ItemId == wkInventTableModuleSales.ItemId
+                && wkInventTableModuleSales.ModuleType == ModuleInventPurchSales::Sales
+            join inventDimId, InventLocationId from wkInventDim                                                                   
+            where wkForecastSales.InventDimId == wkInventDim.inventDimId                                                                  
+            join InventLocationId, name, KJPSMGoodProductType from wkInventLocation                                                                             
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory                                                          
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResProductCategory.Category == wkEcoResCategory.RecId
+                && wkEcoResProductCategory.CategoryHierarchy == wkEcoResCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    &&  cERCCode != Blank)
+                    ||  cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    &&  cERCParentCode != Blank)
+                    ||  cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+            outer join AccountNum, DataAreaId, Party from wkCustTable
+            where wkForecastSales.CustAccountId == wkCustTable.AccountNum
+            outer join CustomerDataAreaId, CustomerParty, DataAreaId from wkInterCompanyTradingPartner
+            where wkCustTable.DataAreaId == wkInterCompanyTradingPartner.CustomerDataAreaId
+            && wkCustTable.Party == wkInterCompanyTradingPartner.CustomerParty
+            outer join RecId, Name from wkDirPartyTable
+            where wkCustTable.Party == wkDirPartyTable.RecId  
+        {
+            str                     wkPsiType = '';
+            CustAccount             wkCustomerAccount = '';
+            KJP_SM_CustomerName160  wkCustomerName = '';
+            KJP_SM_PSIReportKey     wkPSIReportKey = '';
+
+            switch (wkForecastSales.ModelId) 
+            {
+                case cSupplyRequest:
+                    wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType1);
+                    wkPSIReportKey = this.mergeStrSepColon([wkPsiType, wkInterCompanyTradingPartner.CustomerDataAreaId, wkForecastSales.CustAccountId, wkForecastSales.ItemId, this.getYearAndMonth(wkForecastSales.StartDate)]);
+                    wkCustomerAccount = wkForecastSales.CustAccountId;
+                    wkCustomerName    = this.mergeStrSepColon([wkForecastSales.CustAccountId, wkDirPartyTable.Name]);
+                    break;
+
+                case cDemandForecast:
+                    wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType9);
+                    wkPSIReportKey = this.mergeStrSepColon([wkPsiType, wkInterCompanyTradingPartner.CustomerDataAreaId, wkForecastSales.ItemId, this.getYearAndMonth(wkForecastSales.StartDate)]);
+                    break;
+            }
+
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            str         wkCompanyCode = wkCustTable.interCompanyTradingPartnerCompanyID();
+            CompanyName wkCompanyName = this.mergeStrSepColon([wkCompanyCode, CompanyInfo::findDataArea(wkCompanyCode).Name]);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+            wkPSIBySlipLineTable.PSIReportKey       = wkPSIReportKey;
+            wkPSIBySlipLineTable.PSIType            = wkPsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkForecastSales.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkForecastSales.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.CompanyCode        = wkCompanyCode;
+            wkPSIBySlipLineTable.CompanyName        = wkCompanyName;
+            wkPSIBySlipLineTable.CustomerAccount    = wkCustomerAccount;
+            wkPSIBySlipLineTable.CustomerName       = wkCustomerName;
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.VoucherNumber      = wkForecastSales.ForecastEntryNumber;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkForecastSales.StartDate);
+            wkPSIBySlipLineTable.Ymd                = wkForecastSales.StartDate;
+            wkPSIBySlipLineTable.UnitId             = wkInventTableModuleSales.UnitId;
+            wkPSIBySlipLineTable.Quantity           = wkForecastSales.SalesQty;
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setAdditionalSupplyDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setAdditionalSupplyDate
+    /// </summary>
+    private void setAdditionalSupplyDate()
+    {
+        ForecastPurch                   wkForecastPurch;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId;
+        InventTableModule               wkInventTableModuleInvent; 
+        InventTableModule               wkInventTableModuleSales;  
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+
+        while select wkForecastPurch
+            where wkForecastPurch.StartDate >= cCurYearMonth
+            join ItemId, Product, ProdGroupId, PropertyId from wkInventTable
+            where wkForecastPurch.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct 
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode 
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleInvent
+            where wkInventTable.ItemId == wkInventTableModuleInvent.ItemId
+                && wkInventTableModuleInvent.ModuleType == ModuleInventPurchSales::Invent
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleSales
+            where wkInventTable.ItemId == wkInventTableModuleSales.ItemId
+                && wkInventTableModuleSales.ModuleType == ModuleInventPurchSales::Sales
+            join inventDimId, InventLocationId from wkInventDim
+            where wkForecastPurch.InventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    && cERCCode != Blank)
+                    || cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    && cERCParentCode != Blank)
+                    || cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+            && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+            && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+
+        {
+            str wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType3);
+
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+            wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkForecastPurch.ItemId, this.getYearAndMonth(wkForecastPurch.StartDate)]);
+            wkPSIBySlipLineTable.PSIType            = wkPsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkForecastPurch.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkForecastPurch.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkForecastPurch.StartDate);
+            wkPSIBySlipLineTable.Ymd                = wkForecastPurch.StartDate;
+            wkPSIBySlipLineTable.UnitId             = wkInventTableModuleSales.UnitId;
+            wkPSIBySlipLineTable.Quantity           = this.UMConvert(wkForecastPurch.ItemId, wkInventDim.inventDimId, wkForecastPurch.PurchQty, wkForecastPurch.PurchUnitId, wkInventTableModuleInvent.UnitId, wkInventTableModuleSales.UnitId);
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPlannedManufacturingAndPurchDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setPlannedManufacturingAndPurchDate
+    /// </summary>
+    private void setPlannedManufacturingAndPurchDate()
+    {
+        ReqPO                           wkReqPO;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId; 
+        ReqPlanVersion                  wkReqPlanVersion;
+        ReqPlan                         wkReqPlan;
+        InventTableModule               wkInventTableModuleInvent;         
+        InventTableModule               wkInventTableModuleSales;          
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+
+        ReqPlanId wkReqPlanId = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::MasterPlanKey, KJP_CM_ConstantHelper::origCodeExchangeRateType_FI_Default).DestinationCode;
+
+        while select ReqDate, ItemId, PlanVersion, CovInventDimId, RefType, RefId, Qty, PurchUnit, ItemRouteId, SchedToDate, KJPSMASTOrder from wkReqPO
+            where wkReqPO.ReqDate >= cCurYearMonth
+                && (wkReqPO.RefType == ReqRefType::BOMPlannedOrder
+                ||  wkReqPO.RefType == ReqRefType::ItemPlannedOrder)
+            join ItemId, Product, ProdGroupId, PropertyId, ProdPoolId from wkInventTable
+            where wkReqPO.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    &&  cITProperty != Blank)
+                    ||  cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            join RecId, ReqPlanId, ReqPlanDataAreaId from wkReqPlanVersion
+            where wkReqPO.PlanVersion == wkReqPlanVersion.RecId
+                && wkReqPlanVersion.Active == NoYes::Yes
+            join ReqPlanId, DataAreaId from wkReqPlan
+            where wkReqPlanVersion.ReqPlanId == wkReqPlan.ReqPlanId
+                && wkReqPlanVersion.ReqPlanDataAreaId == wkReqPlan.DataAreaId   
+                && wkReqPlan.ReqPlanId == wkReqPlanId
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleInvent
+            where wkInventTable.ItemId == wkInventTableModuleInvent.ItemId
+                && wkInventTableModuleInvent.ModuleType == ModuleInventPurchSales::Invent
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleSales
+            where wkInventTable.ItemId == wkInventTableModuleSales.ItemId
+                && wkInventTableModuleSales.ModuleType == ModuleInventPurchSales::Sales
+            join inventDimId, InventSiteId, InventLocationId from wkInventDim
+            where wkReqPO.CovInventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType, KJPSMWarehouseClassification from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    && cERCCode != Blank)
+                    || cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    && cERCParentCode != Blank)
+                    || cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+        {
+            str                 wkPsiType;
+            UnitOfMeasureSymbol wkSymbol;
+            Qty                 wkQty;
+            date                wkYmd;
+
+            // Create registration date
+            switch(wkReqPO.RefType)
+            {
+                case ReqRefType::BOMPlannedOrder:
+                    wkPsiType   = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType4);
+                    wkSymbol    = wkInventTableModuleInvent.UnitId;
+                    wkQty       = wkReqPO.Qty;
+                    wkYmd       = this.getYmdBOMPlannedOrder(wkReqPO, wkInventTable, wkInventLocation, wkInventDim);
+
+                    break;
+
+                case ReqRefType::ItemPlannedOrder:
+                    wkPsiType   = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType5);
+                    wkSymbol    = wkInventTableModuleSales.UnitId;
+                    wkQty       = this.UMConvert(wkReqPO.ItemId, wkInventDim.inventDimId, wkReqPO.Qty, wkReqPO.PurchUnit, wkInventTableModuleInvent.UnitId, wkInventTableModuleSales.UnitId);
+                    wkYmd       = this.getYmdItemPlannedOrder(wkReqPO, wkInventTable, wkInventDim);
+
+                    break;
+            }
+            
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+            wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkReqPO.ItemId, this.getYearAndMonth(wkYmd)]);
+            wkPSIBySlipLineTable.PSIType            = wkPsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkReqPO.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkReqPO.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.VoucherNumber      = wkReqPO.RefId;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkYmd);
+            wkPSIBySlipLineTable.Ymd                = wkYmd;
+            wkPSIBySlipLineTable.UnitId             = wkSymbol;
+            wkPSIBySlipLineTable.Quantity           = wkQty;
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getYmdItemPlannedOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getYmdItemPlannedOrder
+    /// </summary>
+    /// <param name = "_reqPO">ReqPO</param>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <returns>date</returns>
+    private date getYmdItemPlannedOrder(ReqPO _reqPO, InventTable _inventTable, Inventdim _inventDim)
+    {
+        utcdatetime wkReqDateUtc = DateTimeUtil::newDateTime(_reqPO.SchedToDate, NullTime);
+
+        ReqGroup wkReqGroup;
+        utcdatetime wkDatePlus;    
+
+        wkReqGroup = this.getReqGroup(_inventDim, _inventTable);
+
+        wkDatePlus = DateTimeUtil::addDays(wkReqDateUtc, wkReqGroup.ReceiptMargin);
+
+        date retDate = mkDate(DateTimeUtil::day(wkDatePlus), DateTimeUtil::month(wkDatePlus), DateTimeUtil::year(wkDatePlus));
+
+        return retDate;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getReqGroup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getReqGroup
+    /// </summary>
+    /// <param name = "_inventDim">Inventdim</param>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <returns>date</returns>
+    private ReqGroup getReqGroup(Inventdim _inventDim, InventTable _inventTable)
+    {
+        Inventdim wkInventDim;
+        ReqItemTable wkReqItemTable;
+        ReqGroup wkReqGroup;
+
+        // findOrCreate(InventDim)
+        wkInventDim.clear();
+        wkInventDim.inventLocationId = _inventDim.inventLocationId;
+        wkInventDim.InventSiteId = _inventDim.InventSiteId;
+        wkInventDim = InventDim::findOrCreate(wkInventDim);
+
+        wkReqItemTable = ReqItemTable::find(_inventTable.ItemId, wkInventDim.inventDimId);
+        wkReqGroup = ReqGroup::find(wkReqItemTable.ReqGroupId);
+
+        return wkReqGroup;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getYmdBOMPlannedOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getYmdBOMPlannedOrder
+    /// </summary>
+    /// <param name = "_reqPO">ReqPO</param>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <returns>date</returns>
+    private date getYmdBOMPlannedOrder(ReqPO _reqPO, InventTable _inventTable, inventLocation _inventLocation, Inventdim _inventDim)
+    {
+        utcdatetime wkDatePlus;
+
+        utcdatetime wkReqDateUtc = DateTimeUtil::newDateTime(_reqPO.SchedToDate, NullTime);
+
+        ReqGroup wkReqGroup;
+
+        wkReqGroup = this.getReqGroup(_inventDim, _inventTable);
+
+        switch (_inventLocation.KJPSMWarehouseClassification)
+        {
+            case KJP_SM_WarehouseClassification::TakasakiFactory:
+            case KJP_SM_WarehouseClassification::UbeFactory:
+
+                RouteTable  wkRouteTable;
+                RouteOpr    wkRouteOpr;
+
+                select firstonly RouteId from wkRouteTable
+                    where _reqPO.ItemRouteId == wkRouteTable.RouteId
+                    join RouteRelation, RouteCode, OprId, TranspTime from wkRouteOpr
+                    where wkRouteTable.RouteId == wkRouteOpr.RouteRelation
+                    && wkRouteOpr.RouteCode == RouteAll::Route
+                    && wkRouteOpr.OprId == cRouteOprId
+                    && wkRouteOpr.ItemRelation == _inventTable.ItemId;
+
+                // FP,BP,NP
+                if(_inventTable.ProdGroupId == GPMPRODIDFP
+                    || _inventTable.ProdGroupId == GPMPRODIDBP
+                    || _inventTable.ProdGroupId == GPMPRODIDNP
+                    || _inventTable.ProdGroupId == GPMPRODIDNPINSP)
+                {
+                    if(!_reqPO.KJPSMASTOrder)
+                    {
+                        // AST UnSent
+                        wkDatePlus = wkReqDateUtc;
+                    }
+                    else
+                    {
+                        // AST Sent
+                        if (wkRouteOpr.TranspTime)
+                        {
+                            int wkDay = real2int(roundUp(wkRouteOpr.TranspTime / cOperatingHours, 1));
+                            wkDatePlus = DateTimeUtil::addDays(wkReqDateUtc, wkDay);
+                        }
+                        else
+                        {
+                            wkDatePlus = wkReqDateUtc;
+                        }
+                    }
+                }
+                else
+                {
+                    wkDatePlus = DateTimeUtil::addDays(wkReqDateUtc, wkReqGroup.ReceiptMargin);
+                }
+                break;
+
+            default:
+                wkDatePlus = DateTimeUtil::addDays(wkReqDateUtc, wkReqGroup.ReceiptMargin);
+        }
+
+        date retDate = mkDate(DateTimeUtil::day(wkDatePlus), DateTimeUtil::month(wkDatePlus), DateTimeUtil::year(wkDatePlus));
+
+        return retDate;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setProdOrderAndCompReportDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setProdOrderAndCompReportDate
+    /// </summary>
+    private void setProdOrderAndCompReportDate()
+    {
+        
+        ProdTable                       wkProdTable;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        ReqGroup                        wkReqGroup;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId;
+        InventTableModule               wkInventTableModuleInvent;          
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+
+        while select FinishedDate, RealDate, ItemId, inventDimId, ProdId, RouteId, ProdStatus, DlvDate, QtySched, SchedStart, SchedEnd from wkProdTable
+            join ItemId, Product, ProdGroupId, PropertyId, ProdPoolId from wkInventTable
+            where wkProdTable.ItemId == wkInventTable.ItemId
+                && (wkInventTable.ProdPoolId == GPMITPPIdTakasaki
+                    || wkInventTable.ProdPoolId == GPMITPPIdUbe
+                    || wkInventTable.ProdPoolId == GPMITPPIdSCM)
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleInvent
+            where wkInventTable.ItemId == wkInventTableModuleInvent.ItemId
+                && wkInventTableModuleInvent.ModuleType == ModuleInventPurchSales::Invent
+            join inventDimId, InventSiteId, InventLocationId from wkInventDim
+            where wkProdTable.inventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType, KJPSMWarehouseClassification from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    && cERCCode != Blank)
+                    || cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    && cERCParentCode != Blank)
+                    || cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+        {
+            ProdJournalTable    wkProdJournalTable;
+            ProdRoute           wkProdRoute;
+            RouteOpr            wkRouteOpr;
+            ProdJournalProd     wkProdJournalProd;
+            RouteTable  wkRouteTable;
+
+            select firstonly wkProdJournalTable
+                    group by wkProdJournalTable.ProdId
+                    where   wkProdTable.ProdId == wkProdJournalTable.ProdId
+                        && wkProdJournalTable.JournalType == ProdJournalType::ReportFinished
+                    outer join RouteId from wkRouteTable
+                    where wkRouteTable.RouteId == wkProdTable.RouteId
+                    outer join wkProdRoute
+                    where wkProdTable.ProdId == wkProdRoute.ProdId
+                        && wkProdRoute.OprId == cRouteOprId
+                    outer join maxof(TranspTime) from wkRouteOpr
+                    where wkProdRoute.OprId == wkRouteOpr.OprId
+                        && wkRouteOpr.ItemCode == TableGroupAll::Table
+                        && wkRouteOpr.ItemRelation == wkInventTable.ItemId
+                        && wkRouteOpr.RouteRelation == wkRouteTable.RouteId
+                    outer join sum(qtyGood) from wkProdJournalProd
+                    where wkProdJournalTable.JournalId == wkProdJournalProd.JournalId;
+                    
+
+            if (!wkProdJournalTable)
+            {
+                wkProdRoute.clear();
+                wkRouteOpr.clear();
+                wkRouteTable.clear();
+
+                select firstonly wkProdRoute
+                where wkProdRoute.ProdId == wkProdTable.ProdId
+                    && wkProdRoute.OprId == cRouteOprId
+                    outer join RouteId from wkRouteTable
+                    where wkRouteTable.RouteId == wkProdTable.RouteId
+                outer join TranspTime from wkRouteOpr
+                where wkRouteOpr.OprId == wkProdRoute.OprId
+                    && wkRouteOpr.ItemCode == TableGroupAll::Table
+                    && wkRouteOpr.ItemRelation == wkInventTable.ItemId
+                    && wkRouteOpr.RouteRelation == wkRouteTable.RouteId;
+            }
+
+            
+            wkReqGroup = this.getReqGroup(wkInventDim, wkInventTable);
+
+            boolean setDataFlag = this.isSetDate(wkInventTable, wkProdTable, wkReqGroup, wkRouteOpr);
+
+            if (setDataFlag)
+            {
+                container conRet = this.getProdOrderAndCompReportPSIDynamicDate(wkProdTable, wkProdJournalProd, wkReqGroup, wkRouteOpr, wkInventLocation);
+           
+                str     wkPsiType   = conPeek(conRet, 1);
+                date    wkRKeyDate  = conPeek(conRet, 2);
+                qty     wkQuantity  = conPeek(conRet, 3);
+            
+                KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+                KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+                wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkProdTable.ItemId, this.getYearAndMonth(wkRKeyDate)]);
+                wkPSIBySlipLineTable.PSIType            = wkpsiType;
+                wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+                wkPSIBySlipLineTable.ItemId             = wkProdTable.ItemId;
+                wkPSIBySlipLineTable.ItemName           = wkItemName;
+                wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkProdTable.ItemId, wkItemName]);
+                wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+                wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+                wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+                wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+                wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+                wkPSIBySlipLineTable.VoucherNumber      = wkProdTable.ProdId;
+                wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkRKeyDate);
+                wkPSIBySlipLineTable.Ymd                = wkRKeyDate;
+                wkPSIBySlipLineTable.UnitId             = wkInventTableModuleInvent.UnitId;
+                wkPSIBySlipLineTable.Quantity           = wkQuantity;
+                wkPSIBySlipLineTable.ProdStartDate      = wkProdTable.SchedStart;
+                wkPSIBySlipLineTable.ProdFinishDate     = wkProdTable.SchedEnd;
+                wkPSIBySlipLineTable.ProdStatus         = enum2Str(wkProdTable.ProdStatus);
+
+                cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isSetDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// judgSetDate
+    /// </summary>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <param name = "_prodTable">ProdTable</param>
+    /// <param name = "_reqGroup">ReqGroup</param>
+    /// <param name = "_routeOpr">RouteOpr</param>
+    /// <returns>setDataFlag</returns>
+    private boolean isSetDate(InventTable _inventTable, ProdTable _prodTable, ReqGroup _reqGroup, RouteOpr _routeOpr)
+    {
+        boolean setDataFlag = false;
+        utcdatetime wkDate;
+        utcdatetime wkDatePlus;
+        real wkDay = 0;
+
+        // check ProdPoolId
+        switch (_inventTable.ProdPoolId)
+        {
+            case GPMITPPIdTakasaki:
+            case GPMITPPIdUbe:
+
+                if (_routeOpr.TranspTime)
+                {
+                    wkDay = roundUp(_routeOpr.TranspTime / cOperatingHours, 1);
+                }
+                break;
+
+            default:
+                wkDay = _reqGroup.ReceiptMargin;
+                break;
+        }
+
+        // check ProdStatus
+        if (_prodTable.ProdStatus == ProdStatus::Completed)
+        {
+            if (_prodTable.RealDate != dateNull())
+            {
+                // date check
+                wkDate = DateTimeUtil::newDateTime(_prodTable.RealDate, NullTime);
+                wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+            }
+        }
+        else if(_prodTable.ProdStatus == ProdStatus::ReportedFinished)
+        {
+            if (_prodTable.FinishedDate != dateNull())
+            {
+                // date check
+                wkDate = DateTimeUtil::newDateTime(_prodTable.FinishedDate, NullTime);
+                wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+            }
+        }
+        else
+        {
+            if (_prodTable.DlvDate != dateNull())
+            {
+                // date check
+                wkDate = DateTimeUtil::newDateTime(_prodTable.DlvDate, NullTime);
+                wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+            }
+        }
+
+        if (wkDatePlus >= cCurYearMonthUtc)
+        {
+            setDataFlag = true;
+        }
+
+        return setDataFlag;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getProdOrderAndCompReportPSIDynamicDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getProdOrderAndCompReportPSIDynamicDate
+    /// </summary>
+    /// <param name = "_prodTable">ProdTable</param>
+    /// <param name = "_prodJournalProd">ProdJournalProd</param>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <param name = "_reqGroup">ReqGroup</param>
+    /// <param name = "_routeOpr">RouteOpr</param>
+    /// <returns>[psiType, rKeyDate, quantity]</returns>
+    private container getProdOrderAndCompReportPSIDynamicDate(ProdTable _prodTable, ProdJournalProd _prodJournalProd, ReqGroup _reqGroup, RouteOpr _routeOpr, InventLocation _inventLocation)
+    {
+        str     wkPsiType;
+        utcdatetime wkDate;
+        utcdatetime wkDatePlus;
+        real wkDay;
+
+        switch (_inventLocation.KJPSMWarehouseClassification)
+        {
+
+            case KJP_SM_WarehouseClassification::TakasakiFactory:
+            case KJP_SM_WarehouseClassification::UbeFactory:
+
+                wkDay = 0;
+                if(_routeOpr.TranspTime)
+                {
+                    wkDay = roundUp(_routeOpr.TranspTime / cOperatingHours, 1);
+                }
+
+                break;
+
+            default:
+                wkDay = _reqGroup.ReceiptMargin;
+                break;
+
+
+        }
+
+        if (_prodTable.ProdStatus == ProdStatus::Completed)
+        {
+            wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType7);
+
+            if (_prodTable.RealDate)
+            {
+                wkDate      = DateTimeUtil::newDateTime(_prodTable.RealDate, NullTime);
+                wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+            }
+            else
+            {
+                wkDate      = DateTimeUtil::newDateTime(_prodTable.FinishedDate, NullTime);
+                wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+            }
+
+        }
+        else if(_prodTable.ProdStatus == ProdStatus::ReportedFinished)
+        {
+            wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType6);
+            wkDate      = DateTimeUtil::newDateTime(_prodTable.FinishedDate, NullTime);
+            wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+        }
+        else
+        {
+            wkPsiType   = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType6);
+            wkDate      = DateTimeUtil::newDateTime(_prodTable.DlvDate, NullTime);
+            wkDatePlus  = DateTimeUtil::addDays(wkDate, real2int(wkDay));
+
+        }
+
+        date wkRKeyDate = mkDate(DateTimeUtil::day(wkDatePlus), DateTimeUtil::month(wkDatePlus), DateTimeUtil::year(wkDatePlus));
+
+        qty wkQuantity;
+        if (_prodJournalProd.QtyGood)
+        {
+            wkQuantity = _prodJournalProd.QtyGood;
+        }
+        else
+        {
+            wkQuantity = _prodTable.QtySched;
+        }
+
+        return [wkPsiType, wkRKeyDate, wkQuantity];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPurchOrderDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setPurchOrderDate
+    /// </summary>
+    private void setPurchOrderDate()
+    {
+        str wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType8);
+
+        PurchTable                      wkPurchTable;
+        PurchLine                       wkPurchLine;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId;            //ProdGroupId
+        InventTableModule               wkInventTableModuleInvent;           //invent
+        InventTableModule               wkInventTableModuleSales;           //sales
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+
+
+        while select PurchId from wkPurchTable
+            join PurchId, ConfirmedDlv, ItemId, InventDimId, PurchQty, PurchUnit, DeliveryDate from wkPurchLine
+            where wkPurchTable.PurchId == wkPurchLine.PurchId
+                && ((wkPurchLine.ConfirmedDlv >= cCurYearMonth
+                    && wkPurchLine.ConfirmedDlv != dateNull())
+                || (wkPurchLine.DeliveryDate >= cCurYearMonth
+                    && wkPurchLine.ConfirmedDlv == dateNull()))
+            join ItemId, Product, ProdGroupId, PropertyId from wkInventTable
+            where wkPurchLine.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleInvent
+            where wkInventTable.ItemId == wkInventTableModuleInvent.ItemId
+                && wkInventTableModuleInvent.ModuleType == ModuleInventPurchSales::Invent
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleSales
+            where wkInventTable.ItemId == wkInventTableModuleSales.ItemId
+                && wkInventTableModuleSales.ModuleType == ModuleInventPurchSales::Sales
+            join inventDimId, InventLocationId from wkInventDim
+            where wkPurchLine.InventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    && cERCCode != Blank)
+                    || cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    && cERCParentCode != Blank)
+                    || cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+        {
+            date wkYmd;
+            if (wkPurchLine.ConfirmedDlv)
+            {
+                wkYmd = wkPurchLine.ConfirmedDlv;
+            }
+            else
+            {
+                wkYmd = wkPurchLine.DeliveryDate;
+            }
+
+            Qty wkQuantity  = this.UMConvert(wkPurchLine.ItemId, wkInventDim.inventDimId, wkPurchLine.PurchQty, wkPurchLine.PurchUnit, wkInventTableModuleInvent.UnitId, wkInventTableModuleSales.UnitId);
+
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+            wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkPurchLine.ItemId, this.getYearAndMonth(wkYmd)]);
+            wkPSIBySlipLineTable.PSIType            = wkpsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkPurchLine.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkPurchLine.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.VoucherNumber      = wkPurchTable.PurchId;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkYmd);
+            wkPSIBySlipLineTable.Ymd                = wkYmd;
+            wkPSIBySlipLineTable.UnitId             = wkInventTableModuleSales.UnitId;
+            wkPSIBySlipLineTable.Quantity           = wkQuantity;
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setSalesOrderPreProcessDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setSalesOrderPreProcessDate
+    /// </summary>
+    private void setSalesOrderPreProcessDate()
+    {
+        KJP_CM_GeneralPurposeMaster wkGeneralPurposeMaster;
+        while select Key, DestinationCode from wkGeneralPurposeMaster
+            where wkGeneralPurposeMaster.Key == KJP_CM_ConstantHelper::KJP_SM_SalesPoolKey
+        {
+            this.setSalesOrder(wkGeneralPurposeMaster.DestinationCode);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setSalesOrder</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setSalesOrder
+    /// </summary>
+    /// <param name = "_salesPoolId">SalesPoolId</param>
+    private void setSalesOrder(SalesPoolId _salesPoolId)
+    {
+        str wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType12);
+
+        SalesTable                      wkSalesTable;
+        SalesLine                       wkSalesLine;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId; 
+        InventTableModule               wkInventTableModuleSales;          
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+        CustTable                       wkCustTable;
+        InterCompanyTradingPartner      wkInterCompanyTradingPartner;
+        DirPartyTable                   wkDirPartyTable;
+
+
+        while select ShippingDateConfirmed, ShippingDateRequested, SalesPoolId, SalesId, CustAccount, PurchId from wkSalesTable
+            where wkSalesTable.SalesPoolId == _salesPoolId
+            join SalesId, ItemId, InventDimId, ShippingDateConfirmed, ShippingDateRequested, SalesQty from wkSalesLine
+            where wkSalesTable.SalesId == wkSalesLine.SalesId
+                && (wkSalesLine.ShippingDateConfirmed >= cCurYearMonth
+                    || (wkSalesLine.ShippingDateConfirmed == dateNull()
+                    && wkSalesLine.ShippingDateRequested >= cCurYearMonth))
+            join ItemId, Product, ProdGroupId, PropertyId from wkInventTable
+            where wkSalesLine.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleSales
+            where wkInventTable.ItemId == wkInventTableModuleSales.ItemId
+                && wkInventTableModuleSales.ModuleType == ModuleInventPurchSales::Sales
+            join inventDimId, InventLocationId from wkInventDim
+            where wkSalesLine.InventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    && cERCCode != Blank)
+                    || cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    && cERCParentCode != Blank)
+                    || cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+            outer join wkCustTable
+            where wkSalesTable.CustAccount == wkCustTable.AccountNum
+            outer join CustomerDataAreaId, CustomerParty from wkInterCompanyTradingPartner
+            where wkCustTable.DataAreaId == wkInterCompanyTradingPartner.CustomerDataAreaId
+                && wkCustTable.Party == wkInterCompanyTradingPartner.CustomerParty
+            outer join RecId, Name from wkDirPartyTable
+            where wkCustTable.Party == wkDirPartyTable.RecId
+        {        
+            date wkYmd;
+            if (wkSalesLine.ShippingDateConfirmed)
+            {
+                wkYmd = wkSalesLine.ShippingDateConfirmed;
+            }
+            else
+            {
+                wkYmd = wkSalesLine.ShippingDateRequested;
+            }
+
+            str         wkCompanyCode = wkCustTable.interCompanyTradingPartnerCompanyID();
+            CompanyName wkCompanyName = this.mergeStrSepColon([wkCompanyCode, CompanyInfo::findDataArea(wkCompanyCode).Name]);
+
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+            wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkInterCompanyTradingPartner.CustomerDataAreaId, wkSalesTable.CustAccount, wkSalesLine.ItemId, this.getYearAndMonth(wkYmd)]);
+            wkPSIBySlipLineTable.PSIType            = wkpsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkSalesLine.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkSalesLine.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.CompanyCode        = wkCompanyCode;
+            wkPSIBySlipLineTable.CompanyName        = wkCompanyName;
+            wkPSIBySlipLineTable.CustomerAccount    = wkSalesTable.CustAccount;
+            wkPSIBySlipLineTable.CustomerName       = this.mergeStrSepColon([wkSalesTable.CustAccount, wkDirPartyTable.Name]);
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.VoucherNumber      = wkSalesLine.SalesId;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkYmd);
+            wkPSIBySlipLineTable.Ymd                = wkYmd;
+            wkPSIBySlipLineTable.UnitId             = wkInventTableModuleSales.UnitId;
+            wkPSIBySlipLineTable.Quantity           = wkSalesLine.SalesQty;
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setReqTransInterCompanyDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setReqTransInterCompanyDate
+    /// </summary>
+    private void setReqTransInterCompanyDate()
+    {
+        ReqTransInterCompany            wkReqTransInterCompany;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId;
+        InventTableModule               InventTableModulePurch;           
+        InventTableModule               wkInventTableModuleInvent;        
+        InventTableModule               wkInventTableModuleSales;         
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+        PurchTable                      wkPurchTable;
+        ReqPlanVersion                  wkReqPlanVersion;
+        ReqPlan                         wkReqPlan;
+        SalesTable                      wkSalesTable;
+
+        str wkPsiType = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType12);
+        int ShipDay   = str2Int(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_PSIReport_ShippementDaysKey, KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ShippementDaysKey_ShippementDays).DestinationCode);
+
+        utcdatetime curAddShipDateTime = DateTimeUtil::addDays(cCurYearMonthUtc, ShipDay);
+        date curAddShipDate            = mkDate(DateTimeUtil::day(curAddShipDateTime), DateTimeUtil::month(curAddShipDateTime), DateTimeUtil::year(curAddShipDateTime));
+        
+        ReqPlanId wkReqPlanId = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::MasterPlanKey, KJP_CM_ConstantHelper::origCodeKJP_SM_MasterPlanKey_InterComp).DestinationCode;
+
+        while select RefId, ReqDate, ItemId, CovInventDimId, CustomerReference, CustomerCompany, Qty from wkReqTransInterCompany
+            where wkReqTransInterCompany.ReqDate >= curAddShipDate
+            join ItemId, Product, ProdGroupId, PropertyId from wkInventTable
+            where wkReqTransInterCompany.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            join RecId, ReqPlanId, ReqPlanDataAreaId from wkReqPlanVersion
+            where wkReqTransInterCompany.PlanVersion == wkReqPlanVersion.RecId
+                && wkReqPlanVersion.Active == NoYes::Yes
+            join ReqPlanId, DataAreaId from wkReqPlan
+            where wkReqPlanVersion.ReqPlanId == wkReqPlan.ReqPlanId
+                && wkReqPlanVersion.ReqPlanDataAreaId == wkReqPlan.DataAreaId
+                && wkReqPlan.ReqPlanId == wkReqPlanId
+            outer join ItemId, ModuleType, UnitId from InventTableModulePurch
+            where wkInventTable.ItemId == InventTableModulePurch.ItemId
+                && InventTableModulePurch.ModuleType == ModuleInventPurchSales::Purch
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleInvent
+            where wkInventTable.ItemId == wkInventTableModuleInvent.ItemId
+                && wkInventTableModuleInvent.ModuleType == ModuleInventPurchSales::Invent
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleSales
+            where wkInventTable.ItemId == wkInventTableModuleSales.ItemId
+                && wkInventTableModuleSales.ModuleType == ModuleInventPurchSales::Sales
+            join inventDimId, InventLocationId from wkInventDim
+            where wkReqTransInterCompany.CovInventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    && cERCCode != Blank)
+                    || cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+            && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+            && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    && cERCParentCode != Blank)
+                    || cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+            outer join PurchId from wkPurchTable
+            where wkReqTransInterCompany.CustomerReference == wkPurchTable.PurchId
+            outer join SalesId from wkSalesTable
+            where wkSalesTable.SalesId == wkReqTransInterCompany.refid
+        {
+
+            if(wkSalesTable)
+            {
+                continue;
+            }
+
+            CompanyName wkCompanyName = this.mergeStrSepColon([wkReqTransInterCompany.CustomerCompany, CompanyInfo::findDataArea(wkReqTransInterCompany.CustomerCompany).Name]);
+
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+            
+            wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkReqTransInterCompany.CustomerCompany, wkReqTransInterCompany.ItemId, this.getYearAndMonth(wkReqTransInterCompany.ReqDate)]);
+            wkPSIBySlipLineTable.PSIType            = wkpsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkReqTransInterCompany.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkReqTransInterCompany.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.CompanyCode        = wkReqTransInterCompany.CustomerCompany;
+            wkPSIBySlipLineTable.CompanyName        = wkCompanyName;
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.VoucherNumber      = wkReqTransInterCompany.RefId;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkReqTransInterCompany.ReqDate);
+            wkPSIBySlipLineTable.Ymd                = wkReqTransInterCompany.ReqDate;
+            wkPSIBySlipLineTable.UnitId             = wkInventTableModuleSales.UnitId;
+            wkPSIBySlipLineTable.Quantity           = this.UMConvert(wkReqTransInterCompany.ItemId, wkReqTransInterCompany.CovInventDimId, wkReqTransInterCompany.Qty * -1, InventTableModulePurch.UnitId, wkInventTableModuleInvent.UnitId, wkInventTableModuleSales.UnitId);
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setReqTransDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setReqTransDate
+    /// </summary>
+    private void setReqTransDate()
+    {
+        str wkPsiType   = cPsiTypesMap.lookup(KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType15);
+
+        ReqTrans                        wkReqTrans;
+        InventTable                     wkInventTable;
+        EcoResProduct                   wkEcoResProduct;
+        EcoResProductTranslation        wkEcoResProductTranslationJa;
+        EcoResProductTranslation        wkEcoResProductTranslationEnUs;
+        KJP_CM_GeneralPurposeMaster     wkGeneralPurposeMasterProdGroupId;   
+        InventTableModule               wkInventTableModuleInvent;           
+        InventDim                       wkInventDim;
+        InventLocation                  wkInventLocation;
+        EcoResProductCategory           wkEcoResProductCategory;
+        EcoResCategory                  wkEcoResCategory;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationEnUs;
+        EcoResCategory                  wkEcoResCategoryParent;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentJa;
+        EcoResCategoryTranslation       wkEcoResCategoryTranslationParentEnUs;
+
+        while select ReqDate, ItemId, CovInventDimId, RefId, Qty from wkReqTrans
+            where wkReqTrans.ReqDate >= cCurYearMonth
+            && wkReqTrans.RefType != ReqRefType::SafetyInvent
+            join ItemId, Product, ProdGroupId, PropertyId from wkInventTable
+            where wkReqTrans.ItemId == wkInventTable.ItemId
+                && ((wkInventTable.PropertyId == cITProperty
+                    && cITProperty != Blank)
+                    || cITProperty == Blank)
+            join RecId, ProductType from wkEcoResProduct
+            where wkInventTable.Product == wkEcoResProduct.RecId
+                && wkEcoResProduct.ProductType == EcoResProductType::Item
+            outer join Product, Name from wkEcoResProductTranslationJa
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationJa.Product
+                && wkEcoResProductTranslationJa.LanguageId == LanguageIdJa
+            outer join Product, Name from wkEcoResProductTranslationEnUs
+            where wkEcoResProduct.RecId == wkEcoResProductTranslationEnUs.Product
+                && wkEcoResProductTranslationEnUs.LanguageId == LanguageIdEnUs
+            join DestinationCode, Key from wkGeneralPurposeMasterProdGroupId
+            where wkInventTable.ProdGroupId == wkGeneralPurposeMasterProdGroupId.DestinationCode
+                && wkGeneralPurposeMasterProdGroupId.Key == KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+                && (wkGeneralPurposeMasterProdGroupId.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_NP
+                    || wkGeneralPurposeMasterProdGroupId.OriginalCode == KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_NP_Insp)
+            outer join ItemId, ModuleType, UnitId from wkInventTableModuleInvent
+            where   wkInventTable.ItemId == wkInventTableModuleInvent.ItemId
+                && wkInventTableModuleInvent.ModuleType == ModuleInventPurchSales::Invent
+            join inventDimId, InventLocationId from wkInventDim
+            where wkReqTrans.CovInventDimId == wkInventDim.inventDimId
+            join InventLocationId, Name, KJPSMGoodProductType from wkInventLocation
+            where wkInventDim.InventLocationId == wkInventLocation.InventLocationId
+                && wkInventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category from wkEcoResProductCategory
+            where wkInventTable.Product == wkEcoResProductCategory.Product
+                && wkEcoResProductCategory.CategoryHierarchy == cERCHProductHierarchyRecid
+            join RecId, CategoryHierarchy, Code from wkEcoResCategory
+            where wkEcoResCategory.RecId == wkEcoResProductCategory.Category
+                && wkEcoResCategory.CategoryHierarchy == wkEcoResProductCategory.CategoryHierarchy
+                && ((wkEcoResCategory.Code == cERCCode
+                    &&  cERCCode != Blank)
+                    ||  cERCCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationJa
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationJa.Category
+                && wkEcoResCategoryTranslationJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationEnUs
+            where wkEcoResCategory.RecId == wkEcoResCategoryTranslationEnUs.Category
+                && wkEcoResCategoryTranslationEnUs.LanguageId == LanguageIdEnusLow
+            join RecId, Code from wkEcoResCategoryParent
+            where wkEcoResCategoryParent.RecId == wkEcoResCategory.ParentCategory
+                && ((wkEcoResCategoryParent.Code == cERCParentCode
+                    &&  cERCParentCode != Blank)
+                    ||  cERCParentCode == Blank)
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentJa
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentJa.Category
+                && wkEcoResCategoryTranslationParentJa.LanguageId == LanguageIdJa
+            outer join Category, LanguageId, FriendlyName from wkEcoResCategoryTranslationParentEnUs
+            where wkEcoResCategoryParent.RecId == wkEcoResCategoryTranslationParentEnUs.Category
+                && wkEcoResCategoryTranslationParentEnUs.LanguageId == LanguageIdEnusLow
+        {
+            KJP_SM_ItemName100 wkItemName = this.selectItemName(wkEcoResProductTranslationJa, wkEcoResProductTranslationEnUs);
+
+            KJP_SM_PSIBySlipLineTable wkPSIBySlipLineTable;
+
+            wkPSIBySlipLineTable.PSIReportKey       = this.mergeStrSepColon([wkPsiType, wkReqTrans.ItemId, this.getYearAndMonth(wkReqTrans.ReqDate)]);
+            wkPSIBySlipLineTable.PSIType            = wkpsiType;
+            wkPSIBySlipLineTable.ProductionGroup    = wkInventTable.ProdGroupId;
+            wkPSIBySlipLineTable.ItemId             = wkReqTrans.ItemId;
+            wkPSIBySlipLineTable.ItemName           = wkItemName;
+            wkPSIBySlipLineTable.ItemDispName       = this.mergeStrSepColon([wkReqTrans.ItemId, wkItemName]);
+            wkPSIBySlipLineTable.ItemNameStd        = this.selectFriendlyName(wkEcoResCategoryTranslationJa, wkEcoResCategoryTranslationEnUs);
+            wkPSIBySlipLineTable.Category           = this.selectFriendlyName(wkEcoResCategoryTranslationParentJa, wkEcoResCategoryTranslationParentEnUs);
+            wkPSIBySlipLineTable.Property           = wkInventTable.PropertyId;
+            wkPSIBySlipLineTable.InventLocationId   = wkInventDim.InventLocationId;
+            wkPSIBySlipLineTable.WarehouseName      = wkInventLocation.Name;
+            wkPSIBySlipLineTable.VoucherNumber      = wkReqTrans.RefId;
+            wkPSIBySlipLineTable.YearAndMonth       = this.getYearAndMonth(wkReqTrans.ReqDate);
+            wkPSIBySlipLineTable.Ymd                = wkReqTrans.ReqDate;
+            wkPSIBySlipLineTable.UnitId             = wkInventTableModuleInvent.UnitId;
+            wkPSIBySlipLineTable.Quantity           = wkReqTrans.Qty;
+
+            cPSIBySlipLineTableInsertList.add(wkPSIBySlipLineTable);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// new
+    /// </summary>
+    /// <param name = "_ITProperty">PropertyId</param>
+    /// <param name = "_ERCParentCode">EcoResCategoryCommodityCode</param>
+    /// <param name = "_ERCCode">EcoResCategoryCommodityCode</param>
+    public void new(PropertyId _ITProperty, EcoResCategoryCommodityCode _ERCParentCode, EcoResCategoryCommodityCode _ERCCode)
+    {
+        cITProperty     =   _ITProperty;
+        cERCParentCode  =   _ERCParentCode;
+        cERCCode        =   _ERCCode;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

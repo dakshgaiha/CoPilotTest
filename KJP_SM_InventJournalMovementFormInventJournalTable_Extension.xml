@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventJournalMovementFormInventJournalTable_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Code Extension of DataSource [InventJournalTable] of Form [InventJournalMovement].
+/// </summary>
+[ExtensionOf(formDataSourceStr(InventJournalMovement, InventJournalTable))]
+public final class KJP_SM_InventJournalMovementFormInventJournalTable_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>active</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Active setup.
+    /// </summary>
+    /// <returns>int</returns>
+    public int active()
+    {
+        int ret = next active();
+
+        // HospitalControlFlgに基づいて、項目が編集可能かどうか設定する。
+        element.kjp_sm_allowEditByKJPSMHospitalControlFlg();
+
+        // HospitalCodeに基づいて、項目が編集可能かどうか設定する。
+        element.kjp_sm_allowEditByKJPSMHospitalCode();
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateWrite</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validate when datasource writing.
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean validateWrite()
+    {
+        boolean ret = next validateWrite();
+
+        // LE:KKC 以外下記の処理不要、返却する
+        if (!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            return ret;
+        }
+
+        FormDataSource inventJournalTable_ds = element.dataSource(formDataSourceStr(InventJournalMovement, InventJournalTable)) as FormDataSource;
+        InventJournalTable inventJournalTable = inventJournalTable_ds.cursor();
+
+        // 払出制御フラグが「いいえ」の場合は、処理不要、返却する
+        if (!inventJournalTable.kjp_sm_isKJPSMHospitalControlFlgOn())
+        {
+            return ret;
+        }
+
+        // 「払出先名称」「払出先住所」「払出先郵便番号」「払出先電話番号」のいずれか１つでも値を取得できない場合は、エラーとする。
+        // また、「払出先」にコードを直接入力した場合に、営業病医院マスタに存在しないコードであればエラーとする。
+        ret = inventJournalTable.kjp_sm_validateKJPSMHospitalField(fieldNum(InventJournalTable, KJPSMHospitalName)) && ret;
+        ret = inventJournalTable.kjp_sm_validateKJPSMHospitalField(fieldNum(InventJournalTable, KJPSMHospitalPostalCode)) && ret;
+        ret = inventJournalTable.kjp_sm_validateKJPSMHospitalField(fieldNum(InventJournalTable, KJPSMHospitalAddress)) && ret;
+        ret = inventJournalTable.kjp_sm_validateKJPSMHospitalField(fieldNum(InventJournalTable, KJPSMHospitalPhoneNumber)) && ret;
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

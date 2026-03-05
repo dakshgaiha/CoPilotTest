@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_GMPJudgementFromCommonClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// KJP_SM_GMPJudgementFromCommonClass
+/// </summary>
+class KJP_SM_GMPJudgementFromCommonClass
+{
+    private const str BatchStatus = 'BatchStatus';
+    private const str GMPReject = 'GMPReject';
+    private const str GMPRelease = 'GMPRelease';
+    private const str GMPQuarantine = 'GMPQuarantine';
+    private const str Suq = 'SUQ';
+    private const str Discon = 'Discon';
+    private const str Qualified = '1';
+    private const str UnQualified = '2';
+    private const str Qualified_Takasaki = '3';
+    private const str StrEmpity = '';
+    private const str UpdateCategory = '1';
+    private const str UbeJobId = 'ISMA00146';
+    private const str TakasakiJobId = 'ISMA00177';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>validateIFtable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///validateIFtable
+    /// </summary>
+    /// <param name = "_kJP_SM_ReceiptAndPaymentResultIfTable">IT Table</param>
+    /// <returns>ret</returns>
+    public static boolean validateIFtable(KJP_SM_ReceiptAndPaymentResultIfTable _kJP_SM_ReceiptAndPaymentResultIfTable)
+    {
+        PdsDispositionCode pdsGMPReject = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPReject).DestinationCode;
+        PdsDispositionCode pdsGMPRelease = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPRelease).DestinationCode;
+        PdsDispositionCode pdsGMPQuarantine = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPQuarantine).DestinationCode;
+        PdsDispositionCode pdsSUQ = KJP_CM_GeneralPurposeMaster::find(BatchStatus, Suq).DestinationCode;
+        PdsDispositionCode pdsDiscon = KJP_CM_GeneralPurposeMaster::find(BatchStatus, Discon).DestinationCode;
+
+        boolean ret = true;
+        boolean btStatusFlg = true;
+        boolean inventTableFlg = true;
+        str errorMessage;
+        ///@KJP500252
+        ///品目番号%1は品目マスタに存在しません。ライン：%2
+        ///    Item code %1 does not exist in the item master.
+        ///    %1 = ItemCD
+        ///    %2 = RecordID
+        if (!InventTable::exist(_kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD))
+        {
+            errorMessage = strfmt("@KJP:KJP500252",
+                _kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD, _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            Error(errorMessage);
+            inventTableFlg = false;
+            ret = false;
+        }
+        ///@KJP500253
+        ///ロットNo%1はバッチマスタに存在しません。ライン：%2
+        ///    Lot no %1 does not exist in the batch master.
+        ///    %1 = LotNo
+        ///    %2 = RecordID
+        if (!InventBatch::exist(_kJP_SM_ReceiptAndPaymentResultIfTable.LotNo, _kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD))
+        {
+            errorMessage = strfmt("@KJP:KJP500253",
+                _kJP_SM_ReceiptAndPaymentResultIfTable.LotNo, _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            Error(errorMessage);
+            ret = false;
+            btStatusFlg = false;
+        }
+        ///@KJP500254
+        ///試験結果が必須。ライン：%1
+        ///    The test results is necessary. Line:%1
+        ///    %1 = RecordID
+        if (_kJP_SM_ReceiptAndPaymentResultIfTable.TestResults == StrEmpity)
+        {
+            errorMessage = strfmt("@KJP:KJP500254", _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            Error(errorMessage);
+            ret = false;
+        }
+        else
+        {
+            if (_kJP_SM_ReceiptAndPaymentResultIfTable.JobId == UbeJobId)
+            {
+                if(_kJP_SM_ReceiptAndPaymentResultIfTable.TestResults != Qualified && _kJP_SM_ReceiptAndPaymentResultIfTable.TestResults != UnQualified)
+                {
+                    ///@KJP500255
+                    ///試験結果 %1は不正な値です。正しい試験結果は1:合格、2:不合格。ライン：%2。
+                    ///    Test result %1 is an invalid value. The correct test result is 1: Pass, 2: Fail. Line:%2.
+                    ///    %1 = TestResults
+                    ///    %2 = RecordID
+                    errorMessage = strfmt("@KJP:KJP500255", _kJP_SM_ReceiptAndPaymentResultIfTable.TestResults,
+                        _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+                    Error(errorMessage);
+                    ret = false;
+                }
+            }
+            if (_kJP_SM_ReceiptAndPaymentResultIfTable.JobId == TakasakiJobId)
+            {
+                if(_kJP_SM_ReceiptAndPaymentResultIfTable.TestResults != Qualified_Takasaki)
+                {
+                    ///@KJP500579
+                    ///試験結果 %1は不正な値です。正しい試験結果は3:合格。ライン：%2。
+                    ///    Test result %1 is an invalid value. The correct test result is 3: Pass. Line:%2.
+                    ///    %1 = TestResults
+                    ///    %2 = RecordID
+                    errorMessage = strfmt("@KJP:KJP500579", _kJP_SM_ReceiptAndPaymentResultIfTable.TestResults,
+                        _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+                    Error(errorMessage);
+                    ret = false;
+                }
+            }
+        }
+        
+        ///@KJP500328
+        ///バッチ状態ステータスが既に%2になりますので、GMP判定結果%1を更新不可。ライン：%3。
+        ///    The GMP judgment  result %1 cannot be updated because the batch release status is already %2. Line:%3.
+        ///    %1 = TestResults
+        ///    %2 = PdsDispositionCode
+        ///    %3 = RecordID
+        PdsDispositionCode pdsDispositionCode = InventBatch::find(_kJP_SM_ReceiptAndPaymentResultIfTable.LotNo,
+            _kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD).PdsDispositionCode;
+        if (pdsDispositionCode != pdsGMPReject && pdsDispositionCode != pdsGMPRelease
+            && pdsDispositionCode != pdsGMPQuarantine && pdsDispositionCode != StrEmpity 
+            && pdsDispositionCode != pdsSUQ && pdsDispositionCode != pdsDiscon && btStatusFlg)
+        {
+            errorMessage = strfmt("@KJP:KJP500328", _kJP_SM_ReceiptAndPaymentResultIfTable.TestResults, 
+                pdsDispositionCode, _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            Error(errorMessage);
+            ret = false;
+        }
+        //@KJP500414
+        //[KJPSMGMPJudgment] ==No
+        //バッチマスタの品目はGMP品以外の場合エラーにする。	
+        //バッチマスタの品目%1はGMP品ではないので、GMP判定結果を更新不可。ライン：%2。
+        //Item %1 in batch master is not a GMP product, so GMP judgment results cannot be updated. Line:%2.
+        //%1 = ItemCD
+        //%2 = RecordId
+        if (inventTableFlg && InventTable::find(_kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD).KJPSMGMPJudgment == NoYes::No)
+        {
+            errorMessage = strfmt("@KJP:KJP500414", _kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD,
+                _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            Error(errorMessage);
+            ret = false;
+        }
+        //[UpdateCategory]処理区分の値が不正の場合はエラーとする
+        //（処理区分は1以外の値はエラーにする）	@KJP500423
+        //    処理区分 %1は不正な値です。正しい処理区分は1。ライン：%2。
+        //    Update category %1 is an invalid value. The correct Update category is 1. Line:%2.
+        //    %1 = UpdateCategory
+        //    %2 = RecordID
+        if (_kJP_SM_ReceiptAndPaymentResultIfTable.UpdateCategory != UpdateCategory)
+        {
+            errorMessage = strfmt("@KJP:KJP500423", _kJP_SM_ReceiptAndPaymentResultIfTable.UpdateCategory,
+                _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            Error(errorMessage);
+            ret = false;
+        }
+        //[PdsDispositionCode]
+        // バッチマスタのバッチ状態ステータスが下記の場合、
+        //ワーニングを出て、バッチステータスを更新せずに、GMP判定日だけ更新する。
+        //①	SUQ
+        //②	Discon
+        //@KJP500425
+        //バッチ状態ステータスが既に%1になりますので、
+        //GMP判定結果を更新せずに、GMP判定日を更新する。ライン：%2。
+        //Since the batch status is already %1, we will not update the GMP
+        //judgement result but will update the GMP judgement date. Line:%2.
+        if (ret && (pdsDispositionCode == pdsSUQ || pdsDispositionCode == pdsDiscon))
+        {
+            errorMessage = strfmt("@KJP:KJP500425",
+                pdsDispositionCode, _kJP_SM_ReceiptAndPaymentResultIfTable.RecordID);
+            checkFailed(errorMessage);
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

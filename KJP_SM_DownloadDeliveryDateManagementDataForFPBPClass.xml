@@ -1,0 +1,870 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelRange;
+/// <summary>
+/// FDD-DFB-MFG-0796
+/// KJP_SM_DownloadDeliveryDateManagementDataForFPBPEntryClass
+/// </summary>
+class KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass extends RunBase
+{
+    DialogField dlgProdPoolId;
+    DialogField dlgFromDate;
+    DialogField dlgPlanAndActualClassification;
+    KJP_SM_PlanAndActualClassification planAndActualClassification;
+    TransDate fromDate;
+    PdsDispositionCode prodPoolId;
+    PdsDispositionCode takasaki;
+    private const str strBlank = '';
+    static int currentRow;
+    private const str DateFormat_yyyyMMddHHmmssString = 'yyyyMMddHHmmss';
+    Map mapName = new Map(Types::Int64,Types::String);
+    utcDateTime userDateTime;
+
+    #DEFINE.CurrentVersion(2)
+    #LOCALMACRO.CurrentList
+        planAndActualClassification,
+        prodPoolId
+    #ENDMACRO
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// class construct
+    /// </summary>
+    /// <returns>KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass</returns>
+    public static KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass construct()
+    {
+        return new KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main method
+    /// </summary>
+    /// <param name = "_args">_args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass judgementResultEntry 
+            = KJP_SM_DownloadDeliveryDateManagementDataForFPBPClass::construct();
+        if (judgementResultEntry.prompt())
+        {
+            judgementResultEntry.runOperation();
+            info("@KJP:KJP500582");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// User dialog for export excel
+    /// </summary>
+    /// <returns>
+    /// Initialized dialog
+    /// </returns>
+    public Object dialog()
+    {
+        DialogGroup     dialogMainGroup;
+        DialogGroup     dialogLeftGroup;
+        DialogGroup     dialogRightGroup;
+
+        DialogRunbase   dialog = super();
+        dialogMainGroup = dialog.addGroup(strBlank);
+        dialogMainGroup.columns(2);
+
+        dialogLeftGroup = dialog.addGroup(strBlank, dialogMainGroup);
+        if (prodPoolId)
+        {
+            dlgProdPoolId = dialog.addFieldValue(extendedtypestr(ProdPoolId),
+            prodPoolId, "@SYS23559");
+        }
+        else
+        {
+            dlgProdPoolId = dialog.addFieldValue(extendedtypestr(ProdPoolId),
+            KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ProdPoolKey,
+            KJP_CM_ConstantHelper::origcodeProdPool_Takasaki).DestinationCode, "@SYS23559");
+        }
+        FormBuildStringControl fbscCode = dlgProdPoolId.control();
+        fbscCode.mandatory(true);
+
+        dialogRightGroup = dialog.addGroup(strBlank, dialogMainGroup);
+        
+        // 現在のセッション日付を取得
+        utcDateTime sessionDateTime = DateTimeUtil::getSystemDateTime();
+        // ログインユーザーのタイムゾーンを取得
+        TimeZone userTimeZone = DateTimeUtil::getUserPreferredTimeZone();
+        // ユーザータイムゾーンに変換
+        userDateTime = DateTimeUtil::applyTimeZoneOffset(sessionDateTime, userTimeZone);
+        // 日付部分を抽出
+        date userDate = DateTimeUtil::date(userDateTime);
+        // 同年同月の1日を設定
+        date firstDay = dateStartMth(userDate);
+        dlgFromDate = dialog.addFieldValue(extendedtypestr(TransDate),
+            firstDay, "@KJP:KJP103876");
+        FormBuildDateControl fbdcFromDate = dlgFromDate.control();
+        fbdcFromDate.mandatory(true);
+
+        if (planAndActualClassification)
+        {
+            dlgPlanAndActualClassification = dialog.addFieldValue(enumStr(KJP_SM_PlanAndActualClassification),
+            planAndActualClassification);
+        }
+        else
+        {
+            dlgPlanAndActualClassification = dialog.addFieldValue(enumStr(KJP_SM_PlanAndActualClassification),
+            KJP_SM_PlanAndActualClassification::Plan);
+        }
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog title
+    /// </summary>
+    /// <returns>dialog title</returns>
+    public static ClassDescription description()
+    {
+        return "@KJP:KJP103875";
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFromDialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get information entered by user
+    /// </summary>
+    /// <returns>
+    /// true.
+    /// </returns>
+    public boolean getFromDialog()
+    {
+        boolean ret;
+
+        ret = super();
+
+        if (!dlgProdPoolId.value())
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500164", "@SYS23559"));
+        }
+        else
+        {
+            prodPoolId = dlgProdPoolId.value();
+        }
+
+        if (!dlgFromDate.value())
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500164", subStr("@KJP:KJP103876",1,4)));
+        }
+        else
+        {
+            fromDate = dlgFromDate.value();
+        }
+
+        planAndActualClassification = dlgPlanAndActualClassification.value();
+        
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmProdPoolId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// May be run in new session
+    /// </summary>
+    /// <param name = "_prodPoolId">_prodPoolId</param>
+    /// <returns>prodPoolId</returns>
+    public PdsDispositionCode parmProdPoolId(PdsDispositionCode _prodPoolId = prodPoolId)
+    {
+        prodPoolId = _prodPoolId;
+        return prodPoolId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPlanAndActualClassification</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// May be run in new session
+    /// </summary>
+    /// <param name = "_planAndActualClassification">_planAndActualClassification</param>
+    /// <returns>planAndActualClassification</returns>
+    public KJP_SM_PlanAndActualClassification parmPlanAndActualClassification(
+        KJP_SM_PlanAndActualClassification _planAndActualClassification = planAndActualClassification)
+    {
+        planAndActualClassification = _planAndActualClassification;
+        return planAndActualClassification;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// May be run in new session
+    /// </summary>
+    /// <returns>false</returns>
+    protected boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pack</Name>
+				<Source><![CDATA[
+    public container pack()
+    {
+        return [#CurrentVersion,#CurrentList];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>unpack</Name>
+				<Source><![CDATA[
+    public boolean unpack(container _packedClass)
+    {
+        Integer version = conpeek(_packedClass, 1);
+
+        switch (version)
+        {
+            case #CurrentVersion:
+                [version,#CurrentList] = _packedClass;
+                break;
+            default:
+                return false;
+        }
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// run data to Excel
+    /// </summary>
+    public void run()
+    {
+        try
+        {
+            container       fpBpConPlanAndActual;
+
+            DocuFileSaveResult saveResult =
+                DocuFileSave::promptForSaveLocation("@KJP:KJP103813"
+                + "@SYS136211" + subStr(KJP_CM_Utils::datetimeToStr(userDateTime, DateFormat_yyyyMMddHHmmssString),1,8)
+                + "@SYS136211" + subStr(KJP_CM_Utils::datetimeToStr(userDateTime, DateFormat_yyyyMMddHHmmssString),9,14),
+                "@KJP:KJP101407", null, "@KJP:KJP103813");
+
+            takasaki = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ProdPoolKey,
+                KJP_CM_ConstantHelper::origcodeProdPool_Takasaki).DestinationCode;
+
+            if (saveResult && saveResult.parmAction() != DocuFileSaveAction::Cancel)
+            {
+                saveResult.parmOpenParameters("@KJP:KJP101409");
+                saveResult.parmOpenInNewWindow(false);
+            
+                MemoryStream memoryStream = new System.IO.MemoryStream();
+                
+                using(var package = new OfficeOpenXml.ExcelPackage(memoryStream))
+
+                {
+                    // シート作成
+                    var worksheets = package.get_Workbook().get_Worksheets();
+                    var worksheet = worksheets.Add("@KJP:KJP103813");
+                    var cells = worksheet.get_Cells();
+
+                    currentRow = 1;
+                    // ヘッダー作成
+                    fpBpConPlanAndActual = ["@KJP:KJP102825","@KJP:KJP103832","@KJP:KJP103831","@KJP:KJP103830",
+                            "@KJP:KJP103829","@KJP:KJP103828","@KJP:KJP103833","@KJP:KJP103825","@KJP:KJP103824",
+                            "@KJP:KJP103823","@KJP:KJP103844","@KJP:KJP103977","@KJP:KJP100786","@KJP:KJP103979",
+                            "@KJP:KJP103819","@KJP:KJP103849","@KJP:KJP103848","@KJP:KJP103847","@KJP:KJP103846",
+                            "@KJP:KJP103845","@KJP:KJP103853","@KJP:KJP103852","@KJP:KJP103851","@KJP:KJP103850",
+                            "@KJP:KJP103854","@KJP:KJP103978","@KJP:KJP103980","@KJP:KJP103820","@KJP:KJP103981",
+                            "@KJP:KJP103838","@KJP:KJP103837","@KJP:KJP103836","@KJP:KJP103835","@KJP:KJP103834",
+                            "@KJP:KJP103982","@KJP:KJP103827","@KJP:KJP103821","@KJP:KJP103983","@KJP:KJP103984",
+                            "@KJP:KJP103985","@KJP:KJP103986","@KJP:KJP100731","@KJP:KJP100732","@KJP:KJP100733",
+                            "@KJP:KJP100787","@KJP:KJP103987","@KJP:KJP103988","@KJP:KJP103989"];
+
+                    this.setExcelHeader(fpBpConPlanAndActual, cells);
+                    
+                    // データ作成
+                    this.getFPBPDataPlanAndActual(cells);
+
+                    package.save();
+                }
+                memoryStream.Seek(0, System.IO.SeekOrigin::Begin);
+                //Download the file.
+                DocuFileSave::processSaveResult(memoryStream, saveResult);
+            }
+        }
+        catch (Exception::CLRError)
+        {
+            // if the statement can't be generated, report an error and return null
+            error("@SYS135884");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setExcelHeader</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setExcelHeader
+    /// </summary>
+    /// <param name = "_con">con</param>
+    /// <param name = "_cells">cells</param>
+    public void setExcelHeader(container _con, ExcelRange _cells)
+    {
+        // ヘッダー作成
+        for (int headerNum = 1; headerNum <= conLen(_con); headerNum++)
+        {
+            var cell = _cells.get_Item(currentRow, headerNum);
+            cell.set_Value(conPeek(_con, headerNum));
+            cell = null;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFPBPDataPlanAndActual</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get FPBPData for PlanAndActual
+    /// </summary>
+    /// <param name = "_cells">cells</param>
+    public void getFPBPDataPlanAndActual(ExcelRange _cells)
+    {
+        KJP_SM_DeliveryDateMgmtFPBPStructureView structureView;
+        // ViewNPInsp.NP検査_開始日≧ViewNPFill.NP充填_開始日
+        boolean flagNPInsp;
+        // ViewFPBP.包装_開始日≧ViewNPInsp.NP検査_終了日
+        boolean flagFPBP;
+        // ViewNPInsp_solvent.NP検査_溶解液_開始日≧ViewNPFill_solvent.NP充填_溶解液_開始日
+        boolean flagNPFillSolvent;
+        // ViewFPBP.包装_開始日≧ViewNPInsp_solvent.NP検査_溶解液_終了日
+        boolean flagNPInspSolvent;
+        // ViewFPBP.包装_開始日≧ViewNPFill.NP_終了日
+        boolean flagFPBPNPFill;
+
+        if (planAndActualClassification == KJP_SM_PlanAndActualClassification::Plan)
+        {
+            //高崎場合
+            if (prodPoolId == takasaki)
+            {
+                while select structureView
+                    order by structureView.TemporaryBatchNumber_NPFill asc, structureView.TemporaryBatchNumber_NPInsp asc,
+                    structureView.TemporaryBatchNumber_NPFill_solvent asc, structureView.TemporaryBatchNumber_NPInsp_solvent asc,
+                    structureView.TemporaryBatchNumber_FPBP asc, structureView.RecordId_NPFill asc,
+                    structureView.RecordId_NPInsp asc, structureView.RecordId_NPFill_solvent asc,
+                    structureView.RecordId_NPInsp_solvent, structureView.RecordId_FPBP asc
+                    where structureView.ProdPoolId_NPFill == prodPoolId
+                    && (structureView.ProdStatus_FPBP != ProdStatus::Completed
+                    || structureView.OrderNumber_FPBP == strBlank)
+                    && structureView.SchedStart_NPFill >= fromDate
+                {
+                    flagNPInsp = false;
+                    flagFPBP = false;
+                    flagNPFillSolvent = false;
+                    flagNPInspSolvent = false;
+
+                    if (structureView.SchedStart_NPInsp >= structureView.SchedStart_NPFill)
+                    {
+                        flagNPInsp = true;
+                    }
+
+                    if (structureView.OrderNumber_NPInsp == strBlank ||
+                        (structureView.SchedStart_FPBP >= structureView.SchedEnd_NPInsp &&
+                         structureView.SchedStart_FPBP >= structureView.SchedEnd_NPFill)
+                       )
+                    {
+                        flagFPBP = true;
+                    }
+
+                    if (structureView.SchedStart_NPInsp_solvent >= structureView.SchedStart_NPFill_solvent)
+                    {
+                        flagNPFillSolvent = true;
+                    }
+
+                    if (structureView.SchedStart_FPBP >= structureView.SchedEnd_NPInsp_solvent)
+                    {
+                        flagNPInspSolvent = true;
+                    }
+
+                    currentRow++;
+                    // set data for Excel
+                    this.setFPBPDataPlanAndActual(_cells, structureView, flagNPInsp, flagFPBP, flagNPFillSolvent, flagNPInspSolvent, false);
+                }
+            }
+            else
+            {
+                //高崎以外場合
+                while select structureView
+                    order by structureView.TemporaryBatchNumber_NPFill asc, structureView.TemporaryBatchNumber_NPInsp asc,
+                    structureView.TemporaryBatchNumber_NPFill_solvent asc, structureView.TemporaryBatchNumber_NPInsp_solvent asc,
+                    structureView.TemporaryBatchNumber_FPBP asc, structureView.RecordId_NPFill asc,
+                    structureView.RecordId_NPInsp asc, structureView.RecordId_NPFill_solvent asc,
+                    structureView.RecordId_NPInsp_solvent, structureView.RecordId_FPBP asc
+                    where structureView.ProdPoolId_NPFill == prodPoolId
+                    && (structureView.ProdStatus_FPBP != ProdStatus::Completed
+                    || structureView.OrderNumber_FPBP == strBlank)
+                    && structureView.SchedStart_NPFill >= fromDate
+                {
+                    flagFPBPNPFill = false;
+
+                    if (structureView.SchedStart_FPBP >= structureView.SchedEnd_NPFill)
+                    {
+                        flagFPBPNPFill = true;
+                    }
+
+                    currentRow++;
+                    // set data for Excel
+                    this.setFPBPDataPlanAndActual(_cells, structureView, false, false,false, false, flagFPBPNPFill);
+                }
+            }
+        }
+        else
+        {
+            //高崎場合
+            if (prodPoolId == takasaki)
+            {
+                while select structureView
+                    order by structureView.TemporaryBatchNumber_NPFill asc, structureView.TemporaryBatchNumber_NPInsp asc,
+                    structureView.TemporaryBatchNumber_NPFill_solvent asc, structureView.TemporaryBatchNumber_NPInsp_solvent asc,
+                    structureView.TemporaryBatchNumber_FPBP asc, structureView.RecordId_NPFill asc,
+                    structureView.RecordId_NPInsp asc, structureView.RecordId_NPFill_solvent asc,
+                    structureView.RecordId_NPInsp_solvent, structureView.RecordId_FPBP asc
+                    where structureView.ProdPoolId_NPFill == prodPoolId
+                    && (structureView.ProdStatus_FPBP == ProdStatus::Completed ||
+                        structureView.OrderNumber_FPBP == strBlank)
+                    && structureView.SchedStart_NPFill >= fromDate
+                {
+                    flagNPInsp = false;
+                    flagFPBP = false;
+                    flagNPFillSolvent = false;
+                    flagNPInspSolvent = false;
+
+                    if (structureView.SchedStart_NPInsp >= structureView.SchedStart_NPFill)
+                    {
+                        flagNPInsp = true;
+                    }
+
+                    if (structureView.OrderNumber_NPInsp == strBlank ||
+                        (structureView.SchedStart_FPBP >= structureView.SchedEnd_NPInsp &&
+                         structureView.SchedStart_FPBP >= structureView.SchedEnd_NPFill)
+                       )
+                    {
+                        flagFPBP = true;
+                    }
+
+                    if (structureView.SchedStart_NPInsp_solvent >= structureView.SchedStart_NPFill_solvent)
+                    {
+                        flagNPFillSolvent = true;
+                    }
+
+                    if (structureView.SchedStart_FPBP >= structureView.SchedEnd_NPInsp_solvent)
+                    {
+                        flagNPInspSolvent = true;
+                    }
+
+                    currentRow++;
+                    // set data for Excel
+                    this.setFPBPDataPlanAndActual(_cells, structureView, flagNPInsp, flagFPBP, flagNPFillSolvent, flagNPInspSolvent, false);
+                }
+            }
+            else
+            {
+                //高崎以外場合
+                while select structureView
+                    order by structureView.TemporaryBatchNumber_NPFill asc, structureView.TemporaryBatchNumber_NPInsp asc,
+                    structureView.TemporaryBatchNumber_NPFill_solvent asc, structureView.TemporaryBatchNumber_NPInsp_solvent asc,
+                    structureView.TemporaryBatchNumber_FPBP asc, structureView.RecordId_NPFill asc,
+                    structureView.RecordId_NPInsp asc, structureView.RecordId_NPFill_solvent asc,
+                    structureView.RecordId_NPInsp_solvent, structureView.RecordId_FPBP asc
+                    where structureView.ProdPoolId_NPFill == prodPoolId
+                    && (structureView.ProdStatus_FPBP == ProdStatus::Completed ||
+                        structureView.OrderNumber_FPBP == strBlank)
+                    && structureView.SchedStart_NPFill >= fromDate
+                {
+                    flagFPBPNPFill = false;
+
+                    if (structureView.SchedStart_FPBP >= structureView.SchedEnd_NPFill)
+                    {
+                        flagFPBPNPFill = true;
+                    }
+
+                    currentRow++;
+                    // set data for Excel
+                    this.setFPBPDataPlanAndActual(_cells, structureView, false, false,false, false, flagFPBPNPFill);
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setFPBPDataPlanAndActual</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set FPBPData for PlanAndActual
+    /// </summary>
+    /// <param name = "_cells">_cells</param>
+    /// <param name = "_structureView">_structureView</param>
+    /// <param name = "_flagNPInsp">_flagNPInsp</param>
+    /// <param name = "_flagFPBP">_flagFPBP</param>
+    /// <param name = "_flagNPFillSolvent">_flagNPFillSolvent</param>
+    /// <param name = "_flagNPInspSolvent">_flagNPInspSolvent</param>
+    /// <param name = "_flagFPBPNPFill">_flagFPBPNPFill</param>
+    public void setFPBPDataPlanAndActual(
+        ExcelRange _cells, 
+        KJP_SM_DeliveryDateMgmtFPBPStructureView _structureView,
+        boolean _flagNPInsp,
+        boolean _flagFPBP,
+        boolean _flagNPFillSolvent,
+        boolean _flagNPInspSolvent,
+        boolean _flagFPBPNPFill
+        )
+    {
+        //1	ブランド名	2.2.4.3 Select Table for Plan, Actualで作成したMAP.Value
+        //※View.ProductRecId_NPFillをKeyにValueを取得
+        //取得できない場合、空文字
+        var cell = _cells.get_Item(currentRow, 1);
+        cell.set_Value(this.getProductName(_structureView.ProductRecId_NPFill));
+        cell = null;
+
+        if (_structureView.ProdGroupId_NPFill != KJP_CM_ConstantHelper::ProdGroupId_FP &&
+            _structureView.ProdGroupId_NPFill != KJP_CM_ConstantHelper::ProdGroupId_BP)
+        {
+            //2	充填品製造オーダー番号	View.OrderNumber_NPFill
+            cell = _cells.get_Item(currentRow, 2);
+            cell.set_Value(_structureView.OrderNumber_NPFill);
+            cell = null;
+
+            //3	充填品品目番号	View.ItemId_NPFill
+            cell = _cells.get_Item(currentRow, 3);
+            cell.set_Value(_structureView.ItemId_NPFill);
+            cell = null;
+
+            //4	充填品品名	View.ProductName_NPFill
+            cell = _cells.get_Item(currentRow, 4);
+            cell.set_Value(_structureView.ProductName_NPFill);
+            cell = null;
+
+            //5	充填品仮ロット番号	View.TemporaryBatchNumber_NPFill
+            cell = _cells.get_Item(currentRow, 5);
+            cell.set_Value(_structureView.TemporaryBatchNumber_NPFill);
+            cell = null;
+
+            //6	充填品ロット番号	View.InventBatchId_NPFill
+            cell = _cells.get_Item(currentRow, 6);
+            cell.set_Value(_structureView.InventBatchId_NPFill);
+            cell = null;
+
+            //7	充填完了日	View.EndDate_NPFill
+            cell = _cells.get_Item(currentRow, 7);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.SchedEnd_NPFill));
+            cell = null;
+        }
+
+        // (ViewNPInsp.NP検査_開始日≧ViewNPFill.NP充填_開始日)を満たすデータがあれば、ViewNPInspデータを出力する。
+        if (_flagNPInsp)
+        {
+            //8	中間製品製造オーダー番号	View.OrderNumber_NPInsp
+            cell = _cells.get_Item(currentRow, 8);
+            cell.set_Value(_structureView.OrderNumber_NPInsp);
+            cell = null;
+
+            //9	中間製品品目番号	View.ItemId_NPInsp
+            cell = _cells.get_Item(currentRow, 9);
+            cell.set_Value(_structureView.ItemId_NPInsp);
+            cell = null;
+
+            //10	中間製品名	View.ProductName_NPInsp
+            cell = _cells.get_Item(currentRow, 10);
+            cell.set_Value(_structureView.ProductName_NPInsp);
+            cell = null;
+
+            //11	検査完了日	View.EndDate_NPInsp
+            cell = _cells.get_Item(currentRow, 11);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.SchedEnd_NPInsp));
+            cell = null;
+
+            if (planAndActualClassification == KJP_SM_PlanAndActualClassification::Actual)
+            {
+                //15	QC中間製品判定日	View.QCTestDate_NPInsp バッチマスター.QC試験日（Addon）
+                cell = _cells.get_Item(currentRow, 15);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.QCTestDate_NPInsp));
+                cell = null;
+            }
+            else
+            {
+                //15	QC中間製品判定日	表示しない
+                cell = _cells.get_Item(currentRow, 15);
+                cell.set_Value(strBlank);
+                cell = null;
+            }
+        }
+        
+        // (ViewNPInsp_solvent.NP検査_溶解液_開始日≧ViewNPFill_solvent.NP充填_溶解液_開始日) を満たすデータがあれば、ViewNPFill_solventデータを出力する。
+        if (_flagNPFillSolvent)
+        {
+            //16	添付溶解液製造オーダー番号	View.OrderNumber_NPFill_solvent
+            cell = _cells.get_Item(currentRow, 16);
+            cell.set_Value(_structureView.OrderNumber_NPFill_solvent);
+            cell = null;
+
+            //17	添付溶解液品目番号	View.ItemId_NPFill_solvent
+            cell = _cells.get_Item(currentRow, 17);
+            cell.set_Value(_structureView.ItemId_NPFill_solvent);
+            cell = null;
+
+            //18	添付溶解液品名	View.ProductName_NPFill_solvent
+            cell = _cells.get_Item(currentRow, 18);
+            cell.set_Value(_structureView.ProductName_NPFill_solvent);
+            cell = null;
+
+            //19	添付溶解液仮ロット番号	View.TemporaryBatchNumber_NPFill_solvent
+            cell = _cells.get_Item(currentRow, 19);
+            cell.set_Value(_structureView.TemporaryBatchNumber_NPFill_solvent);
+            cell = null;
+
+            //20	添付溶解液ロット番号	View.InventBatchId_NPFill_solvent
+            cell = _cells.get_Item(currentRow, 20);
+            cell.set_Value(_structureView.InventBatchId_NPFill_solvent);
+            cell = null;
+
+            //21	添溶充填完了日	View.EndDate_NPFill_solvent
+            cell = _cells.get_Item(currentRow, 21);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.SchedEnd_NPFill_solvent));
+            cell = null;
+        }
+
+        // (ViewFPBP.包装_開始日≧ViewNPInsp_solvent.NP検査_溶解液_終了日) を満たすデータがあれば、ViewNPInsp_solventデータを出力する。
+        if (_flagNPInspSolvent)
+        {
+            //22	添溶中間製品製造オーダー番号	View.OrderNumber_NPInsp_solvent
+            cell = _cells.get_Item(currentRow, 22);
+            cell.set_Value(_structureView.OrderNumber_NPInsp_solvent);
+            cell = null;
+
+            //23	添溶中間製品品目番号	View.ItemId_NPInsp_solvent
+            cell = _cells.get_Item(currentRow, 23);
+            cell.set_Value(_structureView.ItemId_NPInsp_solvent);
+            cell = null;
+
+            //24	添溶中間製品名	View.ProductName_NPInsp_solvent
+            cell = _cells.get_Item(currentRow, 24);
+            cell.set_Value(_structureView.ProductName_NPInsp_solvent);
+            cell = null;
+
+            //25	添溶検査完了日	View.EndDate_NPInsp_solvent
+            cell = _cells.get_Item(currentRow, 25);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.SchedEnd_NPInsp_solvent));
+            cell = null;
+
+            if (planAndActualClassification == KJP_SM_PlanAndActualClassification::Actual)
+            {
+                //28	QC添溶中間製品判定日	View.QCTestDate_NPInsp_solvent  バッチマスター.QC試験日（Addon）
+                cell = _cells.get_Item(currentRow, 28);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.QCTestDate_NPInsp_solvent));
+                cell = null;
+            }
+            else
+            {
+                //28	QC添溶中間製品判定日	表示しない
+                cell = _cells.get_Item(currentRow, 28);
+                cell.set_Value(strBlank);
+                cell = null;
+            }
+        }
+
+        // 高崎：(ViewFPBP.包装_開始日≧ViewNPInsp.NP検査_終了日) を満たすデータがあれば、ViewFPBPデータを出力する。
+        // 高崎以外：(ViewFPBP.包装_開始日≧ViewNPFill.NP_終了日) を満たすデータがあれば、ViewFPBPデータを出力する。
+        if (_flagFPBP || _flagFPBPNPFill)
+        {
+            //30	包装品製造オーダー番号	View.OrderNumber_FPBP
+            cell = _cells.get_Item(currentRow, 30);
+            cell.set_Value(_structureView.OrderNumber_FPBP);
+            cell = null;
+
+            //31	包装品品目番号	View.ItemId_FPBP
+            cell = _cells.get_Item(currentRow, 31);
+            cell.set_Value(_structureView.ItemId_FPBP);
+            cell = null;
+
+            //32	包装品品名	View.ProductName_FPBP
+            cell = _cells.get_Item(currentRow, 32);
+            cell.set_Value(_structureView.ProductName_FPBP);
+            cell = null;
+
+            if (planAndActualClassification == KJP_SM_PlanAndActualClassification::Plan)
+            {
+                //33	包装品仮ロット番号	View.TemporaryBatchNumber_FPBP 計画オーダー.仮バッチ番号（Addon）
+                cell = _cells.get_Item(currentRow, 33);
+                cell.set_Value(_structureView.TemporaryBatchNumber_FPBP);
+                cell = null;
+            }
+            else
+            {
+                //33	包装品仮ロット番号	表示しない
+                cell = _cells.get_Item(currentRow, 33);
+                cell.set_Value(strBlank);
+                cell = null;
+            }
+
+            //34	包装品ロット番号	View.InventBatchId_FPBP
+            cell = _cells.get_Item(currentRow, 34);
+            cell.set_Value(_structureView.InventBatchId_FPBP);
+            cell = null;
+
+            //35	包装予定数量	View.Qty_FPBP            
+            cell = _cells.get_Item(currentRow, 35);
+            if (_structureView.OrderNumber_FPBP == strBlank)
+            {
+                cell.set_Value(strBlank);
+            }
+            else
+            {
+                cell.set_Value(_structureView.Qty_FPBP);
+            }
+            cell = null;
+
+            //36	倉庫入庫日	View.EndDate_FPBP
+            cell = _cells.get_Item(currentRow, 36);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.SchedEnd_FPBP));
+            cell = null;
+
+            if (planAndActualClassification == KJP_SM_PlanAndActualClassification::Actual)
+            {
+                //37	QC試験判定MES入力日	View.QCTestDate_FPBP  バッチマスター.QC試験日（Addon）
+                cell = _cells.get_Item(currentRow, 37);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.QCTestDate_FPBP));
+                cell = null;
+
+                //42	GMP判定日	View.GMPJudgmentDate_FPBP バッチマスター.GMP判定日（Addon
+                cell = _cells.get_Item(currentRow, 42);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.GMPJudgmentDate_FPBP));
+                cell = null;
+
+                //43	GQP判定日	View.GQPJudgmentDate_FPBP バッチマスター.GQP判定日（Addon
+                cell = _cells.get_Item(currentRow, 43);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(_structureView.GQPJudgmentDate_FPBP));
+            }
+            else
+            {
+                //37	QC試験判定MES入力日	表示しない
+                cell = _cells.get_Item(currentRow, 37);
+                cell.set_Value(strBlank);
+                cell = null;
+
+                //42	GMP判定日	表示しない
+                cell = _cells.get_Item(currentRow, 42);
+                cell.set_Value(strBlank);
+                cell = null;
+
+                //43	GQP判定日	表示しない
+                cell = _cells.get_Item(currentRow, 43);
+                cell.set_Value(strBlank);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getProductName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getProductName
+    /// </summary>
+    /// <param name = "_productRecId_NPFill">_productRecId_NPFill</param>
+    /// <returns>str</returns>
+    public str getProductName(int64 _productRecId_NPFill)
+    {
+        str brandname = strBlank;
+
+        if (mapName.exists(_productRecId_NPFill))
+        {
+            brandname = mapName.lookup(_productRecId_NPFill);
+        }
+        else
+        {
+            //①	汎用マスターに登録された「対象のカテゴリ階層」の値を取得する。
+            //取得条件：Key=KJP_SM_CategoryHierarchy, Original code=CategoryHierarchy
+            //想定値：Destination=Product Hierarchy
+            str categoryPH = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_CategoryHierarchyKey,
+            KJP_CM_ConstantHelper::origCodeKJP_SM_CategoryHierarchyKey_CategoryHierarchy).DestinationCode;
+
+            if (categoryPH)
+            {
+                //②	Viewの製品レコードID（ProductRecId_NPFill）を元にカテゴリ階層（EcoResCategory）を取得
+                //取得条件：
+                //    EcoResProductCategory.Product = Viewの製品レコードID（ProductRecId_NPFill）&
+                //    EcoResProductCategory.CategoryHierarchy = EcoResCategoryHierarchy.RecId &
+                //    EcoResCategoryHierarchy.Name = ①で取得した「対象のカテゴリ階層」 &
+                //    EcoResProductCategory.Category = EcoResCategory.RecId
+                EcoResCategoryHierarchy ecoResCategoryHierarchy;
+                EcoResProductCategory ecoResProductCategory;
+                EcoResCategory ecoResCategoryCurrent;
+                EcoResCategory ecoResCategoryParent;
+
+                select firstonly ecoResCategoryHierarchy
+                    where ecoResCategoryHierarchy.Name == categoryPH
+                    join ecoResProductCategory
+                    where ecoResProductCategory.Product == _productRecId_NPFill
+                        && ecoResProductCategory.CategoryHierarchy == ecoResCategoryHierarchy.RecId
+                    join ecoResCategoryCurrent
+                    where ecoResCategoryCurrent.RecId == ecoResProductCategory.Category;
+
+                // 親のカテゴリ階層を取得
+                // parentEcoResCategory.RecId = currentEcoResCategory.ParentCategory
+                select firstonly ecoResCategoryParent
+                    where ecoResCategoryParent.RecId == ecoResCategoryCurrent.ParentCategory;
+
+
+                brandname = EcoResCategoryTranslation::find(
+                                ecoResCategoryParent.Name ==categoryPH ? ecoResCategoryCurrent.RecId : ecoResCategoryParent.RecId,
+                                LanguageTable::defaultLanguage()).FriendlyName;
+
+                mapName.insert(_productRecId_NPFill, brandname);
+            }
+        }
+        return brandname;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

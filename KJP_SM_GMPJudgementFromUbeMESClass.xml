@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_GMPJudgementFromUbeMESClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// 宇部MES 工場出荷判定ISMA00146
+/// </summary>
+class KJP_SM_GMPJudgementFromUbeMESClass extends KJP_CM_IFBatchBase
+{
+    private const str Key_ReceiptPaymentClassification = 'ReceiptPaymentClassification';
+    private const str Key_GMPJudgementFromUbe = 'GMPJudgementFromUbe';
+    private const str BatchStatus = 'BatchStatus';
+    private const str GMPReject = 'GMPReject';
+    private const str GMPRelease = 'GMPRelease';
+    private const str GMPQuarantine = 'GMPQuarantine';
+    private const str GQPQuarantine = 'GQPQuarantine';
+    private const str Suq = 'SUQ';
+    private const str Discon = 'Discon';
+    private const str Qualified = '1';
+    private const str UnQualified = '2';
+    private const str StrEmpity = '';
+    PdsDispositionCode pdsGMPReject;
+    PdsDispositionCode pdsGMPRelease;
+    PdsDispositionCode pdsGMPQuarantine;
+    PdsDispositionCode pdsGQPQuarantine;
+    PdsDispositionCode pdsSUQ;
+    PdsDispositionCode pdsDiscon;
+    PdsDispositionCode pdsDispositionCodeGMP;
+
+    #ISOCountryRegionCodes
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///Batch main processing
+    /// </summary>
+    public void processRun()
+    {
+        KJP_SM_ReceiptAndPaymentResultIfTable kJP_SM_ReceiptAndPaymentResultIfTable;
+        InventBatch newInventBatch;
+        InventTable inventTable;
+
+        if (!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            Error(strFmt("@KJP:KJP500527", curExt()));
+            return;
+        }
+
+        PdsDispositionCode ubeDestinationCode = KJP_CM_GeneralPurposeMaster::find(Key_ReceiptPaymentClassification,
+            Key_GMPJudgementFromUbe).DestinationCode;
+        pdsGMPReject = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPReject).DestinationCode;
+        pdsGMPRelease = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPRelease).DestinationCode;
+        pdsGMPQuarantine = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GMPQuarantine).DestinationCode;
+        pdsGQPQuarantine = KJP_CM_GeneralPurposeMaster::find(BatchStatus, GQPQuarantine).DestinationCode;
+        pdsSUQ = KJP_CM_GeneralPurposeMaster::find(BatchStatus, Suq).DestinationCode;
+        pdsDiscon = KJP_CM_GeneralPurposeMaster::find(BatchStatus, Discon).DestinationCode;
+
+        while select kJP_SM_ReceiptAndPaymentResultIfTable
+            order by kJP_SM_ReceiptAndPaymentResultIfTable.RecordID asc
+            where kJP_SM_ReceiptAndPaymentResultIfTable.ReceiptPaymentClassification == ubeDestinationCode
+            && kJP_SM_ReceiptAndPaymentResultIfTable.JobId == subStr(jobId, 1, 9)
+        {
+            if (KJP_SM_GMPJudgementFromCommonClass::validateIFtable(kJP_SM_ReceiptAndPaymentResultIfTable))
+            {
+                ///•	以下D365機能にて入力した結果と同等となるようD365テーブルへ登録する
+                ///o	D365機能：バッチ>編集（バッチ状態コードの更新）
+                ///     	合格の場合：「バッチ状態コード」を”QC Pass”に更新する
+                ///     	不合格の場合：「バッチ状態コード」を”QC Rejected”に更新する
+                ///o	D365機能：QC試験日の更新
+                ///     	QC試験日は実績日時の日付を更新する。
+                newInventBatch = InventBatch::find(kJP_SM_ReceiptAndPaymentResultIfTable.LotNo,
+                kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD, true);
+                inventTable = InventTable::find(kJP_SM_ReceiptAndPaymentResultIfTable.ItemCD);
+
+                if (newInventBatch.PdsDispositionCode == pdsSUQ || newInventBatch.PdsDispositionCode == pdsDiscon)
+                {
+                    ttsbegin;
+
+                    newInventBatch.KJPSMGMPJudgmentDate =
+                        str2Date(subStr(kJP_SM_ReceiptAndPaymentResultIfTable.ActualDateAndTimeStr, 1, 8), 321);
+                    newInventBatch.update();
+
+                    ttscommit;
+                    numberOfSuccess++;
+                }
+                else
+                {
+                    ///IF [KJP_SM_ReceiptAndPaymentResultIfTable].[TestResults]==1,
+                    if (kJP_SM_ReceiptAndPaymentResultIfTable.TestResults == Qualified)
+                    {
+                        ///(if [InventTable]. [KJPSMGMPJudgment]==”YES” and [InventTable].[KJPSMGQPJudgment]==” NO”
+                        ///then set [GeneralPurposeMaster].[BatchStatus]::[GMP Relesed] to [InventBatch].[PdsDispositionCode],
+                        ///    and set [TransDate] with YYYY/MM/DD to
+                        ///    [InventBatch].[KJPSMGMPJudgmentDate];
+                        ///if [InventTable].[KJPSMGMPJudgment]==”YES” and [InventTable].[KJPSMGQPJudgment]==” YES”
+                        ///    then set [GeneralPurposeMaster].[BatchStatus]::[GQP Quarantine] to [InventBatch].[PdsDispositionCode]
+                        ///    and set [TransDate] with YYYY/MM/DD to [InventBatch].[KJPSMGMPJudgmentDate],
+                        if (inventTable.KJPSMGMPJudgment == NoYes::Yes)
+                        {
+                            if (inventTable.KJPSMGQPJudgment == NoYes::No)
+                            {
+                                pdsDispositionCodeGMP = pdsGMPRelease;
+                            }
+                            else if (inventTable.KJPSMGQPJudgment == NoYes::Yes)
+                            {
+                                pdsDispositionCodeGMP = pdsGQPQuarantine;
+                            }
+                        }
+                    }
+                    ///IF [KJP_SM_ReceiptAndPaymentResultIfTable].[TestResults]==2,
+                    else if (kJP_SM_ReceiptAndPaymentResultIfTable.TestResults == UnQualified)
+                    {
+                        ///set [GeneralPurposeMaster].[BatchStatus]::[GMP rejected] to [InventBatch].[PdsDispositionCode],
+                        ///and set [TransDate] with YYYY/MM/DD to [InventBatch].[GMPJudgementDate].
+                        pdsDispositionCodeGMP  = pdsGMPReject;
+                    }
+                    if (pdsDispositionCodeGMP != StrEmpity)
+                    {
+                        ttsbegin;
+
+                        PdsHistoryInventDisposition pdsHistoryInventDisposition;
+                        pdsHistoryInventDisposition.ItemId = newInventBatch.ItemId;
+                        pdsHistoryInventDisposition.InventBatchId = newInventBatch.InventBatchId;
+                        pdsHistoryInventDisposition.OldDispositionCode = newInventBatch.PdsDispositionCode;
+                        pdsHistoryInventDisposition.NewDispositionCode = pdsDispositionCodeGMP;
+
+                        newInventBatch.PdsDispositionCode = pdsDispositionCodeGMP;
+                        newInventBatch.KJPSMGMPJudgmentDate =
+                        str2Date(subStr(kJP_SM_ReceiptAndPaymentResultIfTable.ActualDateAndTimeStr, 1, 8), 321);
+                
+                        newInventBatch.update();
+                        pdsHistoryInventDisposition.insert();
+
+                        ttscommit;
+                        numberOfSuccess++;
+                    }
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

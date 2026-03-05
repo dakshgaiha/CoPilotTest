@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompStatementImportService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.Globalization;
+/// <summary>
+/// The <c>KJP_SM_InventCompStatementImportService</c> is a service for <c>KJP_SM_InventCompStatementImportController</c>,
+/// Imports data of inventory compensation statement.
+/// </summary>
+public  class KJP_SM_InventCompStatementImportService extends SysOperationServiceBase
+{
+    str                         csvDelimiter;
+    KJP_SM_FileName             fileName;
+    KJP_SM_FileUploadDateTime   fileUploadDateTime;
+    UserId                      createdBy;
+        
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>process</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// This method is the entry point of the logic for processing the uploaded csv file.
+    /// </summary>
+    /// <param name = "_dataContract">
+    /// Data contract which contains the file stream of csv file.
+    /// </param>
+    public void process(KJP_SM_InventCompStatementImportContract _dataContract)
+    {
+        #OCCRetryCount
+        System.Exception ex;
+        try
+        {  
+            KJP_CM_DestinationCode destinationCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::InventoryCompensationStetamentConstantKey, 
+                                                        KJP_CM_ConstantHelper::origCodeInventoryCompensationStetamentConstantKey_CharacterEncodingOfCSVFile).DestinationCode;
+            if(destinationCode)
+            {
+                using (System.IO.StreamReader reader = new System.IO.StreamReader(_dataContract.parmStream(),System.Text.Encoding::GetEncoding(destinationCode)))
+                {
+                    csvDelimiter        = CultureInfo::CreateSpecificCulture(xUserInfo::find().PreferredLocale).TextInfo.ListSeparator;
+                    fileName            = _dataContract.parmFilename();
+                    fileUploadDateTime  = DateTimeUtil::getSystemDateTime();
+                    createdBy           = curUserId();
+
+                    int linesCounter    = 1;
+
+          
+                    ttsbegin;
+                    while (reader.Peek() >= 0)
+                    {
+                        boolean success = this.processCsvLine(reader.ReadLine(), linesCounter);
+                
+                        if(!success)
+                        {
+                            throw Exception::Error;
+                        }
+
+                        linesCounter++;
+                    }
+                    ttscommit;
+                }
+            }
+            else
+            {
+                Error(strFmt("@KJP:KJP500588",
+                            "@KJP:KJP100328",
+                            "@KJP:KJP100324",
+                            KJP_CM_ConstantHelper::InventoryCompensationStetamentConstantKey,
+                            "@KJP:KJP100325",
+                            KJP_CM_ConstantHelper::origCodeInventoryCompensationStetamentConstantKey_CharacterEncodingOfCSVFile));
+            }
+        }
+        catch (Exception::Deadlock)
+        {
+            retry;
+        }
+        catch (ex)
+        {
+            Error(strFmt("@KJP:KJP500588",
+                            "@KJP:KJP100328",
+                            "@KJP:KJP100324",
+                            KJP_CM_ConstantHelper::InventoryCompensationStetamentConstantKey,
+                            "@KJP:KJP100325",
+                            KJP_CM_ConstantHelper::origCodeInventoryCompensationStetamentConstantKey_CharacterEncodingOfCSVFile));
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processCsvLine</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Processes the CSV line.
+    /// </summary>
+    /// <param name = "_line">
+    /// The CSV file content line.
+    /// </param>
+    /// <param name = "_index">
+    /// The line index.
+    /// </param>
+    /// <returns>
+    /// true, if process the line successfully. otherwise, false.
+    /// </returns>
+    internal boolean processCsvLine(str _line, int _index)
+    {
+        boolean ret = true;
+        
+        if (_line == '')
+        {
+            return false;
+        }
+        else
+        {
+            ret = this.processcCsvRowData(this.getFieldMapFromStr(_line), _index);
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processcCsvRowData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to process the csv row data based on pre-processed map.
+    /// </summary>
+    /// <param name = "_headerFieldMap">
+    /// Pre-processed map.
+    /// </param>
+    /// <param name = "_index">
+    /// Row index (row number) of the csv file.
+    /// </param>
+    /// <returns>
+    /// True if the csv row is processed successfully, false otherwise.
+    /// </returns>
+    private boolean processcCsvRowData(Map _headerFieldMap, int _index = 0)
+    {
+        boolean                                     isSuccess = false;
+        
+        KJP_SM_Locations                            locations = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol1);
+        KJP_SM_BusinessUnitName                     businessUnitName = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol14);
+        KJP_SM_InvoiceAccount6                      invoiceAccount = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol2);
+        KJP_SM_InvoiceAccountName                   invoiceAccountName = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol8);
+        KJP_SM_YearOfCreation                       yearOfCreation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol3);
+        KJP_SM_MonthOfCreation                      monthOfCreation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol4);
+        KJP_SM_DayOfCreation                        dayOfCreation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol5);
+        KJP_SM_YearOfCompensation                   yearOfCompensation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol9);
+        KJP_SM_MonthOfCompensation                  monthOfCompensation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol10);
+        KJP_SM_DayOfCompensation                    dayOfCompensation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol12);
+        
+        KJP_SM_InventoryCompensationHeaderTable     headerTable;
+        
+        select firstonly RecId from headerTable
+            where headerTable.FileName == fileName
+                && headerTable.FileUploadDateTime == fileUploadDateTime
+                && headerTable.CreatedBy == createdBy
+                && headerTable.Locations == locations
+                && headerTable.BusinessUnitName == businessUnitName
+                && headerTable.InvoiceAccount == invoiceAccount
+                && headerTable.InvoiceAccountName == invoiceAccountName
+                && headerTable.YearOfCreation == yearOfCreation
+                && headerTable.MonthOfCreation == monthOfCreation
+                && headerTable.DayOfCreation == dayOfCreation
+                && headerTable.YearOfCompensation == yearOfCompensation
+                && headerTable.MonthOfCompensation == monthOfCompensation
+                && headerTable.DayOfCompensation == dayOfCompensation;
+
+        if(headerTable.RecId == nullValueBaseType(Types::Int64))
+        {
+            // Create the header
+            headerTable.clear();
+            headerTable.FileName            = fileName;
+            headerTable.FileUploadDateTime  = fileUploadDateTime;
+            headerTable.Locations           = locations;
+            headerTable.BusinessUnitName    = businessUnitName;
+            headerTable.InvoiceAccount      = invoiceAccount;
+            headerTable.InvoiceAccountName  = invoiceAccountName;
+            headerTable.YearOfCreation      = yearOfCreation;
+            headerTable.MonthOfCreation     = monthOfCreation;
+            headerTable.DayOfCreation       = dayOfCreation;
+            headerTable.YearOfCompensation  = yearOfCompensation;
+            headerTable.MonthOfCompensation = monthOfCompensation;
+            headerTable.DayOfCompensation   = dayOfCompensation;
+            headerTable.LogicalDeletionFlag = NoYes::No;
+            headerTable.insert();
+        }
+        
+        KJP_SM_UnifiedProductCD                         unifiedProductCD = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol15);
+        KJP_SM_ItemName3Abbreviation                    itemName3Abbreviation = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol16);
+        KJP_SM_CurrentMonthTheoreticalInventoryQuantity currentMonthTheoreticalInventoryQuantity = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol17);
+        KJP_SM_PayoutUnit                               payoutUnit = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol18);
+        KJP_SM_NewUnitPrice                             newUnitPrice = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol19);
+        KJP_SM_OldUnitPrice                             oldUnitPrice = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol20);
+        KJP_SM_DifferenceUnitPrice                      differenceUnitPrice = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol21);
+        KJP_SM_DifferenceUnitPricelInventoryQuantity    differenceUnitPricelInventoryQuantity = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol22);
+        KJP_SM_CompanyName60                            companyName = _headerFieldMap.lookup(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol13);
+
+        KJP_SM_InventoryCompensationLinesTable          lineTable;
+
+        // Create the line
+
+        lineTable.clear();
+        lineTable.InventHeaderReferenceRecId                = headerTable.RecId;
+        lineTable.RowNumberOfCSVFile                        = int2Str(_index);
+        lineTable.Locations                                 = locations;
+        lineTable.InvoiceAccount                            = invoiceAccount;
+        lineTable.InvoiceAccountName                        = invoiceAccountName;
+        lineTable.UnifiedProductCD                          = unifiedProductCD;
+        lineTable.ItemName3Abbreviation                     = itemName3Abbreviation;
+        lineTable.CurrentMonthTheoreticalInventoryQuantity  = currentMonthTheoreticalInventoryQuantity;
+        lineTable.PayoutUnit                                = payoutUnit;
+        lineTable.NewUnitPrice                              = newUnitPrice;
+        lineTable.OldUnitPrice                              = oldUnitPrice;
+        lineTable.DifferenceUnitPrice                       = differenceUnitPrice;
+        lineTable.DifferenceUnitPricelInventoryQuantity     = differenceUnitPricelInventoryQuantity;
+        lineTable.CompanyName                               = companyName;
+        lineTable.insert();
+
+        isSuccess   = true;
+
+        return isSuccess;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFieldMapFromStr</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets fields header fields value map from a CSV string.
+    /// Key : The CSV column name; Value : The CSV field value.
+    /// </summary>
+    /// <param name = "_strLine">
+    /// The CSV string
+    /// </param>
+    /// <returns>
+    /// A column fields value map.
+    /// </returns>
+    private Map getFieldMapFromStr(str _strLine)
+    {
+        Map columnValueMap = new Map(Types::String, Types::String);
+        if (_strLine != '')
+        {
+            using (Microsoft.VisualBasic.FileIO.TextFieldParser parser = new Microsoft.VisualBasic.FileIO.TextFieldParser(new System.IO.StringReader(_strLine)))
+            {
+                parser.SetDelimiters(csvDelimiter);
+                parser.HasFieldsEnclosedInQuotes = true;
+
+                while (!parser.EndOfData)
+                {
+                    System.String[] values = parser.ReadFields();
+                    int valuesIndex = 0;
+                    
+                    // Column 1
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol1, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 2
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol2, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 3
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol3, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 4
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol4, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 5
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol5, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 6
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol6, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 7
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol7, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 8
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol8, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 9
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol9, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 10
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol10, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 11
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol11, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 12
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol12, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 13
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol13, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 14
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol14, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 15
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol15, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 16
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol16, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 17
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol17, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 18
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol18, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 19
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol19, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 20
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol20, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 21
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol21, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+
+                    // Column 22
+                    columnValueMap.insert(KJP_CM_ConstantHelper::inventCompStatementImportCSVCol22, any2Str(values.get_Item(valuesIndex)));
+                    valuesIndex++;
+                }
+            }
+        }
+        return columnValueMap;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>performLogicalDelete</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to perform the logical delete.
+    /// </summary>
+    /// <param name = "_formDataSource">
+    /// Form datasource with records selected for logical delete.
+    /// </param>
+    public static void performLogicalDelete(FormDataSource _formDataSource)
+    {
+        #OCCRetryCount
+
+        if((_formDataSource.table() != tableNum(KJP_SM_InventoryCompensationHeaderTable))
+            || (_formDataSource.formRun().name() != formStr(KJP_SM_InventoryCompensationStatement)))
+        {
+            throw error(Error::wrongUseOfFunction(funcName()));
+        }
+
+        KJP_SM_InventoryCompensationHeaderTable     headerTable;
+        MultiSelectionHelper                        selectionHelper = MultiSelectionHelper::construct();
+        
+        try
+        {
+            ttsbegin;
+            selectionHelper.parmDatasource(_formDataSource);
+            headerTable = selectionHelper.getFirst();
+            while (headerTable.RecId != nullValueBaseType(Types::Int64))
+            {
+                if(headerTable.LogicalDeletionFlag != NoYes::No)
+                {
+                    throw Error("@KJP:KJP500544");
+                }
+
+                // Perform logical delete
+                
+                headerTable.selectForUpdate(true);
+                headerTable.LogicalDeletionFlag = NoYes::Yes;
+                headerTable.update();
+
+                headerTable = selectionHelper.getNext();
+            }
+            ttscommit;
+        }
+        catch (Exception::Deadlock)
+        {
+            retry;
+        }
+        catch (Exception::UpdateConflict)
+        {
+            if(appl.ttsLevel() == 0)
+            {
+                if(xSession::currentRetryCount() >= #RetryNum)
+                {
+                    throw Exception::UpdateConflictNotRecovered;
+                }
+                else
+                {
+                    retry;
+                }
+            }
+            else
+            {
+                throw Exception::UpdateConflict;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

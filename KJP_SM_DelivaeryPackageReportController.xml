@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DelivaeryPackageReportController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller class for ASetSlip(DeliveryNoticePackageReceipt) report - KJP_SM_DelivaeryPackageReport
+/// </summary>
+public class KJP_SM_DelivaeryPackageReportController extends SrsReportRunController implements BatchRetryable
+{
+    const str dynamicParam = 'DynamicParameter';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Main method to initialize the constructor of the class
+    /// </summary>
+    /// <param name = "_args">Report args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_DelivaeryPackageReportController::construct(_args).startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Constructor method for the class
+    /// </summary>
+    /// <param name = "_args">Report agrs</param>
+    /// <returns>construct for class</returns>
+    public static KJP_SM_DelivaeryPackageReportController construct(Args _args)
+    {
+        KJP_SM_DelivaeryPackageReportController  controller = new KJP_SM_DelivaeryPackageReportController();
+        KJP_SM_DelivaeryPackageReportContract contract;
+       
+        controller.parmReportName(ssrsReportStr(KJP_SM_DelivaeryPackageReport, Report));
+        
+        controller.parmArgs(_args);
+        controller.parmLoadFromSysLastValue(false);
+        contract = controller.parmReportContract().parmRdpContract();
+        contract.parmMenuItemName(_args.menuItemName());
+        // 0595 - triggered from Picking List registration form
+        if(_args.dataset() == tableNum(WMSPickingRoute))
+        {
+            controller.parmShowDialog(false);
+        }
+        else
+        {
+            controller.parmShowDialog(true);
+        }
+        return controller;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canGoBatch</Name>
+				<Source><![CDATA[
+    public boolean canGoBatch()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>prePromptModifyContract</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Sets the report query ranges based on caller.
+    /// </summary>
+    protected void prePromptModifyContract()
+    {
+        SysOperationQueryDataContractInfo queryContractInfo;
+        Query query;
+
+        Map queryContract = new Map(Types::String, Types::Class);
+       
+        if (this.parmArgs().menuItemName() == menuItemOutputStr(KJP_SM_DelivaeryPackageReport))
+        {
+            query = new Query(queryStr(KJP_SM_DelivaeryPackageReportQuery));
+        }
+        else if (this.parmArgs().menuItemName() == menuItemOutputStr(KJP_SM_AsetSlipOutput))
+        {
+            query = new Query(queryStr(KJP_SM_ASetSlipDataQuery));
+        }
+        // insert into query contract to initialize SysOperationQueryDataContractInfo
+        queryContract.insert(dynamicParam, query);
+        this.parmReportContract().parmQueryContracts(queryContract);
+        this.addSysOperationDataContractInfo(query, dataContractInfoObjects, dynamicParam);
+        //get intialized  query contract info class
+        queryContractInfo = dataContractInfoObjects.lookup(dynamicParam);
+        //update nested queries 
+        dataContractObjectsAndNestedQueries.insert(dynamicParam, queryContractInfo);
+       //set query
+        queryContractInfo.parmQuery(query);
+        this.setRanges(this.parmReportContract().parmQueryContracts().lookup(this.getFirstQueryContractKey()));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setRanges</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Sets the report query ranges based on caller.
+    /// </summary>
+    /// <param name="_query">
+    /// The hold the <c>Query</c> object of the report.
+    /// </param>
+    public void setRanges(Query _query)
+    {
+        MultiSelectionHelper multiSelectHelper;
+        WMSPickingRoute wMSPickingRoute;
+
+        // 0594
+        if ( this.parmArgs() || this.parmArgs().caller() && (this.parmArgs().dataset() == tableNum(InventTransferTable)))
+        {
+            InventTransferTable inventTransferTable = this.parmArgs().record();
+
+            if (_query && inventTransferTable)
+            {
+                QueryBuildDataSource queryBuildDataSource = _query.dataSourceTable(tableNum(InventTransferTable));
+
+                // check for QueryBuildDataSource
+                if (queryBuildDataSource)
+                {
+                    // find the range, if it's not found add it
+                    QueryBuildRange queryBuildRange = queryBuildDataSource.findRange(fieldNum(InventTransferTable , TransferId));
+                    if (!queryBuildRange)
+                    {
+                        queryBuildRange = queryBuildDataSource.addRange(fieldNum(InventTransferTable , TransferId));
+                    }
+                    queryBuildRange.value(queryValue(inventTransferTable.TransferId));
+                    this.queryChanged(dynamicParam,_query);
+                }
+            }
+        }
+
+        // 0595
+        else if (this.parmArgs() || this.parmArgs().caller() && (this.parmArgs().dataset() == tableNum(WMSPickingRoute)))
+        {
+            wMSPickingRoute = this.parmArgs().record();
+            if(wMSPickingRoute)
+            {
+                multiSelectHelper = MultiSelectionHelper::createFromCaller(this.parmArgs().caller());
+                wMSPickingRoute = multiSelectHelper.getFirst();
+                QueryBuildRange queryBuildRange;
+                QueryBuildDataSource queryBuildDataSource = SysQuery::findOrCreateDataSource(_query, tableNum(WMSPickingRoute));
+                while(wMSPickingRoute)
+                {
+                
+                    if (queryBuildDataSource)
+                    {
+                        // Add inventLocationId range
+                        queryBuildRange = queryBuildDataSource.addRange(fieldNum(WMSPickingRoute, inventLocationId));
+                        queryBuildRange.value(queryValue(wMSPickingRoute.inventLocationId));
+
+                        // Add Range
+                        queryBuildRange = queryBuildDataSource.addRange(fieldNum(WMSPickingRoute, customer));
+                        queryBuildRange.value(queryValue(wMSPickingRoute.customer));
+
+                        // Add DlvDate range
+                        queryBuildRange = queryBuildDataSource.addRange(fieldNum(WMSPickingRoute, DlvDate));
+                        queryBuildRange.value(queryValue(wMSPickingRoute.DlvDate));
+
+                        // Add PickingRouteID range
+ 
+                        queryBuildRange = queryBuildDataSource.addRange(fieldNum(WMSPickingRoute, PickingRouteID));
+                        queryBuildRange.value(queryValue(wMSPickingRoute.PickingRouteID));
+                    }
+                    wMSPickingRoute = multiSelectHelper.getNext();
+                }
+                this.queryChanged(dynamicParam,_query);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>queryChanged</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  To update the changed query in the contract param
+    /// </summary>
+    /// <param name = "_key">Key - query Contracts</param>
+    /// <param name = "_query">Updated Query</param>
+    protected void queryChanged(str _key, Query _query )
+    {
+        KJP_SM_DelivaeryPackageReportContract contract;
+
+        super(_key, _query);
+
+        contract = this.parmReportContract().parmRdpContract();
+        contract.setQuery(_query);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

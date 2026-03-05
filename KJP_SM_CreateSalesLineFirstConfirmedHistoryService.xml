@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CreateSalesLineFirstConfirmedHistoryService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFB-MFG-0803-001
+/// KJP_SM_CreateSalesLineFirstConfirmedHistoryService
+/// </summary>
+class KJP_SM_CreateSalesLineFirstConfirmedHistoryService extends KJP_CM_IFBatchBase
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point of the class
+    /// </summary>
+    public void processRun()
+    {
+        ttsbegin;
+        KJP_SM_CreateSalesLineFirstConfirmedHistory runClass = new KJP_SM_CreateSalesLineFirstConfirmedHistory();
+        runClass.main();
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

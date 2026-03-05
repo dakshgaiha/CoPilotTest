@@ -1,0 +1,548 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CreatePSIBySlipLineTableRemoval</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Removal
+/// </summary>
+internal final class KJP_SM_CreatePSIBySlipLineTableRemoval
+{
+
+    const str FmtYearMonth                  = '%1/%2';
+    const str Colon                         = ':';
+    const int NullTime                      = 0;
+    const str Blank                         = '';
+    const str ZeroStr                       = '0';
+
+    // LanguageId
+    const str LanguageIdJA = 'ja';
+    const str LanguageIdEN = 'en-US';
+
+    // param
+    PropertyId                      cITProperty;
+    EcoResCategoryCommodityCode     cERCParentCode;
+    EcoResCategoryCommodityCode     cERCCode;
+
+    // KJP_CM_GeneralPurposeMaster destinationCode
+    private KJP_CM_DestinationCode destinationCodePSIType;
+    private KJP_CM_DestinationCode destinationCodeCategoryHierarchy;
+    private KJP_CM_DestinationCode destinationCodeQCPass;
+    private KJP_CM_DestinationCode destinationCodeQCQuarantine;
+    private KJP_CM_DestinationCode destinationCodeGMPRelease;
+    private KJP_CM_DestinationCode destinationCodeGMPQuarantine;
+    private KJP_CM_DestinationCode destinationCodeGQPRelease;
+    private KJP_CM_DestinationCode destinationCodeGQPQuarantine;
+    private KJP_CM_DestinationCode cCurrentMonth;
+    private KJP_CM_DestinationCode destinationCodeProdGroupIdFP;
+    private KJP_CM_DestinationCode destinationCodeProdGroupIdBP;
+    private KJP_CM_DestinationCode destinationCodeProdGroupIdNP;
+    private KJP_CM_DestinationCode destinationCodeProdGroupIdNPInsp;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// main
+    /// </summary>
+    public void main()
+    {
+        // Get KJP_CM_GeneralPurposeMaster
+        this.getGeneralPurposeMaster();
+        // Insert PSIBySlipLineTable
+        this.insertPSIBySlipLineTable();
+        // Insert PSIByMonthlyQuantitySummaryTable
+        this.insertPSIByMonthlyQuantitySummaryTable();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getGeneralPurposeMaster</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get KJP_CM_GeneralPurposeMaster
+    /// </summary>
+    private void getGeneralPurposeMaster()
+    {
+        
+        // PSIType
+        destinationCodePSIType = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSITypeKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSITypeKey_PSIType11
+            ).DestinationCode;
+
+        // CategoryHierarchy
+        destinationCodeCategoryHierarchy = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_CategoryHierarchyKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_CategoryHierarchyKey_CategoryHierarchy
+            ).DestinationCode;
+        
+        // QCPass
+        destinationCodeQCPass = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::BatchStatusKey
+            ,KJP_CM_ConstantHelper::origcodeBatchStatus_QCPass
+            ).DestinationCode;
+        
+        // QCQuarantine
+        destinationCodeQCQuarantine = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::BatchStatusKey
+            ,KJP_CM_ConstantHelper::origcodeBatchStatus_QCQuarantine
+            ).DestinationCode;
+        
+        // GMPRelease
+        destinationCodeGMPRelease = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::BatchStatusKey
+            ,KJP_CM_ConstantHelper::origcodeBatchStatus_GMPRelease
+            ).DestinationCode;
+        
+        // GMPQuarantine
+        destinationCodeGMPQuarantine = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::BatchStatusKey
+            ,KJP_CM_ConstantHelper::origcodeBatchStatus_GMPQuarantine
+            ).DestinationCode;
+        
+        // GQPRelease
+        destinationCodeGQPRelease = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::BatchStatusKey
+            ,KJP_CM_ConstantHelper::origcodeBatchStatus_GQPRelease
+            ).DestinationCode;
+        
+        // GQPQuarantine
+        destinationCodeGQPQuarantine = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::BatchStatusKey
+            ,KJP_CM_ConstantHelper::origcodeBatchStatus_GQPQuarantine
+            ).DestinationCode;
+
+        // CurrentMonth
+        cCurrentMonth = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_ExecutionMonthKey, 
+            KJP_CM_ConstantHelper::origCodeKJP_SM_ExecutionMonthKey_CurrentMonth
+            ).DestinationCode;
+        
+        // ProdGroupIdFP
+        destinationCodeProdGroupIdFP = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            , KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_FP
+            ).DestinationCode;
+
+        // ProdGroupIdBP
+        destinationCodeProdGroupIdBP = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_BP
+            ).DestinationCode;
+        
+        // ProdGroupIdNP
+        destinationCodeProdGroupIdNP = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_NP
+            ).DestinationCode;
+
+        // ProdGroupIdNPInsp
+        destinationCodeProdGroupIdNPInsp = KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::KJP_SM_PSIReport_ProdGroupIdKey
+            ,KJP_CM_ConstantHelper::origCodeKJP_SM_PSIReport_ProdGroupIdKey_ProdGroupId_NP_Insp
+            ).DestinationCode;
+
+        return;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertPSIBySlipLineTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert PSIBySlipLineTable
+    /// </summary>
+    private void insertPSIBySlipLineTable()
+    {
+        KJP_FI_InventoryClosingTable inventoryClosingTable;
+        InventTable inventTable;
+        EcoResProduct ecoResProduct;
+        InventBatch inventBatch;
+        InventLocation inventLocation;
+        EcoResProductCategory ecoResProductCategory;
+        EcoResCategoryHierarchy ecoResCategoryHierarchy;
+        EcoResCategory ecoResCategory;
+        EcoResCategory ecoResCategoryParent;
+        InventTableModule inventTableModule;
+        InventDim inventDim;
+        EcoResCategoryTranslation ecoResCategoryTranslationEN;
+        EcoResCategoryTranslation ecoResCategoryTranslationPEN;
+        EcoResCategoryTranslation ecoResCategoryTranslationJA;
+        EcoResCategoryTranslation ecoResCategoryTranslationPJA;
+        EcoResProductTranslation ecoResProductTranslationJA;
+        EcoResProductTranslation ecoResProductTranslationEN;
+
+        // target Month
+        date curDate = DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone());
+        date dateStart = dateStartMth(curDate);
+
+        // last Month(target Month - one Month)
+        utcdatetime cCurYearMonthUtc = DateTimeUtil::newDateTime(dateStart, NullTime);
+        cCurYearMonthUtc = DateTimeUtil::addMonths(cCurYearMonthUtc, -1);
+        date lastMonth = mkDate(1, DateTimeUtil::month(cCurYearMonthUtc), DateTimeUtil::year(cCurYearMonthUtc));
+        str lastMonthStr = this.getYearAndMonth(lastMonth);
+
+        // get KJP_FI_InventoryClosingTable
+        RecordInsertList pSIBySlipLineTableInsertList = new RecordInsertList(tableNum(KJP_SM_PSIBySlipLineTable));
+
+        while select ItemId, inventBatchId, UnitId, Qty, InventLocationId, YearMonth, ReceiptIssueItem
+            from inventoryClosingTable
+            where inventoryClosingTable.YearMonth == lastMonthStr
+               && inventoryClosingTable.ReceiptIssueItem == KJP_FI_ReceiptIssueItem::monthEndBalance
+            join itemId, PropertyId, ProdGroupId, Product
+            from inventTable
+            where inventTable.ItemId == inventoryClosingTable.ItemId
+               && (inventTable.ProdGroupId == destinationCodeProdGroupIdFP
+               || inventTable.ProdGroupId == destinationCodeProdGroupIdBP
+               || inventTable.ProdGroupId == destinationCodeProdGroupIdNP
+               || inventTable.ProdGroupId == destinationCodeProdGroupIdNPInsp)
+               && ((inventTable.PropertyId == cITProperty
+               && cITProperty             != Blank)
+               || cITProperty             == Blank)
+            join RecId 
+            from ecoResProduct
+            where ecoResProduct.RecId == inventTable.Product
+            join ItemId, inventBatchId, expDate, PdsDispositionCode
+            from inventBatch
+            where inventBatch.ItemId == inventTable.ItemId
+               && inventBatch.inventBatchId == inventoryClosingTable.inventBatchId
+               && inventBatch.expDate >= dateStart
+               && (inventBatch.PdsDispositionCode == destinationCodeQCPass
+               || inventBatch.PdsDispositionCode == destinationCodeQCQuarantine
+               || inventBatch.PdsDispositionCode == destinationCodeGMPRelease
+               || inventBatch.PdsDispositionCode == destinationCodeGMPQuarantine
+               || inventBatch.PdsDispositionCode == destinationCodeGQPRelease
+               || inventBatch.PdsDispositionCode == destinationCodeGQPQuarantine)
+            join Name, InventSiteId, KJPSMGoodProductType, InventLocationId
+            from inventLocation
+            where inventLocation.InventLocationId == inventoryClosingTable.InventLocationId
+               && inventLocation.KJPSMGoodProductType == KJP_SM_GoodProductType::Good
+            join Product, CategoryHierarchy, Category 
+            from ecoResProductCategory
+            where ecoResProductCategory.Product == inventTable.Product
+            join RecId, Name
+            from ecoResCategoryHierarchy
+            where ecoResCategoryHierarchy.RecId == ecoResProductCategory.CategoryHierarchy
+               && ecoResCategoryHierarchy.Name == destinationCodeCategoryHierarchy
+            join RecId, Code, ParentCategory
+            from ecoResCategory
+            where ecoResCategory.RecId == ecoResProductCategory.Category
+               && ((ecoResCategory.Code == cERCCode
+               &&  cERCCode != Blank)
+               ||  cERCCode == Blank)
+            join RecId, Code
+            from ecoResCategoryParent
+            where ecoResCategoryParent.RecId == ecoResCategory.ParentCategory
+               && ((ecoResCategoryParent.Code == cERCParentCode
+               &&  cERCParentCode != Blank)
+               ||  cERCParentCode == Blank)
+            outer join Category,LanguageId, FriendlyName
+            from ecoResCategoryTranslationEN
+            where ecoResCategoryTranslationEN.Category == ecoResCategory.RecId
+               && ecoResCategoryTranslationEN.LanguageId == LanguageIdEN
+            outer join Category, LanguageId, FriendlyName
+            from ecoResCategoryTranslationJA
+            where ecoResCategoryTranslationJA.Category == ecoResCategory.RecId
+               && ecoResCategoryTranslationJA.LanguageId == LanguageIdJA
+            outer join Category, LanguageId, FriendlyName
+            from ecoResCategoryTranslationPEN
+            where ecoResCategoryTranslationPEN.Category == ecoResCategory.ParentCategory
+               && ecoResCategoryTranslationPEN.LanguageId == LanguageIdEN
+            outer join Category, LanguageId,FriendlyName
+            from ecoResCategoryTranslationPJA
+            where ecoResCategoryTranslationPJA.Category == ecoResCategory.ParentCategory
+               && ecoResCategoryTranslationPJA.LanguageId == LanguageIdJA
+            outer join Product, LanguageId, Name 
+            from ecoResProductTranslationJA
+            where ecoResProductTranslationJA.Product == inventTable.Product
+               && ecoResProductTranslationJA.LanguageId == LanguageIdJA
+            outer join Product, LanguageId, Name 
+            from ecoResProductTranslationEN
+            where ecoResProductTranslationEN.Product == inventTable.Product
+               && ecoResProductTranslationEN.LanguageId == LanguageIdEN
+            outer join ItemId, ModuleType, UnitId
+            from inventTableModule
+            where inventTableModule.ItemId == inventoryClosingTable.ItemId
+               && inventTableModule.ModuleType == ModuleInventPurchSales::Sales
+        {
+            // findOrCreate(InventDim)
+            inventDim.clear();
+            inventDim.inventBatchId = inventoryClosingTable.inventBatchId;
+            inventDim.inventLocationId = inventoryClosingTable.inventLocationId;
+            inventDim.InventSiteId = inventLocation.InventSiteId;
+            inventDim = InventDim::findOrCreate(inventDim);
+
+            // quantity Unit Conversion
+            Qty quantity = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                inventoryClosingTable.ItemId
+                , inventDim.inventDimId
+                , inventoryClosingTable.Qty
+                , inventoryClosingTable.UnitId
+                , inventTableModule.UnitId
+                );
+        
+            // Set Removal Record(PSIBySlipLineTable)
+            pSIBySlipLineTableInsertList.add(this.setPSIBySlipLineTable(
+                destinationCodePSIType
+                , inventBatch
+                , inventTable
+                , inventoryClosingTable
+                , inventLocation
+                , inventTableModule
+                , quantity
+                , ecoResCategoryTranslationEN
+                , ecoResCategoryTranslationJA
+                , ecoResCategoryTranslationPEN
+                , ecoResCategoryTranslationPJA
+                , ecoResProductTranslationJA
+                , ecoResProductTranslationEN
+                ));
+            
+        }
+
+        // insert PSIBySlipLineTable
+        pSIBySlipLineTableInsertList.insertDatabase();
+
+        return;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getYearAndMonth</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get YYYY/MM  ZeroPadding MM
+    /// </summary>
+    /// <param name = "_date">date</param>
+    /// <returns>KJP_SM_YearAndMonth</returns>
+    private str getYearAndMonth(date _date)
+    {
+        // type conversion date to datetime
+        int wkYear = DateTimeUtil::year(DateTimeUtil::newDateTime(_date, NullTime));
+        int tmpMonth = DateTimeUtil::month(DateTimeUtil::newDateTime(_date, NullTime));
+
+        // zero padding for month
+        str wkMonth = strRFix(int2Str(tmpMonth), 2, ZeroStr);
+        str YearAndMonth = strFmt(FmtYearMonth, wkYear, wkMonth);
+
+        return YearAndMonth;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPSIBySlipLineTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Set Removal Record(PSIBySlipLineTable)
+    /// </summary>
+    /// <param name = "_destinationCode">KJP_CM_DestinationCode(PSIType)</param>
+    /// <param name = "_inventBatch">InventBatch</param>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <param name = "_inventoryClosingTable">KJP_FI_InventoryClosingTable</param>
+    /// <param name = "_inventLocation">InventLocation</param>
+    /// <param name = "_inventTableModule">inventTableModule</param>
+    /// <param name = "_quantity">quantity</param>
+    /// <param name = "_ecoResCategoryTranslationEN">ecoResCategoryTranslationEN</param>
+    /// <param name = "_ecoResCategoryTranslationJA">ecoResCategoryTranslationJA</param>
+    /// <param name = "_ecoResCategoryTranslationPEN">ecoResCategoryTranslationPEN</param>
+    /// <param name = "_ecoResCategoryTranslationPJA">ecoResCategoryTranslationPJA</param>
+    /// <param name = "_ecoResProductTranslationJA">ecoResProductTranslationJA</param>
+    /// <param name = "_ecoResProductTranslationEN">ecoResProductTranslationEN</param>
+    /// <returns>KJP_SM_PSIBySlipLineTable</returns>
+    private KJP_SM_PSIBySlipLineTable setPSIBySlipLineTable(
+        KJP_CM_DestinationCode _destinationCode
+        , InventBatch _inventBatch
+        , InventTable _inventTable
+        , KJP_FI_InventoryClosingTable _inventoryClosingTable
+        , InventLocation _inventLocation
+        , InventTableModule _inventTableModule
+        , Qty _quantity
+        , EcoResCategoryTranslation _ecoResCategoryTranslationEN
+        , EcoResCategoryTranslation _ecoResCategoryTranslationJA
+        , EcoResCategoryTranslation _ecoResCategoryTranslationPEN
+        , EcoResCategoryTranslation _ecoResCategoryTranslationPJA
+        , EcoResProductTranslation _ecoResProductTranslationJA
+        , EcoResProductTranslation _ecoResProductTranslationEN)
+    {
+        KJP_SM_PSIBySlipLineTable pSIBySlipLineTable;
+        pSIBySlipLineTable.PSIReportKey = _destinationCode + Colon + _inventoryClosingTable.ItemId + Colon + strFmt(FmtYearMonth,year(_inventBatch.expDate), mthOfYr(_inventBatch.expDate));
+        pSIBySlipLineTable.PSIType = _destinationCode;
+        pSIBySlipLineTable.ProductionGroup = _inventTable.ProdGroupId;
+        pSIBySlipLineTable.ItemId = _inventoryClosingTable.ItemId;
+        if(_ecoResProductTranslationJA)
+        {
+            pSIBySlipLineTable.ItemName = _ecoResProductTranslationJA.Name;
+            pSIBySlipLineTable.ItemDispName = _inventTable.ItemId + Colon + _ecoResProductTranslationJA.Name;
+
+        }
+        else
+        {
+            pSIBySlipLineTable.ItemName = _ecoResProductTranslationEN.Name;
+            pSIBySlipLineTable.ItemDispName = _inventTable.ItemId + Colon + _ecoResProductTranslationEN.Name;
+        }
+
+        if(_ecoResCategoryTranslationJA)
+        {
+            pSIBySlipLineTable.ItemNameStd = _ecoResCategoryTranslationJA.FriendlyName;
+
+        }
+        else
+        {
+            pSIBySlipLineTable.ItemNameStd = _ecoResCategoryTranslationEN.FriendlyName;
+        }
+
+        if(_ecoResCategoryTranslationPJA)
+        {
+            pSIBySlipLineTable.Category = _ecoResCategoryTranslationPJA.FriendlyName;
+        }
+        else
+        {
+            pSIBySlipLineTable.Category = _ecoResCategoryTranslationPEN.FriendlyName;
+        }
+
+        pSIBySlipLineTable.Property = _inventTable.PropertyId;
+        pSIBySlipLineTable.CompanyCode = Blank;
+        pSIBySlipLineTable.CompanyName = Blank;
+        pSIBySlipLineTable.CustomerAccount = Blank;
+        pSIBySlipLineTable.CustomerName = Blank;
+        pSIBySlipLineTable.InventLocationId = _inventoryClosingTable.InventLocationId;
+        pSIBySlipLineTable.WarehouseName = _inventLocation.Name;
+        pSIBySlipLineTable.VoucherNumber = _inventoryClosingTable.InventBatchId;
+        pSIBySlipLineTable.YearAndMonth = this.getYearAndMonth(_inventBatch.expDate);
+        pSIBySlipLineTable.Ymd = _inventBatch.expDate;
+        pSIBySlipLineTable.UnitId = _inventTableModule.UnitId;
+        pSIBySlipLineTable.Quantity = _quantity;
+        pSIBySlipLineTable.ProdStartDate = mkDate(1, 1, 1900);
+        pSIBySlipLineTable.ProdFinishDate = mkDate(1, 1, 1900);
+        pSIBySlipLineTable.ProdStatus = Blank;
+
+        return pSIBySlipLineTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertPSIByMonthlyQuantitySummaryTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert PSIByMonthlyQuantitySummaryTable
+    /// </summary>
+    private void insertPSIByMonthlyQuantitySummaryTable()
+    {
+        KJP_SM_PSIBySlipLineTable pSIBySlipLineTable;
+        InventTable inventTable;
+        EcoResProductCategory ecoResProductCategory;
+        EcoResCategory ecoResCategory;
+        EcoResCategory ecoResCategoryParent;
+        EcoResCategoryHierarchy ecoResCategoryHierarchy;
+
+        RecordInsertList pSIByMonthlyQuantitySummaryTableInsertList = new RecordInsertList(tableNum(KJP_SM_PSIByMonthlyQuantitySummaryTable));
+ 
+        while select ProductionGroup, ItemId, ItemName, ItemNameStd,
+            Category, Property, YearAndMonth, UnitId, sum(Quantity)
+            from pSIBySlipLineTable
+            group by ProductionGroup, ItemId, ItemName, ItemNameStd,
+            Category, Property, YearAndMonth, UnitId
+            where pSIBySlipLineTable.PSIType == destinationCodePSIType
+            join ItemId, PropertyId, Product
+            from inventTable
+            where inventTable.ItemId == pSIBySlipLineTable.ItemId
+               && ((inventTable.PropertyId == cITProperty
+               && cITProperty != Blank)
+               || cITProperty == Blank)
+            join Product, CategoryHierarchy, Category
+            from ecoResProductCategory
+            where ecoResProductCategory.Product == inventTable.Product
+            join RecId, Name
+            from ecoResCategoryHierarchy
+            where ecoResCategoryHierarchy.RecId == ecoResProductCategory.CategoryHierarchy
+               && ecoResCategoryHierarchy.Name == destinationCodeCategoryHierarchy
+            join RecId, Code, ParentCategory
+            from ecoResCategory
+            where ecoResCategory.RecId == ecoResProductCategory.Category
+               && ((ecoResCategory.Code == cERCCode
+               && cERCCode != Blank)
+               || cERCCode == Blank)
+            join RecId, Code
+            from ecoResCategoryParent
+            where ecoResCategoryParent.RecId == ecoResCategory.ParentCategory
+               && ((ecoResCategoryParent.Code == cERCParentCode
+               && cERCParentCode != Blank)
+               || cERCParentCode == Blank)
+        {
+            pSIByMonthlyQuantitySummaryTableInsertList.add(
+                this.setPSIByMonthlyQuantitySummaryTable(destinationCodePSIType, pSIBySlipLineTable));
+        }
+
+        pSIByMonthlyQuantitySummaryTableInsertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPSIByMonthlyQuantitySummaryTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Set Removal Record(PSIByMonthlyQuantitySummaryTable)
+    /// </summary>
+    /// <param name = "_destinationCode">KJP_CM_DestinationCode(PSIType)</param>
+    /// <param name = "_pSIBySlipLineTable">KJP_SM_PSIBySlipLineTable</param>
+    /// <returns>KJP_SM_PSIByMonthlyQuantitySummaryTable</returns>
+    private KJP_SM_PSIByMonthlyQuantitySummaryTable setPSIByMonthlyQuantitySummaryTable(
+        KJP_CM_DestinationCode _destinationCode
+        , KJP_SM_PSIBySlipLineTable _pSIBySlipLineTable)
+    {
+        KJP_SM_PSIByMonthlyQuantitySummaryTable pSIByMonthlyQuantitySummaryTable;
+
+        pSIByMonthlyQuantitySummaryTable.PSIReportKey = _destinationCode + Colon + _pSIBySlipLineTable.ItemId + Colon +_pSIBySlipLineTable.YearAndMonth;
+        pSIByMonthlyQuantitySummaryTable.PSIType = _destinationCode;
+        pSIByMonthlyQuantitySummaryTable.ProductionGroup = _pSIBySlipLineTable.ProductionGroup;
+        pSIByMonthlyQuantitySummaryTable.ItemId = _pSIBySlipLineTable.ItemId;
+        pSIByMonthlyQuantitySummaryTable.ItemName = _pSIBySlipLineTable.ItemName;
+        pSIByMonthlyQuantitySummaryTable.ItemDispName = _pSIBySlipLineTable.ItemId + Colon + _pSIBySlipLineTable.ItemName;
+        pSIByMonthlyQuantitySummaryTable.ItemNameStd = _pSIBySlipLineTable.ItemNameStd;
+        pSIByMonthlyQuantitySummaryTable.Category = _pSIBySlipLineTable.Category;
+        pSIByMonthlyQuantitySummaryTable.Property = _pSIBySlipLineTable.Property;
+        pSIByMonthlyQuantitySummaryTable.CompanyCode = Blank;
+        pSIByMonthlyQuantitySummaryTable.CompanyName = Blank;
+        pSIByMonthlyQuantitySummaryTable.YearAndMonth = _pSIBySlipLineTable.YearAndMonth;
+        pSIByMonthlyQuantitySummaryTable.UnitId = _pSIBySlipLineTable.UnitId;
+        pSIByMonthlyQuantitySummaryTable.Quantity = _pSIBySlipLineTable.Quantity;
+        pSIByMonthlyQuantitySummaryTable.ExecutionMonth = cCurrentMonth;
+
+
+        return pSIByMonthlyQuantitySummaryTable;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>new</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Execution parameters
+    /// </summary>
+    /// <param name = "_ITProperty">Property</param>
+    /// <param name = "_ERCParentCode">Brand</param>
+    /// <param name = "_ERCCode">Specifications by Product Name</param>
+    public void new(PropertyId _ITProperty, EcoResCategoryCommodityCode _ERCParentCode, EcoResCategoryCommodityCode _ERCCode)
+    {
+        cITProperty     =   _ITProperty;
+        cERCParentCode  =   _ERCParentCode;
+        cERCCode        =   _ERCCode;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

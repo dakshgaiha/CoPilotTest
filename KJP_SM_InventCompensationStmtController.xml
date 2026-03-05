@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventCompensationStmtController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller class for inventory compensation statement report
+/// </summary>
+public class KJP_SM_InventCompensationStmtController extends SrsReportRunController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Main method to initialize the constructor of the class
+    /// </summary>
+    /// <param name = "_args">
+    /// Report args
+    /// </param>
+    public static void main(Args _args)
+    {
+        KJP_SM_InventCompensationStmtController::construct(_args).startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Constructor method for the class
+    /// </summary>
+    /// <param name = "_args">
+    /// Report args
+    /// </param>
+    /// <returns>
+    /// Constructor for controller class.
+    /// </returns>
+    public static KJP_SM_InventCompensationStmtController construct(Args _args)
+    {
+        KJP_SM_InventCompensationStmtController  controller = new KJP_SM_InventCompensationStmtController();
+
+        controller.parmReportName(ssrsReportStr(KJP_SM_InventCompensationStmtReport, Report));
+        controller.parmArgs(_args);
+        controller.parmLoadFromSysLastValue(false);
+        controller.parmShowDialog(false);
+        /*
+        SRSPrintDestinationSettings settings = controller.parmReportContract().parmPrintSettings();
+        settings.printMediumType(SRSPrintMediumType::File);
+        settings.fileFormat(SRSReportFileFormat::PDF);
+        */
+
+        return controller;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>prePromptModifyContract</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to modify the contract before running the report.
+    /// </summary>
+    protected void prePromptModifyContract()
+    {
+        KJP_SM_InventCompensationStmtContract       contract;
+        KJP_SM_InventoryCompensationHeaderTable     headerTable;
+        MultiSelectionHelper                        selectionHelper = MultiSelectionHelper::construct();
+        List                                        inventCompensationStmtRecIdList = new List(Types::Int64);
+
+        selectionHelper.parmDatasource(FormDataUtil::getFormDataSource(args.record()));
+        headerTable = selectionHelper.getFirst();
+        
+        while (headerTable.RecId != nullValueBaseType(Types::Int64))
+        {
+            // Capture header Recids
+            inventCompensationStmtRecIdList.addEnd(headerTable.RecId);
+
+            headerTable = selectionHelper.getNext();
+        }
+        
+        contract = this.parmReportContract().parmRdpContract() as KJP_SM_InventCompensationStmtContract;
+        contract.parmInventCompensationStmtRecIdList(inventCompensationStmtRecIdList);
+
+        super();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

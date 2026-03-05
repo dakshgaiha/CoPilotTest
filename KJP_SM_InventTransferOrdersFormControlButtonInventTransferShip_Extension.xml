@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTransferOrdersFormControlButtonInventTransferShip_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension Form class for InventTransferOrders Form Control
+/// </summary>
+[ExtensionOf(formControlStr(InventTransferOrders, ButtonInventTransferShip))]
+final class KJP_SM_InventTransferOrdersFormControlButtonInventTransferShip_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>clicked</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Ship Transfer Order Button Pressed check
+    /// </summary>
+    public void clicked()
+    {
+        FormControl formButtonControl = any2Object(this) as FormControl;
+        FormDataSource formDatasource = formButtonControl.formRun().dataSource(tableStr(InventTransferTable));
+        InventTransferTable inventTransferTable = formDatasource.cursor();
+        InventLocation fromInventLocation;
+        InventLocation toInventLocation;
+        InventTransferLine inventTransferLine;
+        ;
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            // No.123591
+            if(element.viewOptionHelper().getViewOption() == FormViewOption::Grid)
+            {
+                FormDataSource formDatasourceForLoop = formButtonControl.formRun().dataSource(tableStr(InventTransferTable));
+                InventTransferTable localRecord;
+                int countLines = 0;
+                for(localRecord = formDatasourceForLoop.getFirst(true) ? formDatasourceForLoop.getFirst(true) : formDatasourceForLoop.cursor();
+                    localRecord; localRecord = formDatasourceForLoop.getNext())
+                {
+                    countLines++;
+                }
+                if(countLines != 1)
+                {
+                    checkFailed("@KJP:KJP500583");
+                    throw Exception::error;
+                }
+            }
+            // -No.123591 
+            // 2.2.1.2.14 Ship Transfer Order Pressed
+            //I.Checking Shipping instruction sending flag
+            fromInventLocation = InventLocation::find(inventTransferTable.InventLocationIdFrom);
+            toInventLocation = InventLocation::find(inventTransferTable.InventLocationIdTo);
+            if(fromInventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::TakasakiFactory
+                || fromInventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::UbeFactory)
+            {
+                select firstonly RecId from inventTransferLine where
+                    inventTransferLine.KJPSMShippingInstructionSendingFlag != KJP_SM_ShippingInstructionSendingFlag::Sent
+                    && inventTransferLine.TransferId == inventTransferTable.TransferId;
+                if(inventTransferLine)
+                {
+                    checkFailed("@KJP:KJP500349");
+                    throw Exception::error;
+                }
+            }
+            // 2.2.1.2.14 Ship Transfer Order Pressed
+            //II.Checking batch status
+            if(!KJP_SM_InventTransferOrders_Utils::validateBatchStatus(fromInventLocation, toInventLocation, inventTransferTable.TransferId))
+            {
+                throw Exception::error;
+            }
+        } 
+        next clicked();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,2104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_CustomsClearanceServices</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///Outbound IF service class
+/// </summary>
+class KJP_SM_CustomsClearanceServices extends KJP_CM_IFBatchBase
+{
+    KJP_SM_LastProcessedDateAndTime lastProcessedDateTime;
+    container                       conSalesPool;
+    CurrencyCode                    countryRegionId, accountingCurrency;
+    LanguageId                      nameAddress, firstLanguage, secondLanguage;    
+    int                             seqNo;    
+    KJP_CM_DestinationCode          nameAddressAcquireWarehouse, nameAddressAcquireCustomer, nameAddressAcquireVendor;
+    SysDictEnum                     dictEnum                = new SysDictEnum(enumNum(KJP_SM_CustomsClearanceTransmissionDateType));
+    SysDictEnum                     importExportDictEnum    = new SysDictEnum(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag));
+    SysDictEnum                     regDelFlag              = new SysDictEnum(enumNum(KJP_SM_CustomsClearanceTransmissionRegDelFlag));
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    //boolean errorOccured;
+    /// <summary>
+    ///Override processRun method of class IF base batch
+    /// </summary>
+    void processRun()
+    {
+        System.Exception ex;
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            try
+            {
+                this.processCustomsClearanceData();
+            }
+            catch(ex)
+            {
+                Global::exceptionTextFallThrough();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processCustomsClearanceData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///Prcocess service for Customs clearance information
+    /// </summary>
+    public void processCustomsClearanceData()
+    {
+        KJP_SM_CustomsClearanceTransmissionIfHistory customsClearanceTransmissionIfHistory;
+
+        // Load all the default data
+        this.loadDefaultData();
+
+        select firstonly maxof(IfExecutionDatetime) 
+                from customsClearanceTransmissionIfHistory;
+
+        if (customsClearanceTransmissionIfHistory.IfExecutionDatetime != nullValueBaseType(Types::UtcDateTime))
+        {
+            lastProcessedDateTime = customsClearanceTransmissionIfHistory.IfExecutionDatetime;
+        }
+        else
+        {
+            lastProcessedDateTime = utcDateTimeNull();
+        }               
+        
+        ttsbegin;
+
+        this.salesOrderData();      //Process Sales Order data
+        
+        this.pickingListData();     // Process picking List data
+        
+        this.purchaseOrderData();   //Process Purchase order data
+        
+        this.manufacturingTransferOrderData();  //Process Transfer order data
+        
+        this.crossCountryTransferOrderData();   //Process Cross Country Transfer data
+
+        this.registerIFTable();         //To copy the data from IFHistory to IFTable
+        
+        this.cleanIFHistoryTable();     // To delete the unwanted records from IFHistory Table
+
+        ttscommit;       
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cleanIFHistoryTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Loads all the defaults
+    /// </summary>
+    public void cleanIFHistoryTable()
+    {
+        KJP_SM_CustomsClearanceTransmissionIfHistory    ifHistory;        
+        SalesLine                                       salesLine;
+        WMSOrderTrans                                   wmsOrderTrans;
+        PurchLine                                       purchLine;
+        InventTransferLine                              inventTransferLine;
+        //ttsbegin;
+
+        //Sales Order adding and deleting the records
+        while select ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)))//KJP_CM_ConstantHelper::SO_0
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join salesLine
+            where salesLine.RecId == ifHistory.TransactionDataRecId
+            && salesLine.SalesStatus == SalesStatus::Canceled
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        while select ifHistory 
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)))//KJP_CM_ConstantHelper::SO_0
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join salesLine
+            where salesLine.RecId == ifHistory.TransactionDataRecId            
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        // Deleted the record in IfHistory table when salesline deleted physically
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)))//KJP_CM_ConstantHelper::SO_0
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join salesLine
+            where salesLine.RecId == ifHistory.TransactionDataRecId
+            && salesLine.SalesStatus != SalesStatus::Canceled;
+
+        // Deleted the record in IfHistory table when SalesStatus is Canceled
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)))//KJP_CM_ConstantHelper::SO_0
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join salesLine
+            where salesLine.RecId == ifHistory.TransactionDataRecId
+            && salesLine.SalesStatus == SalesStatus::Canceled;               
+
+        //Picking List Adding and deleting the records
+        while select ifHistory            
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)))//KJP_CM_ConstantHelper::PickingList_3
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join wmsOrderTrans
+            where wmsOrderTrans.RecId == ifHistory.TransactionDataRecId
+            && wmsOrderTrans.expeditionStatus == WMSExpeditionStatus::Cancelled
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        while select ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)))//KJP_CM_ConstantHelper::PickingList_3
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join wmsOrderTrans
+            where wmsOrderTrans.RecId == ifHistory.TransactionDataRecId            
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)))//KJP_CM_ConstantHelper::PickingList_3//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join wmsOrderTrans
+            where wmsOrderTrans.RecId == ifHistory.TransactionDataRecId
+            && wmsOrderTrans.expeditionStatus != WMSExpeditionStatus::Cancelled;
+
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)))//KJP_CM_ConstantHelper::PickingList_3//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join wmsOrderTrans
+            where wmsOrderTrans.RecId == ifHistory.TransactionDataRecId
+            && wmsOrderTrans.expeditionStatus == WMSExpeditionStatus::Cancelled;
+
+        // For updating Purchase order in KJP_SM_CustomsClearanceTransmissionIfTable
+        while select ifHistory            
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO)))//KJP_CM_ConstantHelper::PO_2//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join purchLine
+            where purchLine.RecId == ifHistory.TransactionDataRecId
+            && purchLine.PurchStatus == PurchStatus::Canceled
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        while select ifHistory            
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO)))//KJP_CM_ConstantHelper::PO_2//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join purchLine
+            where purchLine.RecId == ifHistory.TransactionDataRecId
+            && purchLine.IsDeleted == NoYes::Yes
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        while select ifHistory            
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO))) //KJP_CM_ConstantHelper::PO_2//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join purchLine
+            where purchLine.RecId == ifHistory.TransactionDataRecId            
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+        
+        // Purchase order: For Deleting the record in KJP_SM_CustomsClearanceTransmissionIfHistory
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO)))//KJP_CM_ConstantHelper::PO_2//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join purchLine
+            where purchLine.RecId == ifHistory.TransactionDataRecId
+            && purchLine.PurchStatus != PurchStatus::Canceled                
+            && purchLine.IsDeleted == NoYes::No;
+
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO)))//KJP_CM_ConstantHelper::PO_2//'2'
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            exists join purchLine
+            where purchLine.RecId == ifHistory.TransactionDataRecId
+            && purchLine.PurchStatus == PurchStatus::Canceled;
+        
+         
+        // Transfer Order Delete and update Conditions        
+        while select ifHistory                  
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO)))//KJP_CM_ConstantHelper::TO_1
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join inventTransferLine
+            where inventTransferLine.RecId == ifHistory.TransactionDataRecId
+        {
+            this.addIFTableRecord(ifHistory);
+        }
+
+        delete_from ifHistory
+            where ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO)))//KJP_CM_ConstantHelper::TO_1
+            && ifHistory.IfExecutionDatetime < executionDateTime
+            notexists join inventTransferLine
+            where inventTransferLine.RecId == ifHistory.TransactionDataRecId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addIFTableRecord</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Add If table record when the record is canceled or deleted in source table, so that the downstream system can delete the corresponding record in their system as well.
+    /// </summary>
+    /// <param name = "_ifHistory">IF History</param>
+    public void addIFTableRecord(KJP_SM_CustomsClearanceTransmissionIfHistory  _ifHistory)                                                
+    {
+        KJP_SM_CustomsClearanceTransmissionIfTable      ifTable;
+        
+        ttsbegin;
+        ifTable.DataType            = _ifHistory.DataType;
+        ifTable.RegDelFlag          =  int2Str(regDelFlag.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionRegDelFlag), KJP_SM_CustomsClearanceTransmissionRegDelFlag::Cancel))); //KJP_CM_ConstantHelper::RegDelFlag_Cancel1;
+        ifTable.ImportExportFlag    = _ifHistory.ImportExportFlag;
+
+        if (_ifHistory.DataType != int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList))))
+        {
+            ifTable.VoucherNumber       = _ifHistory.VoucherNumber;
+            ifTable.VoucherDetailKey    = _ifHistory.VoucherDetailKey;                                 
+        }
+
+        if (_ifHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList))))
+        {
+            ifTable.InvoiceNo           = _ifHistory.InvoiceNo;
+            ifTable.ShipDetailKey       = _ifHistory.ShipDetailKey;
+        }
+
+        iFTable.ExecutionDateTime   = executionDateTime;
+        iFTable.JobId               = jobId;
+        seqNo                       = seqNo + 1;
+        iFTable.SEQNo               = seqNo;
+        numberOfSuccess             = numberOfSuccess + 1;
+        
+        if (iFTable.validateWrite())
+        {
+            ifTable.insert();
+        }
+        else
+        {
+            throw Exception::Warning;
+        }
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>loadDefaultData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Loads all the defaults 
+    /// </summary>
+    public void loadDefaultData()
+    {
+        KJP_CM_GeneralPurposeMaster     generalPurposeSalesPool;        
+        
+        while select DestinationCode from generalPurposeSalesPool
+            where generalPurposeSalesPool.Key == KJP_CM_ConstantHelper::KJP_SM_Bridge_LinkTarget_SalesPoolKey
+        {
+            conSalesPool += [generalPurposeSalesPool.DestinationCode];
+        }        
+
+        countryRegionId     = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_JPNCountryRegion).DestinationCode;
+        nameAddress         = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_NameOrAddressAcquirePurpose).DestinationCode;
+        firstLanguage       = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_LinkFirstLanguage).DestinationCode;
+        secondLanguage      = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_LinkSecondLanguage).DestinationCode;
+        nameAddressAcquireWarehouse = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_NameOrAddressAcquirePurposeForWarehouse).DestinationCode;
+        nameAddressAcquireCustomer  = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_NameOrAddressAcquirePurposeForCustomer).DestinationCode;
+        nameAddressAcquireVendor    = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_IF_OutCustomsToBridgeKey, KJP_CM_ConstantHelper::origCodeKJP_SM_IF_OutCustomsToBridgeKey_NameOrAddressAcquirePurposeForVendor).DestinationCode;
+        accountingCurrency  = Ledger::findByLegalEntity(CompanyInfo::current()).AccountingCurrency;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>registerIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Assign all the records to <c>KJP_SM_CustomsClearanceTransmissionIfTable</c>
+    /// </summary>
+    public void registerIFTable()
+    {     
+        KJP_SM_CustomsClearanceTransmissionIfHistory    iFHistory;
+        KJP_SM_CustomsClearanceTransmissionIfTable      iFTable;
+        RecordInsertList insertList     = new RecordInsertList(tableNum(KJP_SM_CustomsClearanceTransmissionIfTable));        
+                        
+        ttsbegin;
+        while select iFHistory 
+            where iFHistory.IfExecutionDatetime == executionDateTime
+        {   
+            iFTable.clear();
+            iFTable.DataType            = iFHistory.DataType;
+            iFTable.RegDelFlag          = int2Str(regDelFlag.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionRegDelFlag), KJP_SM_CustomsClearanceTransmissionRegDelFlag::Register))); //KJP_CM_ConstantHelper::RegDelFlag_Register0;
+            iFTable.ImportExportFlag    = iFHistory.ImportExportFlag;
+            iFTable.OtherVoucherNumber  = iFHistory.OtherVoucherNumber;
+            iFTable.VoucherNumber       = iFHistory.VoucherNumber;
+            iFTable.VoucherDetailNumber = iFHistory.VoucherDetailNumber;
+            iFTable.VoucherDetailKey    = iFHistory.VoucherDetailKey;
+            iFTable.InvoiceNo           = iFHistory.InvoiceNo;
+            iFTable.ShipDetailKey       = iFHistory.ShipDetailKey;
+            iFTable.ShipDetailNumber    = iFHistory.ShipDetailNumber;
+            iFTable.ItemCode            = iFHistory.ItemCode;
+            iFTable.ItemName            = iFHistory.ItemName;
+            iFTable.VoucherUnit         = iFHistory.VoucherUnit;
+            iFTable.VoucherQty          = iFHistory.VoucherQty;
+            iFTable.InventUnit          = iFHistory.InventUnit;
+            iFTable.InventQty           = iFHistory.InventQty;
+            iFTable.LotNo               = iFHistory.LotNo;
+            iFTable.UnitPrice           = iFHistory.UnitPrice;
+            iFTable.Amount              = iFHistory.Amount;
+            iFTable.Currency            = iFHistory.Currency;
+            iFTable.WarehouseName       = iFHistory.WarehouseName;
+            iFTable.DeliveryNumber      = iFHistory.DeliveryNumber;
+            iFTable.DeliveryName        = iFHistory.DeliveryName;
+            iFTable.DeliveryCountryCode = iFHistory.DeliveryCountryCode;
+            iFTable.DeliveryCountryName = iFHistory.DeliveryCountryName;
+            iFTable.DeliveryAddress     = iFHistory.DeliveryAddress;
+            iFTable.DeliveryTel         = iFHistory.DeliveryTel;
+            iFTable.ReceiptDateRequested = iFHistory.ReceiptDateRequested;
+            iFTable.ShipmentDate        = iFHistory.ShipmentDate;
+            iFTable.ReceiptDateConfirmed = iFHistory.ReceiptDateConfirmed;
+            iFTable.LedgerAccountCode   = iFHistory.LedgerAccountCode;
+            iFTable.LedgerAccountName   = iFHistory.LedgerAccountName;
+            iFTable.ShipOriginNumber    = iFHistory.ShipOriginNumber;
+            iFTable.ShipOriginName      = iFHistory.ShipOriginName;
+            iFTable.DlvModeNumber       = iFHistory.DlvModeNumber;
+            iFTable.DlvModeName         = iFHistory.DlvModeName;
+            iFTable.DlvTermName         = iFHistory.DlvTermName;
+            iFTable.TermsOfPaymentName  = iFHistory.TermsOfPaymentName;
+            iFTable.ExecutionDateTime   = executionDateTime;
+            iFTable.JobId               = jobId;
+            seqNo                       = seqNo + 1;
+            iFTable.SEQNo               = seqNo;
+            numberOfSuccess             = numberOfSuccess + 1;
+            
+            if (iFTable.validateWrite())
+            {
+                insertList.add(iFTable); 
+            }
+            else
+            {
+                throw Exception::Warning;
+            }
+            
+        }
+        insertList.insertDatabase();
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>salesOrderData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fetchs the sales Data
+    /// </summary>
+    public void salesOrderData()
+    {
+        SalesTable                          salesTable;
+        SalesLine                           salesLine;
+        LogisticsPostalAddress              logisticsPostalAddress;
+        InventDim                           inventDim;
+        InventLocation                      inventLocation;
+        InventTable                         inventTable;
+        EcoResProduct                       ecoResProduct;        
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressView;
+        InventTableModule                   inventTableModule;
+        CustTable                           custTable;        
+        DlvMode                             dlvMode;    
+        boolean                             updateResults;
+        KJP_SM_CustomsClearanceTransmissionIfHistory    customsClearanceIfHistory;
+        RecordInsertList insertList     = new RecordInsertList(tableNum(KJP_SM_CustomsClearanceTransmissionIfHistory));        
+                
+        while select salesTable
+            where salesTable.SalesType == SalesType::Sales            
+            join salesLine
+            where salesLine.SalesId == salesTable.SalesId
+            && (salesLine.SalesStatus == SalesStatus::Backorder || salesLine.SalesStatus == SalesStatus::Delivered)
+            && salesLine.SalesQty > 0
+            && (salesTable.ModifiedDateTime > lastProcessedDateTime || salesLine.ModifiedDateTime > lastProcessedDateTime)
+            join logisticsPostalAddress
+            where logisticsPostalAddress.recid  == salesLine.DeliveryPostalAddress
+            && logisticsPostalAddress.CountryRegionId != countryRegionId
+            join InventLocationId, RecId, inventDimId from inventDim
+            where inventDim.inventDimId == salesLine.InventDimId 
+            join InventLocationId, RecId from inventLocation
+            where inventLocation.InventLocationId == inventDim.InventLocationId
+            join logisticsEntityPostalAddressView
+            where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressView.Entity == inventLocation.RecId
+            && logisticsEntityPostalAddressView.IsPrimary == NoYes::Yes            
+            && logisticsEntityPostalAddressView.CountryRegionId != logisticsPostalAddress.CountryRegionId
+            join ItemId, Product, RecId, KJPCMStandardUnit from inventTable
+            where inventTable.ItemId == salesLine.ItemId
+            join RecId, ProductType from ecoResProduct
+            where ecoResProduct.RecId == inventTable.Product
+            && ecoResProduct.ProductType == EcoResProductType::Item            
+            join UnitId, ItemId, RecId, ModuleType from inventTableModule
+            where inventTableModule.ItemId == salesLine.ItemId
+            && inventTableModule.ModuleType == ModuleInventPurchSales::Invent
+            join AccountNum, RecId, Party from custTable
+            where custTable.AccountNum == salesTable.CustAccount            
+            outer join Code, RecId, Txt from dlvMode
+            where dlvMode.Code == salesLine.DlvMode
+        {   
+            if (conFind(conSalesPool, salesTable.SalesPoolId) > 0)
+            {
+                if (logisticsEntityPostalAddressView.ValidFrom <= this.getJSTtoUTCDate(salesLine.ShippingDateRequested) && this.getJSTtoUTCDate(salesLine.ShippingDateRequested) <= logisticsEntityPostalAddressView.ValidTo)
+                {
+                    select firstonly forupdate customsClearanceIfHistory
+                        where customsClearanceIfHistory.TransactionDataRecId == salesLine.RecId
+                            && customsClearanceIfHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)));//KJP_CM_ConstantHelper::SO_0;
+                              
+                    if (!customsClearanceIfHistory.RecId)
+                    {               
+                        customsClearanceIfHistory.clear();
+                        customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)));//KJP_CM_ConstantHelper::SO_0;                        
+                        customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)));//KJP_CM_ConstantHelper::export_0;
+                        customsClearanceIfHistory.OtherVoucherNumber    = salesTable.InterCompanyOrder == NoYes::Yes ? strFmt('%1', salesTable.InterCompanyPurchId) : strFmt('%1', salesTable.KJPSMTradingPartnerOrderNo);
+                        customsClearanceIfHistory.VoucherNumber         = salesTable.SalesId;
+                        customsClearanceIfHistory.VoucherDetailNumber   = int2Str(salesLine.LineCreationSequenceNumber);
+                        customsClearanceIfHistory.VoucherDetailKey      = int642Str(salesLine.RecId);
+                        customsClearanceIfHistory.ItemCode              = salesLine.ItemId;
+                        customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                        customsClearanceIfHistory.VoucherUnit           = salesLine.SalesUnit;
+                        customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesQty), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                        customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, salesLine.SalesUnit, inventTable.KJPCMStandardUnit, salesLine.SalesQty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        if (salesLine.PriceUnit != 0)
+                        {
+                            customsClearanceIfHistory.UnitPrice         = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesPrice / salesLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        }
+                        else
+                        {
+                            customsClearanceIfHistory.UnitPrice         = KJP_CM_ConstantHelper::origcodeProductType_0;
+                        }
+                        customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.LineAmount), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        customsClearanceIfHistory.Currency              = salesTable.CurrencyCode;
+                        customsClearanceIfHistory.DeliveryNumber        = salesTable.CustAccount;
+                        customsClearanceIfHistory.DeliveryName          = this.getCustomerAddress(custTable, salesLine.ShippingDateRequested, NoYes::Yes).LocationName;
+                        customsClearanceIfHistory.DeliveryCountryCode   = logisticsPostalAddress.CountryRegionId;
+                        customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, secondLanguage).LongName;
+                        customsClearanceIfHistory.ReceiptDateRequested  = KJP_CM_Utils::convertDate2StryyyyMMdd(salesLine.ReceiptDateRequested);
+                        customsClearanceIfHistory.LedgerAccountCode     = KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension);
+                        customsClearanceIfHistory.LedgerAccountName     = this.getCustomerAddress(CustTable::find(KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension)), salesLine.ShippingDateRequested, NoYes::No).LocationName;
+                        customsClearanceIfHistory.DlvModeNumber         = salesLine.DlvMode;
+                        customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                        customsClearanceIfHistory.DlvTermName           = salesLine.DlvTerm;
+                        customsClearanceIfHistory.TransactionDataRecId  = salesLine.RecId;
+                        customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;                                              
+                        insertList.add(customsClearanceIfHistory);  
+                    } 
+                    else
+                    {   
+                        updateResults = false;
+                        customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::SO)));//KJP_CM_ConstantHelper::SO_0;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.ImportExportFlag, int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export))));
+                        }
+                        customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)));//KJP_CM_ConstantHelper::export_0;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.OtherVoucherNumber, salesTable.InterCompanyOrder == NoYes::Yes ? strFmt('%1', salesTable.InterCompanyPurchId) : strFmt('%1', salesTable.KJPSMTradingPartnerOrderNo));
+                        }
+                        customsClearanceIfHistory.OtherVoucherNumber    = salesTable.InterCompanyOrder == NoYes::Yes ? strFmt('%1', salesTable.InterCompanyPurchId) : strFmt('%1', salesTable.KJPSMTradingPartnerOrderNo);
+                        customsClearanceIfHistory.VoucherNumber         = salesTable.SalesId;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.VoucherDetailNumber, int2Str(salesLine.LineCreationSequenceNumber));
+                        }
+                        customsClearanceIfHistory.VoucherDetailNumber   = int2Str(salesLine.LineCreationSequenceNumber);
+                        customsClearanceIfHistory.VoucherDetailKey      = int642Str(salesLine.RecId);
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.ItemCode, salesLine.ItemId);
+                        }
+                        customsClearanceIfHistory.ItemCode              = salesLine.ItemId;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.ItemName, EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name);
+                        }
+                        customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.VoucherUnit, salesLine.SalesUnit);
+                        }
+                        customsClearanceIfHistory.VoucherUnit           = salesLine.SalesUnit;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.VoucherQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesQty), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                        }
+                        customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesQty), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.InventUnit, inventTable.KJPCMStandardUnit);
+                        }
+                        customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.InventQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, salesLine.SalesUnit, inventTable.KJPCMStandardUnit, salesLine.SalesQty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                        }
+                        customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, salesLine.SalesUnit, inventTable.KJPCMStandardUnit, salesLine.SalesQty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        if (salesLine.PriceUnit != 0)
+                        {
+                            if (!updateResults)
+                            {
+                                updateResults   =   strCmp(customsClearanceIfHistory.UnitPrice, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesPrice / salesLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                            }
+                            customsClearanceIfHistory.UnitPrice         = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesPrice / salesLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        }
+                        else
+                        {
+                            customsClearanceIfHistory.UnitPrice         = KJP_CM_ConstantHelper::origcodeProductType_0;
+                        }
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.Amount, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.LineAmount), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                        }
+                        customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.LineAmount), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.Currency, salesTable.CurrencyCode);
+                        }
+                        customsClearanceIfHistory.Currency              = salesTable.CurrencyCode;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DeliveryNumber, salesTable.CustAccount);
+                        }
+                        customsClearanceIfHistory.DeliveryNumber        = salesTable.CustAccount;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DeliveryName, this.getCustomerAddress(custTable, salesLine.ShippingDateRequested, NoYes::Yes).LocationName);
+                        }
+                        customsClearanceIfHistory.DeliveryName          = this.getCustomerAddress(custTable, salesLine.ShippingDateRequested, NoYes::Yes).LocationName;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryCode, logisticsPostalAddress.CountryRegionId);
+                        }
+                        customsClearanceIfHistory.DeliveryCountryCode   = logisticsPostalAddress.CountryRegionId;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryName, LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, secondLanguage).LongName);
+                        }
+                        customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, secondLanguage).LongName;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.ReceiptDateRequested, KJP_CM_Utils::convertDate2StryyyyMMdd(salesLine.ReceiptDateRequested));
+                        }
+                        customsClearanceIfHistory.ReceiptDateRequested  = KJP_CM_Utils::convertDate2StryyyyMMdd(salesLine.ReceiptDateRequested);
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountCode, KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension));
+                        }
+                        customsClearanceIfHistory.LedgerAccountCode     = KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension);
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountName, this.getCustomerAddress(CustTable::find(KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension)), salesLine.ShippingDateRequested, NoYes::No).LocationName);
+                        }
+                        customsClearanceIfHistory.LedgerAccountName     = this.getCustomerAddress(CustTable::find(KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension)), salesLine.ShippingDateRequested, NoYes::No).LocationName;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DlvModeNumber, salesLine.DlvMode);
+                        }
+                        customsClearanceIfHistory.DlvModeNumber         = salesLine.DlvMode;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DlvModeName, dlvMode.Txt);
+                        }
+                        customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.DlvTermName, salesLine.DlvTerm);
+                        }
+                        customsClearanceIfHistory.DlvTermName           = salesLine.DlvTerm;
+                        customsClearanceIfHistory.TransactionDataRecId  = salesLine.RecId;
+                        if (updateResults)
+                        {
+                            customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                        }
+                        if (customsClearanceIfHistory.RecId)
+                        {
+                            customsClearanceIfHistory.update();
+                        }
+                    }
+                }
+            }            
+        }
+        insertList.insertDatabase();        
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getJSTtoUTCDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Convers from JST to UTC
+    /// </summary>
+    /// <param name = "_transDate">gets the trans date as a parameter</param>
+    /// <returns>sends the UTC date Time</returns>
+    public utcdatetime getJSTtoUTCDate(TransDate _transDate)
+    {        
+        utcdatetime utcDateTimeLocal;
+        TimeOfDay time = str2Time(KJP_CM_ConstantHelper::Time);
+
+
+        utcDateTimeLocal = DateTimeUtil::applyTimeZoneOffset(DateTimeUtil::newDateTime(_transDate, time), Timezone::GMT_COORDINATEDUNIVERSALTIME);
+
+        return utcDateTimeLocal;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getUOMConvertion</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the UOM Conversion for the SO and PO
+    /// </summary>
+    /// <param name = "_itemId">gets the ItemId as a parameter</param>
+    /// <param name = "_fromUnit">gets the from Unit</param>
+    /// <param name = "_toUnit">gets the to Unit</param>
+    /// <param name = "_qty">gets the Qty</param>
+    /// <param name = "_inventDimId">gets the Invent Dimension</param>
+    /// <returns>send the Final Qty</returns>
+    public Qty getUOMConvertion(ItemId _itemId, SalesUnit _fromUnit, UnitOfMeasureSymbol _toUnit, SalesOrderedQty _qty, InventDimId _inventDimId)
+    {  
+        return EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(_itemId, _inventDimId, _qty, _fromUnit, _toUnit);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getWarehouseInformation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// selects the Address based on the Purpose 
+    /// </summary>
+    /// <param name = "_recid">gets the Recid Recid</param>
+    /// <param name = "_targetDate">gets the Valid date</param>
+    /// <returns>send the buffer <c>LogisticsEntityPostalAddressView</c></returns>
+    public LogisticsEntityPostalAddressView getWarehouseInformation(RefRecId _recid, TransDate _targetDate)
+    {
+        utcdatetime targetDateTime;        
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressView;
+        InventLocationLogisticsLocation     inventLocationLogisticsLocation;
+        InventLocationLogisticsLocationRole inventLocationLogisticsLocationRole;
+        LogisticsLocationRole               logisticsLocationRole;
+              
+        targetDateTime  = this.getJSTtoUTCDate(_targetDate);
+
+        // Fetchs the Location name based on the Purpose is En-US
+        select logisticsEntityPostalAddressView
+            where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+            && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+            && logisticsEntityPostalAddressView.Entity == _recid
+            join inventLocationLogisticsLocation
+            where inventLocationLogisticsLocation.InventLocation == logisticsEntityPostalAddressView.Entity
+            && inventLocationLogisticsLocation.Location == logisticsEntityPostalAddressView.Location
+            join inventLocationLogisticsLocationRole
+            where inventLocationLogisticsLocationRole.LocationLogisticsLocation == inventLocationLogisticsLocation.RecId
+            join logisticsLocationRole
+            where logisticsLocationRole.RecId == inventLocationLogisticsLocationRole.LocationRole
+            && logisticsLocationRole.Type == LogisticsLocationRoleType::None
+            && logisticsLocationRole.Name == nameAddressAcquireWarehouse;//KJP_CM_ConstantHelper::enUS;
+        
+        if (logisticsEntityPostalAddressView.RecId)
+        {
+            return logisticsEntityPostalAddressView;
+        }
+
+        // Fetchs the Location name based on the Primay = yes
+        select logisticsEntityPostalAddressView
+            where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+            && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+            && logisticsEntityPostalAddressView.Entity == _recid
+            && logisticsEntityPostalAddressView.IsPrimary == NoYes::Yes
+            join inventLocationLogisticsLocation
+            where inventLocationLogisticsLocation.InventLocation == logisticsEntityPostalAddressView.Entity
+            && inventLocationLogisticsLocation.Location == logisticsEntityPostalAddressView.Location;
+
+        if (logisticsEntityPostalAddressView.RecId)
+        {
+            return logisticsEntityPostalAddressView;
+        }
+
+        return logisticsEntityPostalAddressView;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getCustomerAddress</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets the Customer address based on the parameter
+    /// </summary>
+    /// <param name = "_custTable">gets the <c>CustTable</c> buffer</param>
+    /// <param name = "_targetDate">Gets the Target date for Valid arress</param>
+    /// <param name = "_readDelivery">gets the enum value</param>
+    /// <returns>send the address</returns>
+    public LogisticsEntityPostalAddressView getCustomerAddress(CustTable _custTable, TransDate _targetDate, noYes _readDelivery)
+    {
+        utcdatetime                         targetDateTime;        
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressView;
+        DirPartyLocation                    dirPartyLocation;
+        DirPartyLocationRole                dirPartyLocationRole;
+        LogisticsLocationRole               logisticsLocationRole;
+        
+       
+        targetDateTime      = this.getJSTtoUTCDate(_targetDate);
+
+        if (_readDelivery == noYes::Yes)
+        {
+            // Fetchs the address based on the Purpose is En-US
+            select firstonly logisticsEntityPostalAddressView
+                where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+                && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+                && targetDateTime <= logisticsEntityPostalAddressView.ValidTo 
+                && logisticsEntityPostalAddressView.Entity == _custTable.Party                          
+                join dirPartyLocation 
+                where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+                && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+                join dirPartyLocationRole
+                where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+                join logisticsLocationRole
+                where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole
+                && logisticsLocationRole.Name == nameAddressAcquireCustomer//KJP_CM_ConstantHelper::enUS//Delivery.En-US from GendralPurposeMaster
+                && logisticsLocationRole.Type == LogisticsLocationRoleType::None;
+
+            if (logisticsEntityPostalAddressView.RecId)
+            {
+                return logisticsEntityPostalAddressView;
+            }
+
+            // Fetchs the address based on the Purpose is Delivery
+            select firstonly logisticsEntityPostalAddressView
+                where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+                && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+                && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+                && logisticsEntityPostalAddressView.Entity == _custTable.Party                
+                join dirPartyLocation
+                where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+                && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+                join dirPartyLocationRole
+                where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+                join logisticsLocationRole
+                where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole
+                && logisticsLocationRole.Type == LogisticsLocationRoleType::Delivery;
+
+            if (logisticsEntityPostalAddressView.RecId)
+            {
+                return logisticsEntityPostalAddressView;
+            }   
+            
+            // Fetchs the address based on the Primary = yes
+            select firstonly logisticsEntityPostalAddressView
+                where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+                && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+                && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+                && logisticsEntityPostalAddressView.Entity == _custTable.Party
+                && logisticsEntityPostalAddressView.isPrimary == NoYes::Yes
+                join dirPartyLocation
+                where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+                && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+                join dirPartyLocationRole
+                where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+                join logisticsLocationRole
+                where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole;
+
+            if (logisticsEntityPostalAddressView.RecId)
+            {
+                return logisticsEntityPostalAddressView;
+            }
+
+        }
+
+        if (_readDelivery == noYes::No)
+        {
+            // Fetchs the address based on the Purpose is En-us
+            select firstonly logisticsEntityPostalAddressView
+                where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+                && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+                && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+                && logisticsEntityPostalAddressView.Entity == _custTable.Party                
+                join dirPartyLocation
+                where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+                && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+                join dirPartyLocationRole
+                where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+                join logisticsLocationRole
+                where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole
+                && logisticsLocationRole.Name == nameAddressAcquireCustomer//KJP_CM_ConstantHelper::enUS
+                && logisticsLocationRole.Type == LogisticsLocationRoleType::None;
+
+            if (logisticsEntityPostalAddressView)
+            {
+                return logisticsEntityPostalAddressView;
+            }
+        
+            // Fetchs the address based on the Primary = yes
+            select firstonly logisticsEntityPostalAddressView
+                where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+                && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+                && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+                && logisticsEntityPostalAddressView.Entity == _custTable.Party
+                && logisticsEntityPostalAddressView.isPrimary == NoYes::Yes
+                join dirPartyLocation
+                where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+                && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+                join dirPartyLocationRole
+                where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+                join logisticsLocationRole
+                where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole;                
+
+            if (logisticsEntityPostalAddressView)
+            {
+                return logisticsEntityPostalAddressView;
+            }
+                    
+        }
+        return logisticsEntityPostalAddressView;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>pickingListData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fetchs the PickingList Data
+    /// </summary>
+    public void pickingListData()
+    {
+        WMSPickingRoute         wmsPickingRoute;
+        WMSOrderTrans           wmsOrderTrans;
+        SalesTable              salesTable;
+        SalesLine               salesLine;
+        LogisticsPostalAddress  logisticsPostalAddress;
+        InventDim               inventDim;
+        InventLocation          inventLocation;
+        InventLocationLogisticsLocation inventLocationLogisticsLocation;
+        LogisticsLocation       logisticsLocation;
+        LogisticsPostalAddress  logisticsPostalAddressWarehouse;
+        InventTable             inventTable;
+        EcoResProduct           ecoResProduct;        
+        InventTableModule       inventTableModule;
+        CustTable               custTable; 
+        PaymTerm                paymTerm;
+        LanguageTxt             languageTxt;
+        KJP_SM_CustomsClearanceTransmissionIfHistory    customsClearanceIfHistory;
+        int                     sequesnceCounter = 1;
+        WMSPickingRouteID       currentPickingRouteID;
+        boolean                 updateResults;
+        RecordInsertList insertList     = new RecordInsertList(tableNum(KJP_SM_CustomsClearanceTransmissionIfHistory));
+                
+        while select wmsPickingRoute            
+            order by wmsOrderTrans.RecId asc
+            join wmsOrderTrans
+            where wmsPickingRoute.transType == InventTransType::Sales
+            && wmsPickingRoute.expeditionStatus == WMSExpeditionStatus::Activated
+            && wmsOrderTrans.routeId == wmsPickingRoute.pickingRouteID
+            && wmsOrderTrans.fullPallet == NoYes::No
+            && (wmsPickingRoute.ModifiedDateTime > lastProcessedDateTime || wmsOrderTrans.ModifiedDateTime > lastProcessedDateTime)
+            join salesLine
+            where salesLine.InventTransId == wmsOrderTrans.inventTransId
+            join salesTable
+            where salesTable.SalesId == salesLine.SalesId
+            join logisticsPostalAddress
+            where logisticsPostalAddress.RecId == wmsOrderTrans.DeliveryPostalAddress
+            && logisticsPostalAddress.CountryRegionId != countryRegionId
+            join inventDimId, RecId, InventLocationId, inventBatchId from inventDim
+            where inventDim.inventDimId == wmsOrderTrans.inventDimId
+            join RecId,InventLocationId from inventLocation
+            where inventLocation.InventLocationId == inventDim.InventLocationId
+            join InventLocation, RecId from inventLocationLogisticsLocation
+            where inventLocationLogisticsLocation.InventLocation == inventLocation.RecId
+            && inventLocationLogisticsLocation.IsPrimary == NoYes::Yes
+            join RecId from logisticsLocation
+            where logisticsLocation.RecId == inventLocationLogisticsLocation.Location
+            join logisticsPostalAddressWarehouse
+            where logisticsPostalAddressWarehouse.Location == logisticsLocation.recid 
+            && logisticsPostalAddressWarehouse.CountryRegionId != logisticsPostalAddress.CountryRegionId
+            join itemId, Product, RecId, KJPCMStandardUnit from inventTable
+            where inventTable.ItemId == salesLine.ItemId
+            join RecId, ProductType from ecoResProduct
+            where ecoResProduct.RecId == inventTable.Product            
+            join RecId, ModuleType, ItemId, UnitId from inventTableModule
+            where inventTableModule.ItemId == salesLine.ItemId
+            && inventTableModule.ModuleType == ModuleInventPurchSales::Invent            
+        {
+            if (logisticsPostalAddressWarehouse.ValidFrom <= this.getJSTtoUTCDate(salesLine.ShippingDateRequested) && this.getJSTtoUTCDate(salesLine.ShippingDateRequested) <= logisticsPostalAddressWarehouse.ValidTo)
+            {
+                select firstonly forupdate customsClearanceIfHistory
+                    where customsClearanceIfHistory.TransactionDataRecId == wmsOrderTrans.RecId
+                    && customsClearanceIfHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)));//KJP_CM_ConstantHelper::PickingList_3;
+                         
+                if (!customsClearanceIfHistory.RecId)
+                {
+                    customsClearanceIfHistory.clear();                
+                    custTable = CustTable::find(salesTable.CustAccount);
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)));//KJP_CM_ConstantHelper::PickingList_3;
+                    customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)));
+                    customsClearanceIfHistory.OtherVoucherNumber    = salesTable.InterCompanyOrder == NoYes::Yes ? strFmt('%1', salesTable.InterCompanyPurchId) : strFmt('%1', salesTable.KJPSMTradingPartnerOrderNo);
+                    customsClearanceIfHistory.VoucherNumber         = salesTable.SalesId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(salesLine.RecId);
+                    customsClearanceIfHistory.VoucherDetailNumber   = int2Str(salesLine.LineCreationSequenceNumber);
+                    customsClearanceIfHistory.InvoiceNo             = wmsPickingRoute.pickingRouteID;
+                    customsClearanceIfHistory.ShipDetailKey         = int642Str(wmsOrderTrans.RecId);                    
+                    if (wmsPickingRoute.pickingRouteID != currentPickingRouteID)
+                    {
+                        currentPickingRouteID   = wmsPickingRoute.pickingRouteID;
+                        sequesnceCounter        = 1;
+                    }                
+                    customsClearanceIfHistory.ShipDetailNumber      = int2Str(sequesnceCounter);
+                    sequesnceCounter                                = sequesnceCounter + 1;
+                    customsClearanceIfHistory.ItemCode              = salesLine.ItemId;
+                    customsClearanceIfHistory.ItemName              =  EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;//ecoResProductTranslationEnUs.Name ? ecoResProductTranslationEnUs.Name : ecoResProductTranslationJa.Name;
+                    customsClearanceIfHistory.VoucherUnit           = salesLine.SalesUnit;
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, salesLine.SalesUnit, wmsOrderTrans.Qty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, inventTable.KJPCMStandardUnit, wmsOrderTrans.Qty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    if (salesLine.PriceUnit != 0)
+                    {
+                        customsClearanceIfHistory.UnitPrice             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesPrice / salesLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    }
+                    else
+                    {
+                        customsClearanceIfHistory.UnitPrice         = KJP_CM_ConstantHelper::origcodeProductType_0;
+                    }
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, salesLine.SalesUnit, wmsOrderTrans.Qty, salesLine.InventDimId) * (salesLine.SalesPrice / salesLine.PriceUnit)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Currency              = salesTable.CurrencyCode;
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocation.RecId, salesLine.ShippingDateRequested).LocationName;
+                    customsClearanceIfHistory.DeliveryNumber        = salesTable.CustAccount;
+                    customsClearanceIfHistory.DeliveryName          = this.getCustomerAddress(custTable, salesLine.ShippingDateRequested, NoYes::Yes).LocationName;
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsPostalAddress.CountryRegionId;
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, secondLanguage).LongName;//logisticsAddressCountryRegionTranslationEnUs.LongName ? logisticsAddressCountryRegionTranslationEnUs.LongName : logisticsAddressCountryRegionTranslationJa.LongName;
+                    customsClearanceIfHistory.ShipmentDate          = KJP_CM_Utils::convertDate2StryyyyMMdd(wmsOrderTrans.dlvDate, DateSeparator::Slash);
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(salesLine.ReceiptDateConfirmed, DateSeparator::Slash);
+                    customsClearanceIfHistory.LedgerAccountCode     = KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension);
+                    customsClearanceIfHistory.LedgerAccountName     = this.getCustomerAddress(CustTable::find(KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension)), salesLine.ShippingDateRequested, NoYes::No).LocationName;
+                    customsClearanceIfHistory.DlvModeNumber         = salesLine.DlvMode;
+                    customsClearanceIfHistory.DlvModeName           = dlvMode::find(salesLine.DlvMode).Txt;
+                    customsClearanceIfHistory.DlvTermName           = salesLine.DlvTerm;
+                    paymTerm                                        = paymTerm::find(salesTable.Payment);
+                    languageTxt                                     = LanguageTxt::find(paymTerm.TableId, paymTerm.RecId, firstLanguage);
+                    customsClearanceIfHistory.TermsOfPaymentName    = languageTxt.Txt != KJP_CM_ConstantHelper::blankValue ? languageTxt.Txt : paymTerm.Description;
+                    customsClearanceIfHistory.TransactionDataRecId  = wmsOrderTrans.RecId;
+                    customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    insertList.add(customsClearanceIfHistory);
+                }
+                else
+                {
+                    updateResults   =   false;
+                    custTable = CustTable::find(salesTable.CustAccount);
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PickingList)));   //KJP_CM_ConstantHelper::PickingList_3;
+                    customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)));
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.OtherVoucherNumber, salesTable.InterCompanyOrder == NoYes::Yes ? strFmt('%1', salesTable.InterCompanyPurchId) : strFmt('%1', salesTable.KJPSMTradingPartnerOrderNo));
+                    }
+                    customsClearanceIfHistory.OtherVoucherNumber    = salesTable.InterCompanyOrder == NoYes::Yes ? strFmt('%1', salesTable.InterCompanyPurchId) : strFmt('%1', salesTable.KJPSMTradingPartnerOrderNo);
+                    customsClearanceIfHistory.VoucherNumber         = salesTable.SalesId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(salesLine.RecId);
+                    customsClearanceIfHistory.VoucherDetailNumber   = int2Str(salesLine.LineCreationSequenceNumber);
+                    customsClearanceIfHistory.InvoiceNo             = wmsPickingRoute.pickingRouteID;
+                    customsClearanceIfHistory.ShipDetailKey         = int642Str(wmsOrderTrans.RecId);
+                    //prevPickingRouteID                              = wmsPickingRoute.pickingRouteID;
+                    if (wmsPickingRoute.pickingRouteID != currentPickingRouteID)
+                    {
+                        currentPickingRouteID   = wmsPickingRoute.pickingRouteID;
+                        sequesnceCounter        = 1;
+                    }
+                    customsClearanceIfHistory.ShipDetailNumber      = int2Str(sequesnceCounter);
+                    sequesnceCounter                                = sequesnceCounter + 1;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemCode, salesLine.ItemId);
+                    }
+                    customsClearanceIfHistory.ItemCode              = salesLine.ItemId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemName, EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name);
+                    }
+                    customsClearanceIfHistory.ItemName              =  EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherUnit, salesLine.SalesUnit);
+                    }
+                    customsClearanceIfHistory.VoucherUnit           = salesLine.SalesUnit;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, salesLine.SalesUnit, wmsOrderTrans.Qty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, salesLine.SalesUnit, wmsOrderTrans.Qty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventUnit, inventTable.KJPCMStandardUnit);
+                    }
+                    customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, inventTable.KJPCMStandardUnit, wmsOrderTrans.Qty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, inventTable.KJPCMStandardUnit, wmsOrderTrans.Qty, salesLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LotNo, inventDim.inventBatchId);
+                    }
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    if (salesLine.PriceUnit != 0)
+                    {
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.UnitPrice, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesPrice / salesLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                        }
+                        customsClearanceIfHistory.UnitPrice             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(salesLine.SalesPrice / salesLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    }
+                    else
+                    {
+                        customsClearanceIfHistory.UnitPrice         = KJP_CM_ConstantHelper::origcodeProductType_0;
+                    }
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.Amount, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, salesLine.SalesUnit, wmsOrderTrans.Qty, salesLine.InventDimId) * (salesLine.SalesPrice / salesLine.PriceUnit)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(salesLine.ItemId, inventTableModule.UnitId, salesLine.SalesUnit, wmsOrderTrans.Qty, salesLine.InventDimId) * (salesLine.SalesPrice / salesLine.PriceUnit)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.Currency, salesTable.CurrencyCode);
+                    }
+                    customsClearanceIfHistory.Currency              = salesTable.CurrencyCode;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.WarehouseName, this.getWarehouseInformation(inventLocation.RecId, salesLine.ShippingDateRequested).LocationName);
+                    }
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocation.RecId, salesLine.ShippingDateRequested).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryNumber, salesTable.CustAccount);
+                    }
+                    customsClearanceIfHistory.DeliveryNumber        = salesTable.CustAccount;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryName, this.getCustomerAddress(custTable, salesLine.ShippingDateRequested, NoYes::Yes).LocationName);
+                    }
+                    customsClearanceIfHistory.DeliveryName          = this.getCustomerAddress(custTable, salesLine.ShippingDateRequested, NoYes::Yes).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryCode, logisticsPostalAddress.CountryRegionId);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsPostalAddress.CountryRegionId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryName, LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, secondLanguage).LongName);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsPostalAddress.CountryRegionId, secondLanguage).LongName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipmentDate, KJP_CM_Utils::convertDate2StryyyyMMdd(wmsOrderTrans.dlvDate, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.ShipmentDate          = KJP_CM_Utils::convertDate2StryyyyMMdd(wmsOrderTrans.dlvDate, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ReceiptDateConfirmed, KJP_CM_Utils::convertDate2StryyyyMMdd(salesLine.ReceiptDateConfirmed, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(salesLine.ReceiptDateConfirmed, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountCode, KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension));
+                    }
+                    customsClearanceIfHistory.LedgerAccountCode     = KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountName, this.getCustomerAddress(CustTable::find(KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension)), salesLine.ShippingDateRequested, NoYes::No).LocationName);
+                    }
+                    customsClearanceIfHistory.LedgerAccountName     = this.getCustomerAddress(CustTable::find(KJP_CM_Utils::getDimensionValueFromDefaultDimension(KJP_CM_ConstantHelper::customer, salesLine.DefaultDimension)), salesLine.ShippingDateRequested, NoYes::No).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeNumber, salesLine.DlvMode);
+                    }
+                    customsClearanceIfHistory.DlvModeNumber         = salesLine.DlvMode;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeName, dlvMode::find(salesLine.DlvMode).Txt);
+                    }
+                    customsClearanceIfHistory.DlvModeName           = dlvMode::find(salesLine.DlvMode).Txt;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvTermName, salesLine.DlvTerm);
+                    }
+                    customsClearanceIfHistory.DlvTermName           = salesLine.DlvTerm;
+                    paymTerm                                        = paymTerm::find(salesTable.Payment);
+                    languageTxt                                     = LanguageTxt::find(paymTerm.TableId, paymTerm.RecId, firstLanguage);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.TermsOfPaymentName, languageTxt.Txt != KJP_CM_ConstantHelper::blankValue ? languageTxt.Txt : paymTerm.Description);
+                    }
+                    customsClearanceIfHistory.TermsOfPaymentName    = languageTxt.Txt != KJP_CM_ConstantHelper::blankValue ? languageTxt.Txt : paymTerm.Description;
+                    customsClearanceIfHistory.TransactionDataRecId  = wmsOrderTrans.RecId;
+                    if (updateResults)
+                    {
+                        customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    }
+                    if (customsClearanceIfHistory.RecId)
+                    {
+                        customsClearanceIfHistory.update();
+                    }
+                   
+                }
+            }
+        }
+        insertList.insertDatabase();        
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getPhoneInformation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// To fetch the phone number
+    /// </summary>
+    /// <param name = "_recId">Gets the RefRecid</param>
+    /// <returns>send the <c>LogisticsContactInfoView</c> </returns>
+    public LogisticsContactInfoView getPhoneInformation(RefRecId    _recId)
+    {
+        LogisticsContactInfoView        logisticsContactInfoView;
+
+        select firstonly logisticsContactInfoView
+            where logisticsContactInfoView.ParentLocation == _recId
+            && logisticsContactInfoView.isPrimary == NoYes::Yes
+            && logisticsContactInfoView.type == LogisticsElectronicAddressMethodType::Phone;
+
+
+        return logisticsContactInfoView;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getVendorAddress</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// gets the Vendor valid address 
+    /// </summary>
+    /// <param name = "_vendTable">gets the <c>VendTable</c> buffer</param>
+    /// <param name = "_targetDate">gets the transdate for valid date and time</param>
+    /// <returns>returns the Address</returns>
+    public LogisticsEntityPostalAddressView getVendorAddress(VendTable _vendTable, TransDate _targetDate)
+    {
+        utcdatetime                         targetDateTime;
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressView;
+        DirPartyLocation                    dirPartyLocation;
+        DirPartyLocationRole                dirPartyLocationRole;
+        LogisticsLocationRole               logisticsLocationRole;
+        
+ 
+        targetDateTime      = this.getJSTtoUTCDate(_targetDate);
+
+        // Fetchs the address based on the Purpose is En-US
+        select firstonly logisticsEntityPostalAddressView
+            where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+            && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+            && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+            && logisticsEntityPostalAddressView.Entity == _vendTable.Party            
+            join dirPartyLocation
+            where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+            && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+            join dirPartyLocationRole
+            where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+            join logisticsLocationRole
+            where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole
+            && logisticsLocationRole.Name == nameAddressAcquireVendor//KJP_CM_ConstantHelper::enUS//Purchase.En-US From GendralPurposeMaster
+            && logisticsLocationRole.Type == LogisticsLocationRoleType::None;
+
+        if (logisticsEntityPostalAddressView.RecId)
+        {
+            return logisticsEntityPostalAddressView;
+        }
+
+        // Fetchs the address based on the Primary = yes
+        select firstonly logisticsEntityPostalAddressView
+            where logisticsEntityPostalAddressView.EntityType == LogisticsLocationEntityType::Party
+            && logisticsEntityPostalAddressView.ValidFrom <= targetDateTime
+            && targetDateTime <= logisticsEntityPostalAddressView.ValidTo
+            && logisticsEntityPostalAddressView.Entity == _vendTable.Party
+            && logisticsEntityPostalAddressView.isPrimary == NoYes::Yes
+            join dirPartyLocation
+            where dirPartyLocation.Party == logisticsEntityPostalAddressView.Entity
+            && dirPartyLocation.Location == logisticsEntityPostalAddressView.Location
+            join dirPartyLocationRole
+            where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+            join logisticsLocationRole
+            where logisticsLocationRole.RecId == dirPartyLocationRole.LocationRole;
+                
+
+        if (logisticsEntityPostalAddressView)
+        {
+            return logisticsEntityPostalAddressView;
+        }
+        
+        return LogisticsEntityPostalAddressView;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>trimTrailingZeros</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Removes the trailing Zeros
+    /// </summary>
+    /// <param name = "value">gets the real values</param>
+    /// <returns>sends the string values</returns>
+    public static str trimTrailingZeros(real value)
+    {
+        str strVal = strFmt('%1', value);
+        int len = strLen(strVal);
+ 
+        // Remove trailing zeros
+        while (len > 1 && subStr(strVal, len, 1) == '0')
+        {
+            strVal = subStr(strVal, 1, len - 1);
+            len--;
+        }
+ 
+        // Remove dot if it's the last character (e.g., "77.")
+        if (subStr(strVal, len, 1) == '.')
+        {
+            strVal = subStr(strVal, 1, len - 1);
+        }
+ 
+        return strVal;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>purchaseOrderData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fetchs the Purchase Order data
+    /// </summary>
+    public void purchaseOrderData()
+    {
+        PurchTable                          purchTable;
+        PurchLine                           purchLine;        
+        InventDim                           inventDim;
+        InventLocation                      inventLocation;
+        InventTable                         inventTable;
+        EcoResProduct                       ecoResProduct;        
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressViewVendor, logisticsEntityPostalAddressViewWarehouse;
+        InventTableModule                   inventTableModule;
+        VendTable                           vendTable;        
+        DlvMode                             dlvMode;
+        PaymTerm                            paymTerm;
+        LanguageTxt                         languageTxt;   
+        boolean                             updateResults;
+        KJP_SM_CustomsClearanceTransmissionIfHistory    customsClearanceIfHistory;
+        RecordInsertList insertList     = new RecordInsertList(tableNum(KJP_SM_CustomsClearanceTransmissionIfHistory));
+        
+        while select purchTable            
+            order by purchLine.PurchId, purchLine.LineNumber asc 
+            join purchLine
+            where purchTable.DocumentState == VersioningDocumentState::Confirmed
+            && purchTable.MCRDropShipment == NoYes::No
+            && purchLine.PurchId == purchTable.PurchId
+            && (purchLine.PurchStatus == PurchStatus::Backorder || purchLine.PurchStatus == PurchStatus::Received)
+            && purchLine.PurchQty > 0
+            && (purchTable.ModifiedDateTime > lastProcessedDateTime || purchLine.ModifiedDateTime > lastProcessedDateTime)
+            join inventDimId, RecId, InventLocationId, inventBatchId from inventDim
+            where inventDim.inventDimId == purchLine.InventDimId
+            join InventLocationId, RecId from inventLocation
+            where inventLocation.InventLocationId == inventDim.InventLocationId
+            join RecId, AccountNum, Party from vendTable
+            where vendTable.AccountNum == purchTable.OrderAccount
+            join logisticsEntityPostalAddressViewVendor
+            where logisticsEntityPostalAddressViewVendor.EntityType == LogisticsLocationEntityType::Party
+            && logisticsEntityPostalAddressViewVendor.Entity == vendTable.Party
+            && logisticsEntityPostalAddressViewVendor.IsPrimary == NoYes::Yes
+            join logisticsEntityPostalAddressViewWarehouse
+            where logisticsEntityPostalAddressViewWarehouse.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressViewWarehouse.Entity == inventLocation.RecId
+            && logisticsEntityPostalAddressViewWarehouse.IsPrimary == NoYes::Yes
+            && logisticsEntityPostalAddressViewVendor.CountryRegionId != logisticsEntityPostalAddressViewWarehouse.CountryRegionId
+            join Product, RecId, ItemId ,KJPCMStandardUnit from inventTable
+            where inventTable.ItemId == purchLine.ItemId
+            join RecId, ProductType from ecoResProduct
+            where ecoResProduct.RecId == inventTable.Product
+            && ecoResProduct.ProductType == EcoResProductType::Item
+            join ItemId, RecId, ModuleType, UnitId from inventTableModule
+            where inventTableModule.ItemId == purchLine.ItemId
+            && inventTableModule.ModuleType == ModuleInventPurchSales::Invent
+            outer join Code, Txt, RecId from dlvMode
+            where dlvMode.Code == purchLine.DlvMode
+            outer join RecId, PaymTermId, TableId, Description from paymTerm
+            where paymTerm.PaymTermId == purchTable.Payment
+            outer join TxtTableId, RecId, TxtRecId, LanguageId, Txt from languageTxt
+            where languageTxt.TxtTableId == paymTerm.TableId
+            && languageTxt.TxtRecId == paymTerm.RecId
+            && languageTxt.LanguageId == firstLanguage
+        {
+            if (((logisticsEntityPostalAddressViewWarehouse.ValidFrom <= this.getJSTtoUTCDate(purchLine.DeliveryDate)) && (this.getJSTtoUTCDate(purchLine.DeliveryDate) <= logisticsEntityPostalAddressViewWarehouse.ValidTo))
+                    && ((logisticsEntityPostalAddressViewVendor.ValidFrom <= this.getJSTtoUTCDate(purchLine.DeliveryDate)) && (this.getJSTtoUTCDate(purchLine.DeliveryDate) <= logisticsEntityPostalAddressViewWarehouse.ValidTo)))
+            {
+                select firstonly forupdate customsClearanceIfHistory
+                    where customsClearanceIfHistory.TransactionDataRecId == purchLine.RecId
+                    && customsClearanceIfHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO))); //KJP_CM_ConstantHelper::PO_2;
+                
+                if (!customsClearanceIfHistory.RecId)
+                {
+                    customsClearanceIfHistory.clear(); 
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO))); //KJP_CM_ConstantHelper::PO_2;                    
+                    customsClearanceIfHistory.ImportExportFlag      = logisticsEntityPostalAddressViewWarehouse.CountryRegionId != KJP_CM_ConstantHelper::origCodeCountryRegionId2Currency_JPN ? strFmt(KJP_CM_ConstantHelper::labelPlaceHolder_1, int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)))) : int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Import)));
+                    customsClearanceIfHistory.VoucherNumber         = purchTable.PurchId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(purchLine.RecId);
+                    customsClearanceIfHistory.VoucherDetailNumber   = int2Str(purchLine.LineNumber);
+                    customsClearanceIfHistory.ItemCode              = purchLine.ItemId;
+                    customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    customsClearanceIfHistory.VoucherUnit           = purchLine.PurchUnit;
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.PurchQty), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(purchLine.ItemId, purchLine.PurchUnit, inventTable.KJPCMStandardUnit, purchLine.PurchQty, purchLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    if (purchLine.PriceUnit != 0)
+                    {
+                        customsClearanceIfHistory.UnitPrice         = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.PurchPrice / purchLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    }
+                    else
+                    {
+                        customsClearanceIfHistory.UnitPrice         = KJP_CM_ConstantHelper::origcodeProductType_0;
+                    }
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.LineAmount), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Currency              = purchLine.CurrencyCode;
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).LocationName;
+                    customsClearanceIfHistory.DeliveryNumber        = inventDim.InventLocationId;
+                    customsClearanceIfHistory.DeliveryName          = this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).LocationName;
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsEntityPostalAddressViewWarehouse.CountryRegionId;
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, secondLanguage).LongName;
+                    customsClearanceIfHistory.DeliveryAddress       = this.addressLineBreakRemove(this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).Address);
+                    customsClearanceIfHistory.DeliveryTel           = this.getPhoneInformation(logisticsEntityPostalAddressViewWarehouse.Location).Locator;
+                    customsClearanceIfHistory.ReceiptDateRequested  = KJP_CM_Utils::convertDate2StryyyyMMdd(purchLine.DeliveryDate, DateSeparator::Slash);
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(purchLine.ConfirmedDlv, DateSeparator::Slash);
+                    customsClearanceIfHistory.ShipOriginNumber      = purchTable.OrderAccount;
+                    customsClearanceIfHistory.ShipOriginName        = this.getVendorAddress(vendTable, purchLine.DeliveryDate).LocationName;
+                    customsClearanceIfHistory.DlvModeNumber         = purchLine.DlvMode;            
+                    customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                    customsClearanceIfHistory.DlvTermName           = purchLine.DlvTerm;
+                    customsClearanceIfHistory.TermsOfPaymentName    = languageTxt.Txt ? languageTxt.Txt : paymTerm.Description;
+                    customsClearanceIfHistory.TransactionDataRecId  = purchLine.RecId;
+                    customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime; 
+                    customsClearanceIfHistory.LedgerAccountCode     = purchTable.OrderAccount;
+                    customsClearanceIfHistory.LedgerAccountName     = customsClearanceIfHistory.ShipOriginName;
+                    insertList.add(customsClearanceIfHistory);
+                }
+                else
+                {            
+                    updateResults = false;
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::PO))); //KJP_CM_ConstantHelper::PO_2;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ImportExportFlag, logisticsEntityPostalAddressViewWarehouse.CountryRegionId != KJP_CM_ConstantHelper::origCodeCountryRegionId2Currency_JPN ? strFmt(KJP_CM_ConstantHelper::labelPlaceHolder_1, int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)))) : int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Import))));
+                    }
+                    customsClearanceIfHistory.ImportExportFlag      = logisticsEntityPostalAddressViewWarehouse.CountryRegionId != KJP_CM_ConstantHelper::origCodeCountryRegionId2Currency_JPN ? strFmt(KJP_CM_ConstantHelper::labelPlaceHolder_1, int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)))) : int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Import)));
+                    customsClearanceIfHistory.VoucherNumber         = purchTable.PurchId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(purchLine.RecId);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherDetailNumber, int2Str(purchLine.LineNumber));
+                    }
+                    customsClearanceIfHistory.VoucherDetailNumber   = int2Str(purchLine.LineNumber);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemCode, purchLine.ItemId);
+                    }
+                    customsClearanceIfHistory.ItemCode              = purchLine.ItemId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemName, EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name);
+                    }
+                    customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherUnit, purchLine.PurchUnit);  
+                    }
+                    customsClearanceIfHistory.VoucherUnit           = purchLine.PurchUnit;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.PurchQty), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.PurchQty), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventUnit, inventTable.KJPCMStandardUnit);
+                    }
+                    customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(purchLine.ItemId, purchLine.PurchUnit, inventTable.KJPCMStandardUnit, purchLine.PurchQty, purchLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(purchLine.ItemId, purchLine.PurchUnit, inventTable.KJPCMStandardUnit, purchLine.PurchQty, purchLine.InventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LotNo, inventDim.inventBatchId);
+                    }
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    if (purchLine.PriceUnit != 0)
+                    {
+                        if (!updateResults)
+                        {
+                            updateResults   =   strCmp(customsClearanceIfHistory.UnitPrice, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.PurchPrice / purchLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                        }
+                        customsClearanceIfHistory.UnitPrice         = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.PurchPrice / purchLine.PriceUnit), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    }
+                    else
+                    {
+                        customsClearanceIfHistory.UnitPrice         = KJP_CM_ConstantHelper::origcodeProductType_0;
+                    }
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.Amount, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.LineAmount), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(purchLine.LineAmount), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.Currency, purchLine.CurrencyCode);
+                    }
+                    customsClearanceIfHistory.Currency              = purchLine.CurrencyCode;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.WarehouseName, this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).LocationName);
+                    }
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryNumber,  inventDim.InventLocationId);
+                    }
+                    customsClearanceIfHistory.DeliveryNumber        = inventDim.InventLocationId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryName, this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).LocationName);
+                    }
+                    customsClearanceIfHistory.DeliveryName          = this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryCode,  logisticsEntityPostalAddressViewWarehouse.CountryRegionId);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsEntityPostalAddressViewWarehouse.CountryRegionId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryName,  LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, secondLanguage).LongName);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewWarehouse.CountryRegionId, secondLanguage).LongName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryAddress, this.addressLineBreakRemove(this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).Address));
+                    }
+                    customsClearanceIfHistory.DeliveryAddress       = this.addressLineBreakRemove(this.getWarehouseInformation(inventLocation.RecId, purchLine.DeliveryDate).Address);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryTel, this.getPhoneInformation(logisticsEntityPostalAddressViewWarehouse.Location).Locator);
+                    }
+                    customsClearanceIfHistory.DeliveryTel           = this.getPhoneInformation(logisticsEntityPostalAddressViewWarehouse.Location).Locator;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ReceiptDateRequested, KJP_CM_Utils::convertDate2StryyyyMMdd(purchLine.DeliveryDate, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.ReceiptDateRequested  = KJP_CM_Utils::convertDate2StryyyyMMdd(purchLine.DeliveryDate, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ReceiptDateConfirmed, KJP_CM_Utils::convertDate2StryyyyMMdd(purchLine.ConfirmedDlv, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(purchLine.ConfirmedDlv, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipOriginNumber, purchTable.OrderAccount);
+                    }
+                    customsClearanceIfHistory.ShipOriginNumber      = purchTable.OrderAccount;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipOriginName, this.getVendorAddress(vendTable, purchLine.DeliveryDate).LocationName);
+                    }
+                    customsClearanceIfHistory.ShipOriginName        = this.getVendorAddress(vendTable, purchLine.DeliveryDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeNumber, purchLine.DlvMode);
+                    }
+                    customsClearanceIfHistory.DlvModeNumber         = purchLine.DlvMode;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeName, dlvMode.Txt);
+                    }
+                    customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvTermName, purchLine.DlvTerm);
+                    }
+                    customsClearanceIfHistory.DlvTermName           = purchLine.DlvTerm;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.TermsOfPaymentName, languageTxt.Txt ? languageTxt.Txt : paymTerm.Description);
+                    }
+                    customsClearanceIfHistory.TermsOfPaymentName    = languageTxt.Txt ? languageTxt.Txt : paymTerm.Description;
+                    customsClearanceIfHistory.TransactionDataRecId  = purchLine.RecId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountCode, purchTable.OrderAccount);
+                    }
+                    customsClearanceIfHistory.LedgerAccountCode     = purchTable.OrderAccount;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountName, customsClearanceIfHistory.ShipOriginName);
+                    }
+                    customsClearanceIfHistory.LedgerAccountName     = customsClearanceIfHistory.ShipOriginName;
+                    if (updateResults)
+                    {
+                        customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    }
+                    if (customsClearanceIfHistory.RecId)
+                    {
+                        customsClearanceIfHistory.update();
+                    }
+                }
+            }
+        }
+        insertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>addressLineBreakRemove</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Removes the line break
+    /// </summary>
+    /// <param name = "_deliveryAddress">Gets the address</param>
+    /// <returns>sends the delivery address</returns>
+    public KJP_SM_DeliveryAddress addressLineBreakRemove(KJP_SM_DeliveryAddress     _deliveryAddress)
+    {
+        KJP_SM_DeliveryAddress      deliveryAddress = _deliveryAddress;
+
+        deliveryAddress = strReplace(deliveryAddress, KJP_CM_ConstantHelper::nextLine, KJP_CM_ConstantHelper::oneCharSpace);
+        deliveryAddress = strReplace(deliveryAddress, KJP_CM_ConstantHelper::nextLine_r, KJP_CM_ConstantHelper::oneCharSpace);
+
+        return deliveryAddress;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>manufacturingTransferOrderData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fetchs th Transfer Order data
+    /// </summary>
+    public void manufacturingTransferOrderData()
+    {
+        InventTransferTable                         inventTransferTable;
+        InventTransferLine                          inventTransferLine;
+        InventDim                                   inventDim;
+        InventTable                                 inventTable;
+        EcoResProduct                               ecoResProduct;        
+        InventLocation                              inventLocationTo;
+        LogisticsEntityPostalAddressView            logisticsEntityPostalAddressViewTo, logisticsEntityPostalAddressViewFrom;
+        InventLocation                              inventLocationFrom;        
+        DlvMode                                     dlvMode;
+        boolean                                     updateResults;
+
+        KJP_SM_InventLocationGeneralPurposeMasterView       inventLocationGeneralPurposeMaster;
+        KJP_SM_CustomsClearanceTransmissionIfHistory        customsClearanceIfHistory;
+        RecordInsertList insertList     = new RecordInsertList(tableNum(KJP_SM_CustomsClearanceTransmissionIfHistory));
+                
+        while select inventTransferTable
+            order by inventTransferLine.TransferId, inventTransferLine.LineNum asc
+            join inventTransferLine
+            where (inventTransferTable.TransferStatus == InventTransferStatus::Created || inventTransferTable.TransferStatus == InventTransferStatus::Shipped)
+            && inventTransferLine.TransferId == inventTransferTable.TransferId
+            && (inventTransferTable.ModifiedDateTime > lastProcessedDateTime || inventTransferLine.ModifiedDateTime > lastProcessedDateTime)
+            join inventBatchId, RecId, inventDimId from inventDim
+            where inventDim.inventDimId == inventTransferLine.InventDimId
+            join RecId, ItemId, Product, KJPCMStandardUnit from inventTable
+            where inventTable.ItemId == inventTransferLine.ItemId
+            join RecId, ProductType from ecoResProduct
+            where ecoResProduct.RecId == inventTable.Product
+            && ecoResProduct.ProductType == EcoResProductType::Item
+            join RecId, KJPSMWarehouseClassification, InventLocationId from inventLocationTo
+            where inventLocationTo.InventLocationId == inventTransferTable.InventLocationIdTo
+            join logisticsEntityPostalAddressViewTo
+            where logisticsEntityPostalAddressViewTo.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressViewTo.Entity == inventLocationTo.RecId
+            && logisticsEntityPostalAddressViewTo.IsPrimary == NoYes::Yes
+            && logisticsEntityPostalAddressViewTo.CountryRegionId != countryRegionId
+            join inventLocationGeneralPurposeMaster
+            where inventLocationGeneralPurposeMaster.InventLocationId == inventLocationTo.InventLocationId
+            join RecId, KJPSMWarehouseClassification, InventLocationId from inventLocationFrom
+            where inventLocationFrom.InventLocationId == inventTransferTable.InventLocationIdFrom
+            && (inventLocationFrom.KJPSMWarehouseClassification != KJP_SM_WarehouseClassification::TakasakiFactory 
+            || inventLocationTo.KJPSMWarehouseClassification != KJP_SM_WarehouseClassification::CMOInternational
+            || (inventLocationGeneralPurposeMaster.DestinationCode == inventLocationTo.InventLocationId
+            && inventLocationGeneralPurposeMaster.Key == KJP_CM_ConstantHelper::KJP_SM_TakasakiDPFreeSupplyWarehouseKey))
+            join logisticsEntityPostalAddressViewFrom            
+            where logisticsEntityPostalAddressViewFrom.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressViewFrom.Entity == inventLocationFrom.RecId
+            && logisticsEntityPostalAddressViewFrom.IsPrimary == NoYes::Yes
+            && logisticsEntityPostalAddressViewFrom.CountryRegionId != logisticsEntityPostalAddressViewTo.CountryRegionId
+            outer join dlvMode
+            where dlvMode.Code == inventTransferTable.DlvModeId
+        {
+            if (((logisticsEntityPostalAddressViewTo.ValidFrom <= this.getJSTtoUTCDate(inventTransferLine.ShipDate)) && (this.getJSTtoUTCDate(inventTransferLine.ShipDate) <= logisticsEntityPostalAddressViewTo.ValidTo))
+                        && (logisticsEntityPostalAddressViewFrom.ValidFrom <= this.getJSTtoUTCDate(inventTransferLine.ShipDate)) && (this.getJSTtoUTCDate(inventTransferLine.ShipDate) <= logisticsEntityPostalAddressViewFrom.ValidTo))
+            {
+                select firstonly forupdate customsClearanceIfHistory
+                        where customsClearanceIfHistory.TransactionDataRecId == inventTransferLine.RecId
+                    && customsClearanceIfHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO))); //KJP_CM_ConstantHelper::TO_1;
+                
+                if (!customsClearanceIfHistory.RecId)
+                {
+                    customsClearanceIfHistory.clear();                
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO))); //KJP_CM_ConstantHelper::TO_1;
+                    customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)));//KJP_CM_ConstantHelper::export_0;
+                    customsClearanceIfHistory.VoucherNumber         = inventTransferTable.TransferId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(inventTransferLine.RecId);
+                    customsClearanceIfHistory.VoucherDetailNumber   = any2str(trunc(inventTransferLine.LineNum));
+                    customsClearanceIfHistory.ItemCode              = inventTransferLine.ItemId;
+                    customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    customsClearanceIfHistory.VoucherUnit           = inventTransferLine.UnitId;
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(inventTransferLine.ItemId, inventTransferLine.UnitId,inventTable.KJPCMStandardUnit,inventTransferLine.QtyTransfer, inventDim.inventDimId )), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    customsClearanceIfHistory.UnitPrice             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer * InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Currency              = accountingCurrency;
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.DeliveryNumber        = inventTransferTable.InventLocationIdTo;
+                    customsClearanceIfHistory.DeliveryName          = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsEntityPostalAddressViewTo.CountryRegionId;
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, secondLanguage).LongName;                    
+                    customsClearanceIfHistory.shipmentDate          = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate, DateSeparator::Slash);
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ReceiveDate, DateSeparator::Slash);
+                    customsClearanceIfHistory.LedgerAccountCode     = inventTransferTable.InventLocationIdTo;
+                    customsClearanceIfHistory.LedgerAccountName     = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.ShipOriginNumber      = inventTransferTable.InventLocationIdFrom;
+                    customsClearanceIfHistory.ShipOriginName        = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.DlvModeNumber         = inventTransferTable.DlvModeId;
+                    customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                    customsClearanceIfHistory.DlvTermName           = inventTransferTable.DlvTermId;
+                    customsClearanceIfHistory.TransactionDataRecId  = inventTransferLine.RecId;
+                    customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    insertList.add(customsClearanceIfHistory);
+                }
+                else
+                {
+                    updateResults = false;
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO)));  //KJP_CM_ConstantHelper::TO_1;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ImportExportFlag, int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export))));//);
+                    }
+                    customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Export)));//KJP_CM_ConstantHelper::export_0;
+                    customsClearanceIfHistory.VoucherNumber         = inventTransferTable.TransferId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(inventTransferLine.RecId);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherDetailNumber, any2str(trunc(inventTransferLine.LineNum)));
+                    }
+                    customsClearanceIfHistory.VoucherDetailNumber   = any2str(trunc(inventTransferLine.LineNum));
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemCode, inventTransferLine.ItemId);
+                    }
+                    customsClearanceIfHistory.ItemCode              = inventTransferLine.ItemId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemName, EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name);
+                    }
+                    customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherUnit, inventTransferLine.UnitId);
+                    }
+                    customsClearanceIfHistory.VoucherUnit           = inventTransferLine.UnitId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventUnit, inventTransferLine.UnitId);
+                    }
+                    customsClearanceIfHistory.InventUnit            = inventTransferLine.UnitId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(inventTransferLine.ItemId, inventTransferLine.UnitId,inventTable.KJPCMStandardUnit,inventTransferLine.QtyTransfer, inventDim.inventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(inventTransferLine.ItemId, inventTransferLine.UnitId,inventTable.KJPCMStandardUnit,inventTransferLine.QtyTransfer, inventDim.inventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LotNo, inventDim.inventBatchId);
+                    }
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.UnitPrice, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.UnitPrice             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.Amount, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer * InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer * InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Currency              = accountingCurrency;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.WarehouseName, this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryNumber, inventTransferTable.InventLocationIdTo);
+                    }
+                    customsClearanceIfHistory.DeliveryNumber        = inventTransferTable.InventLocationIdTo;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryName, this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.DeliveryName          = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryCode, logisticsEntityPostalAddressViewTo.CountryRegionId);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsEntityPostalAddressViewTo.CountryRegionId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryName, LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, secondLanguage).LongName);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, secondLanguage).LongName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.shipmentDate, KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.shipmentDate          = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ReceiptDateConfirmed, KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ReceiveDate, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ReceiveDate, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountCode, inventTransferTable.InventLocationIdTo);
+                    }
+                    customsClearanceIfHistory.LedgerAccountCode     = inventTransferTable.InventLocationIdTo;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LedgerAccountName, this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.LedgerAccountName     = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipOriginNumber, inventTransferTable.InventLocationIdFrom);
+                    }
+                    customsClearanceIfHistory.ShipOriginNumber      = inventTransferTable.InventLocationIdFrom;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipOriginName, this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.ShipOriginName        = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeNumber, inventTransferTable.DlvModeId);
+                    }
+                    customsClearanceIfHistory.DlvModeNumber         = inventTransferTable.DlvModeId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeName, dlvMode.Txt);
+                    }
+                    customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvTermName, inventTransferTable.DlvTermId);
+                    }
+                    customsClearanceIfHistory.DlvTermName           = inventTransferTable.DlvTermId;
+                    customsClearanceIfHistory.TransactionDataRecId  = inventTransferLine.RecId;
+                    if (updateResults)
+                    {
+                        customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    }
+                    if (customsClearanceIfHistory.RecId)
+                    {
+                        customsClearanceIfHistory.update();
+                    }
+                }
+            
+            }
+        }
+        insertList.insertDatabase();        
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>crossCountryTransferOrderData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Fetchs the CrossCountry Trasfer data data
+    /// </summary>
+    public void crossCountryTransferOrderData()
+    {
+        InventTransferTable     inventTransferTable;
+        InventTransferLine      inventTransferLine;
+        InventDim               inventDim;
+        InventTable             inventTable;
+        EcoResProduct           ecoResProduct;        
+        InventLocation          inventLocationTo;
+        LogisticsEntityPostalAddressView   logisticsEntityPostalAddressViewTo, logisticsEntityPostalAddressViewFrom;
+        InventLocation          inventLocationFrom;        
+        DlvMode                 dlvMode;
+        boolean                 updateResults;
+        KJP_SM_CustomsClearanceTransmissionIfHistory    customsClearanceIfHistory;
+        RecordInsertList insertList     = new RecordInsertList(tableNum(KJP_SM_CustomsClearanceTransmissionIfHistory));
+                
+        while select inventTransferTable
+            order by inventTransferLine.TransferId, inventTransferLine.LineNum asc
+            join inventTransferLine
+            where (inventTransferTable.TransferStatus == InventTransferStatus::Created || inventTransferTable.TransferStatus == InventTransferStatus::Shipped)
+            && inventTransferLine.TransferId == inventTransferTable.TransferId
+            && (inventTransferTable.ModifiedDateTime > lastProcessedDateTime || inventTransferLine.ModifiedDateTime > lastProcessedDateTime)
+            outer join inventDimId, inventBatchId, RecId from inventDim
+            where inventDim.inventDimId == inventTransferLine.InventDimId
+            join ItemId, RecId, Product, KJPCMStandardUnit from inventTable
+            where inventTable.ItemId == inventTransferLine.ItemId
+            join RecId, ProductType from ecoResProduct
+            where ecoResProduct.RecId == inventTable.Product
+            && ecoResProduct.ProductType == EcoResProductType::Item
+            join RecId, InventLocationId from inventLocationTo
+            where inventLocationTo.InventLocationId == inventTransferTable.InventLocationIdTo
+            join logisticsEntityPostalAddressViewTo
+            where logisticsEntityPostalAddressViewTo.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressViewTo.Entity == inventLocationTo.RecId
+            && logisticsEntityPostalAddressViewTo.IsPrimary == NoYes::Yes
+            && logisticsEntityPostalAddressViewTo.CountryRegionId == countryRegionId
+            join RecId, InventLocationId from inventLocationFrom
+            where inventLocationFrom.InventLocationId == inventTransferTable.InventLocationIdFrom
+            join logisticsEntityPostalAddressViewFrom
+            where logisticsEntityPostalAddressViewFrom.EntityType == LogisticsLocationEntityType::Warehouse
+            && logisticsEntityPostalAddressViewFrom.Entity == inventLocationFrom.RecId
+            && logisticsEntityPostalAddressViewFrom.IsPrimary == NoYes::Yes
+            && logisticsEntityPostalAddressViewFrom.CountryRegionId != countryRegionId
+            outer join RecId, Code, Txt from dlvMode
+            where dlvMode.Code == inventTransferTable.DlvModeId
+        {
+            if (((logisticsEntityPostalAddressViewTo.ValidFrom <= this.getJSTtoUTCDate(inventTransferLine.ShipDate)) && (this.getJSTtoUTCDate(inventTransferLine.ShipDate) <= logisticsEntityPostalAddressViewTo.ValidTo))
+                        && (logisticsEntityPostalAddressViewFrom.ValidFrom <= this.getJSTtoUTCDate(inventTransferLine.ShipDate)) && (this.getJSTtoUTCDate(inventTransferLine.ShipDate) <= logisticsEntityPostalAddressViewFrom.ValidTo))
+            {
+                select firstonly forupdate customsClearanceIfHistory
+                        where customsClearanceIfHistory.TransactionDataRecId == inventTransferLine.RecId
+                    && customsClearanceIfHistory.DataType == int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO)));//KJP_CM_ConstantHelper::TO_1;
+                
+                if (!customsClearanceIfHistory.RecId)
+                {
+                    customsClearanceIfHistory.clear();
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO)));//KJP_CM_ConstantHelper::TO_1;
+                    customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Import)));//KJP_CM_ConstantHelper::import_1;
+                    customsClearanceIfHistory.VoucherNumber         = inventTransferTable.TransferId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(inventTransferLine.RecId);
+                    customsClearanceIfHistory.VoucherDetailNumber   = any2str(trunc(inventTransferLine.LineNum));
+                    customsClearanceIfHistory.ItemCode              = inventTransferLine.ItemId;
+                    customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    customsClearanceIfHistory.VoucherUnit           = inventTransferLine.UnitId;
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.InventUnit            = inventTable.KJPCMStandardUnit;
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(inventTransferLine.ItemId, inventTransferLine.UnitId,inventTable.KJPCMStandardUnit,inventTransferLine.QtyTransfer, inventDim.inventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    customsClearanceIfHistory.UnitPrice             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer * InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Currency              = accountingCurrency;
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.DeliveryNumber        = inventTransferTable.InventLocationIdTo;
+                    customsClearanceIfHistory.DeliveryName          = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsEntityPostalAddressViewTo.CountryRegionId;
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, secondLanguage).LongName;
+                    customsClearanceIfHistory.DeliveryAddress       = this.addressLineBreakRemove(this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).Address);
+                    customsClearanceIfHistory.DeliveryTel           = this.getPhoneInformation(logisticsEntityPostalAddressViewTo.Location).Locator;
+                    customsClearanceIfHistory.shipmentDate          = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate, DateSeparator::Slash);
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ReceiveDate, DateSeparator::Slash);
+                    //customsClearanceIfHistory.LedgerAccountCode     = inventTransferTable.InventLocationIdTo;
+                    //customsClearanceIfHistory.LedgerAccountName     = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.ShipOriginNumber      = inventTransferTable.InventLocationIdFrom;
+                    customsClearanceIfHistory.ShipOriginName        = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    customsClearanceIfHistory.DlvModeNumber         = inventTransferTable.DlvModeId;
+                    customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                    customsClearanceIfHistory.DlvTermName           = inventTransferTable.DlvTermId;
+                    customsClearanceIfHistory.TransactionDataRecId  = inventTransferLine.RecId;
+                    customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    insertList.add(customsClearanceIfHistory);
+                }
+                else
+                {
+                    updateResults = false;                    
+                    customsClearanceIfHistory.DataType              = int2Str(dictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionDateType), KJP_SM_CustomsClearanceTransmissionDateType::TO)));;//KJP_CM_ConstantHelper::TO_1;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ImportExportFlag, int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Import))));
+                    }
+                    customsClearanceIfHistory.ImportExportFlag      = int2Str(importExportDictEnum.symbol2Value(enum2Symbol(enumNum(KJP_SM_CustomsClearanceTransmissionImportExportFlag), KJP_SM_CustomsClearanceTransmissionImportExportFlag::Import)));//KJP_CM_ConstantHelper::import_1;
+                    customsClearanceIfHistory.VoucherNumber         = inventTransferTable.TransferId;
+                    customsClearanceIfHistory.VoucherDetailKey      = int642Str(inventTransferLine.RecId);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherDetailNumber, any2str(trunc(inventTransferLine.LineNum)));
+                    }
+                    customsClearanceIfHistory.VoucherDetailNumber   = any2str(trunc(inventTransferLine.LineNum));
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemCode, inventTransferLine.ItemId);
+                    }
+                    customsClearanceIfHistory.ItemCode              = inventTransferLine.ItemId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ItemName, EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name);
+                    }
+                    customsClearanceIfHistory.ItemName              = EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name ? EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, firstLanguage).Name : EcoResProductTranslation::findByProductLanguage(ecoResProduct.RecId, secondLanguage).Name;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherUnit, inventTransferLine.UnitId);
+                    }
+                    customsClearanceIfHistory.VoucherUnit           = inventTransferLine.UnitId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.VoucherQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.VoucherQty            = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventUnit, inventTransferLine.UnitId);
+                    }
+                    customsClearanceIfHistory.InventUnit            = inventTransferLine.UnitId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.InventQty, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(inventTransferLine.ItemId, inventTransferLine.UnitId,inventTable.KJPCMStandardUnit,inventTransferLine.QtyTransfer, inventDim.inventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.InventQty             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(this.getUOMConvertion(inventTransferLine.ItemId, inventTransferLine.UnitId,inventTable.KJPCMStandardUnit,inventTransferLine.QtyTransfer, inventDim.inventDimId)), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.LotNo, inventDim.inventBatchId);
+                    }
+                    customsClearanceIfHistory.LotNo                 = inventDim.inventBatchId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.UnitPrice, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.UnitPrice             = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.Amount, strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer * InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue));
+                    }
+                    customsClearanceIfHistory.Amount                = strReplace(KJP_SM_CustomsClearanceServices::trimTrailingZeros(inventTransferLine.QtyTransfer * InventItemPrice::findCurrent(inventTransferLine.ItemId, CostingVersionPriceType::Cost, inventTransferLine.InventDimId, inventTransferLine.ShipDate, '',InventItemCostingType::Standard).Price), KJP_CM_ConstantHelper::commaReplace, KJP_CM_ConstantHelper::blankValue);
+                    customsClearanceIfHistory.Currency              = accountingCurrency;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.WarehouseName, this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.WarehouseName         = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryNumber, inventTransferTable.InventLocationIdTo);
+                    }
+                    customsClearanceIfHistory.DeliveryNumber        = inventTransferTable.InventLocationIdTo;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryName, this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.DeliveryName          = this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryCode, logisticsEntityPostalAddressViewTo.CountryRegionId);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryCode   = logisticsEntityPostalAddressViewTo.CountryRegionId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryCountryName, LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, secondLanguage).LongName);
+                    }
+                    customsClearanceIfHistory.DeliveryCountryName   = LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName ? LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, firstLanguage).LongName : LogisticsAddressCountryRegionTranslation::find(logisticsEntityPostalAddressViewTo.CountryRegionId, secondLanguage).LongName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryAddress, this.addressLineBreakRemove(this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).Address));
+                    }
+                    customsClearanceIfHistory.DeliveryAddress       = this.addressLineBreakRemove(this.getWarehouseInformation(inventLocationTo.RecId, inventTransferLine.ShipDate).Address);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DeliveryTel, this.getPhoneInformation(logisticsEntityPostalAddressViewTo.Location).Locator);
+                    }
+                    customsClearanceIfHistory.DeliveryTel           = this.getPhoneInformation(logisticsEntityPostalAddressViewTo.Location).Locator;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.shipmentDate, KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.shipmentDate          = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ShipDate, DateSeparator::Slash);
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ReceiptDateConfirmed, KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ReceiveDate, DateSeparator::Slash));
+                    }
+                    customsClearanceIfHistory.ReceiptDateConfirmed  = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferLine.ReceiveDate, DateSeparator::Slash);                    
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipOriginNumber, inventTransferTable.InventLocationIdFrom);
+                    }
+                    customsClearanceIfHistory.ShipOriginNumber      = inventTransferTable.InventLocationIdFrom;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.ShipOriginName, this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName);
+                    }
+                    customsClearanceIfHistory.ShipOriginName        = this.getWarehouseInformation(inventLocationFrom.RecId, inventTransferLine.ShipDate).LocationName;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeNumber, inventTransferTable.DlvModeId);
+                    }
+                    customsClearanceIfHistory.DlvModeNumber         = inventTransferTable.DlvModeId;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvModeName, dlvMode.Txt);
+                    }
+                    customsClearanceIfHistory.DlvModeName           = dlvMode.Txt;
+                    if (!updateResults)
+                    {
+                        updateResults   =   strCmp(customsClearanceIfHistory.DlvTermName, inventTransferTable.DlvTermId);
+                    }
+                    customsClearanceIfHistory.DlvTermName           = inventTransferTable.DlvTermId;
+                    customsClearanceIfHistory.TransactionDataRecId  = inventTransferLine.RecId;
+                    if (updateResults)
+                    {
+                        customsClearanceIfHistory.IfExecutionDatetime   = executionDateTime;
+                    }
+                    if (customsClearanceIfHistory.RecId)
+                    {
+                        customsClearanceIfHistory.update();
+                    }                   
+                }
+            
+            }
+        }
+        insertList.insertDatabase(); 
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

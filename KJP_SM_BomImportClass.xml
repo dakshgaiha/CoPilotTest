@@ -1,0 +1,2314 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_BomImportClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using System.IO.Stream;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelPackage;
+using OfficeOpenXml.ExcelRange;
+
+/// <summary>
+/// Bom Import from Excel
+/// </summary>
+class KJP_SM_BomImportClass extends RunBase
+{
+    Dialog   dialog;
+    Filename filename;
+    
+    private ExcelRange range;
+    private List headerCellList = new List(Types::String);
+
+    private Args importArgs;
+    // Define error msg list
+    private List errorMsgList = new List(Types::String);
+    // Define Temp data Record
+    KJP_SM_BomImportTemp bomImportTmpRecord;
+
+    // Define button name
+    private const str availableTypes = '.xlsx,.xls';
+    private const str okButtonName = 'OkButton';
+    private const str fileUploadName = 'FileUpload';
+    private const str bomImportHeaderLayout = 'KJP_SM_BomImportHeaderLayout';
+
+    // Define Column for Excel
+    private const str siteColumn = 'A';
+    private const str bomVersionColumn = 'B';
+    private const str bomVersionNameColumn = 'C';
+    private const str parentItemColumn = 'D';
+    private const str lineNumberColumn = 'E';
+    private const str childItemColumn = 'F';
+    private const str lineTypeColumn = 'G';
+    private const str perSeriesColumn = 'H';
+    private const str quantityColumn = 'I';
+    private const str locationColumn = 'J';
+    private const str fromDateColumn = 'K';
+    private const str toDateColumn = 'L';
+    private const str flushingPrincipleColumn = 'M';
+    private const str scrapConstColumn = 'N';
+    private const str scrapVarColumn = 'O';
+    private const str vendIdColumn = 'P';
+    
+    // Define varrable
+    private const str blank = '';
+    private const int num_0 = 0;
+    private const int num_1 = 1;
+    private const int num_2 = 2;
+    private const int num_3 = 3;
+    private const int num_4 = 4;
+    private const int num_5 = 5;
+    private const int num_6 = 6;
+    private const int num_7 = 7;
+    private const int num_8 = 8;
+    private const int num_9 = 9;
+    private const int num_10 = 10;
+    private const int num_11 = 11;
+    private const int num_12 = 12;
+    private const int num_13 = 13;
+    private const int num_14 = 14;
+    private const int num_15 = 15;
+    private const int num_16 = 16;
+    private const int num_20 = 20;
+    private const int num_30 = 30;
+    private const int num_80 = 80;
+    private const int HeaderLine = 1;
+    private const str backSlash = '　/　';
+    private const str squareBracketL = '[';
+    private const str squareBracketR = ']';
+    private const str dateNullStr ='1900/01/01';
+
+    private const real real_0 = 1.00;
+    private const real real_1 = 0.1;
+    private const real real_2 = 0.01;
+    private const real real_3 = 0.001;
+    
+    // Define varrable for BOMType
+    private const str itemBOMType = '品目';                           // Item
+    private const str peggedSupplyBOMType = 'ペギングされた供給';      // PeggedSupply
+    private const str phantomBOMType = 'ファントム';                  // Phantom
+    private const str vendorBOMType = '仕入先';                       // Vendor
+
+    // Define varrable for FlushingPrinciple
+    private const str startFlushingPrinciple = '開始';                 // start
+    private const str finishFlushingPrinciple = '完了';               　// finish
+    private const str manualFlushingPrinciple = '手動';                 // manual
+    private const str availableFlushingPrinciple = '場所で利用可';       // available
+
+    // Define judgment Flg
+    boolean siteChkFlg = true;
+    boolean beforeSiteChkFlg = true;
+    boolean chkSiteResult = true;
+
+    boolean bomVersionChkFlg = true;
+    boolean beforeBomVersionChkFlg = true;
+    boolean chkBomVersionResult = true;
+
+    boolean bomVersionNameChkFlg = true;
+    boolean beforeBomVersionNameChkFlg = true;
+    boolean chkBomVersionNameResult = true;
+
+    boolean parentItemChkFlg = true;
+    boolean beforeParentItemChkFlg = true;
+    boolean chkParentItemResult = true;
+
+    boolean lineNumberChkFlg = true;
+    boolean beforeLineNumberChkFlg = true;
+    boolean chkLineNumberResult = true;
+
+    boolean childItemChkFlg = true;
+    boolean beforeChildItemChkFlg = true;
+    boolean chkChildItemResult = true;
+
+    boolean lineTypeChkFlg = true;
+    boolean beforeLineTypeChkFlg = true;
+    boolean chkLineTypeResult = true;
+
+    boolean perSeriesChkFlg = true;
+    boolean beforePerSeriesChkFlg = true;
+    boolean chkPerSeriesResult = true;
+
+    boolean quantityChkFlg = true;
+    boolean beforeQuantityChkFlg = true;
+    boolean chkQuantityResult = true;
+
+    boolean locationChkFlg = true;
+    boolean beforeLocationChkFlg = true;
+    boolean chkLocationResult = true;
+
+    boolean fromDateChkFlg = true;
+    boolean beforeFromDateChkFlg = true;
+    boolean chkFromDateResult = true;
+
+    boolean toDateChkFlg = true;
+    boolean beforeToDateChkFlg = true;
+    boolean chkToDateResult = true;
+
+    boolean flushingPrincipleChkFlg = true;
+    boolean beforeFlushingPrincipleChkFlg = true;
+    boolean chkFlushingPrincipleResult = true;
+
+    boolean scrapConstChkFlg = true;
+    boolean beforeScrapConstChkFlg = true;
+    boolean chkScrapConstResult = true;
+
+    boolean scrapVarChkFlg = true;
+    boolean beforeScrapVarChkFlg = true;
+    boolean chkScrapVarResult = true;
+
+    boolean vendIdChkFlg = true;
+    boolean beforeVendIdChkFlg = true;
+    boolean chkVendIdResult = true;
+
+    boolean beforeCheckExcelContentResultFlg = true;
+    boolean checkExcelContentResultFlg = true;
+    boolean checkExcelContentFlg = true;
+    boolean chkLoopFlg = true;
+    boolean chkLoopResult = true;
+
+    boolean blankFileFlg = true;
+    boolean chkHeaderResult = true;
+
+    str beforeBomId = null;
+    str beforeItemId = null;
+    str beforeSiteId = null;
+
+    str beforeBomIdValue = null;
+    int bomLineNumberSeq;
+    int bomLineSeq;
+
+    str beforeUniqueBomId = null;
+    str beforeUniqueItemId = null;
+    str beforeUniqueSiteId = null;
+    boolean chkUniqueFlg = true;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_BomImportClass obj = new KJP_SM_BomImportClass();
+
+        if(obj.prompt())
+        {
+            obj.setArgs(_args);
+            obj.runOperation();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setArgs</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set Args from
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public void setArgs(Args _args)
+    {
+        importArgs = _args;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog initialization
+    /// </summary>
+    /// <returns>Object</returns>
+    public Object dialog()
+    {
+        DialogGroup      dialogGroup;
+        FormBuildControl formBuildControl;
+        FileUploadBuild  dialogFileUpload;
+
+        dialog = super();
+  
+        dialog.caption("@KJP:KJP101000");
+        
+        dialogGroup = dialog.addGroup();
+        formBuildControl = dialog.formBuildDesign().control(dialogGroup.name());
+        
+        dialogFileUpload = formBuildControl.addControlEx(classstr(FileUpload), fileUploadName);
+        dialogFileUpload.style(FileUploadStyle::MinimalWithFilename);
+        dialogFileUpload.baseFileUploadStrategyClassName(classstr(FileUploadTemporaryStorageStrategy));
+        dialogFileUpload.fileTypesAccepted(availableTypes);
+        
+        dialogFileUpload.browseText("@KJP:KJP101464");
+        dialogFileUpload.fileNameLabel("@KJP:KJP101307");
+
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialogPostRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog Post Run process
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    public void dialogPostRun(DialogRunbase _dialog)
+    {
+        FileUpload fileUpload = this.getFormControl(_dialog, fileUploadName);
+        fileUpload.notifyUploadCompleted += eventhandler(this.uploadCompleted);
+        this.setDialogOkButtonEnabled(_dialog, false);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>uploadCompleted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// upload Completed process
+    /// </summary>
+    protected void uploadCompleted()
+    {
+        FileUpload fileUpload = this.getFormControl(dialog, fileUploadName);
+        FileUploadTemporaryStorageResult uploadResult = fileUpload.getFileUploadResult();
+         
+        if (uploadResult.getUploadStatus())
+        {
+            fileUpload.notifyUploadCompleted -= eventhandler(this.UploadCompleted);
+            filename = fileUpload.fileName();
+
+            this.setDialogOkButtonEnabled(dialog, true);
+        }
+        else
+        {
+            warning(uploadResult.getLogMessage());
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDialogOkButtonEnabled</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set Dialog Ok Button Enabled
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    /// <param name = "_isEnabled">boolean</param>
+    protected void setDialogOkButtonEnabled(DialogRunbase _dialog, boolean _isEnabled)
+    {
+        FormControl okButtonControl = this.getFormControl(_dialog, okButtonName);
+        if (okButtonControl)
+        {
+            okButtonControl.enabled(_isEnabled);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFormControl</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get Form Control
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    /// <param name = "_controlName">str</param>
+    /// <returns>FormControl</returns>
+    protected FormControl getFormControl(DialogRunbase _dialog, str _controlName)
+    {
+        return _dialog.formRun().control(_dialog.formRun().controlId( _controlName));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// run
+    /// </summary>
+    public void run()
+    {
+
+        try
+        {
+
+            // read excel content
+            this.processExcFile();
+
+            if (blankFileFlg && chkHeaderResult && checkExcelContentResultFlg)
+            {
+                // Check if there are different SiteId or ParentItem for the same BOMVersion in the Excel.
+                this.checkUniqueData();
+                
+                if (chkUniqueFlg)
+                {
+                    ttsbegin;
+
+                    // check bomVersion data
+                    this.isHaveBomVersionData();
+
+                    if (!chkLoopFlg)
+                    {
+                        ttsabort;
+                    }
+                    else
+                    {
+                        str msg ;
+                        msg = strFmt("@KJP:KJP500198");
+                        errorMsgList.addEnd(msg);
+                        ttscommit;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // When unexpected errors occur
+            errorMsgList.addEnd(Exception::Error);
+        }
+        finally
+        {
+            // Go to finish process
+            this.bomImportFinishProcess();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processExcFile</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Choose the BOM Import upload files.
+    /// </summary>
+    public void processExcFile()
+    {
+        FileUpload          fileUploadControl;
+        FileUploadTemporaryStorageResult fileUploadResult ;
+        Stream   localStream;
+
+        fileUploadControl = this.getFormControl(dialog, fileUploadName);
+        fileUploadResult = fileUploadControl.getFileUploadResult();
+        localStream = fileUploadResult.openResult();
+
+        this.readExcelData(localStream);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readExcelData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Bom Import upload file check
+    /// </summary>
+    /// <param name = "_localStream">Stream</param>
+    public void readExcelData(Stream _localStream)
+    {
+        int excelRowCount;
+        container rangeCon;
+        OfficeOpenXml.ExcelRange cell;
+        str type_str = 'System.String';
+        str type_dateTime = 'System.DateTime';
+
+        ExcelPackage   package = new ExcelPackage(_localStream);
+        package.Load(_localStream);
+        ExcelWorksheet worksheet = package.get_Workbook().get_Worksheets().get_Item(num_1);
+
+        ExcelAddressBase dimension = worksheet.Dimension;
+
+        if(!dimension)
+        {
+            str errorMsg;
+            errorMsg = strFmt("@KJP:KJP500199");
+            errorMsgList.addEnd(errorMsg);
+
+            blankFileFlg = false;
+            // 2.2.5 Finish Process
+            return;
+        }
+        else
+        {
+            range = worksheet.Cells;
+
+            // Define header
+            this.listHeaderCell();
+            // The check of Bom Import upload file header layout
+            chkHeaderResult = this.checkHeaderCell();
+
+            if (!chkHeaderResult)
+            {
+                // 2.2.5 Finish Process
+                return;
+            }
+            else
+            {
+                excelRowCount = dimension.End.Row - dimension.Start.Row + num_1;
+
+                // Start with 2 due to header excluded.
+                for (int i = num_2; i <= excelRowCount; i++)
+                {
+                    rangeCon = conNull();
+                
+                    rangeCon += any2Str(range.get_Item(siteColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(bomVersionColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(bomVersionNameColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(parentItemColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(lineNumberColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(childItemColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(lineTypeColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(perSeriesColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(quantityColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(locationColumn + int2Str(i)).Value);
+
+                    cell = range.get_Item(fromDateColumn + int2Str(i));
+                    if(cell.Value == null)
+                    {
+                        rangeCon += any2Str(range.get_Item(fromDateColumn + int2Str(i)).Value);
+                    }
+                    else
+                    {
+                        switch(cell.Value.GetType())
+                        {
+                            case System.Type::GetType(type_str):
+                                rangeCon += any2Str(range.get_Item(fromDateColumn + int2Str(i)).Value);
+                                break;
+                            case System.Type::GetType(type_dateTime):
+                                rangeCon += datetime2Str(range.get_Item(fromDateColumn + int2Str(i)).Value);
+                                break;
+                            default:
+                                rangeCon += any2Str(range.get_Item(fromDateColumn + int2Str(i)).Text);
+                                break;
+                        }
+                    }
+
+                    cell = range.get_Item(toDateColumn + int2Str(i));
+                    if(cell.Value == null)
+                    {
+                        rangeCon += any2Str(range.get_Item(toDateColumn + int2Str(i)).Value);
+                    }
+                    else
+                    {
+                        switch(cell.Value.GetType())
+                        {
+                            case System.Type::GetType(type_str):
+                                rangeCon += any2Str(range.get_Item(toDateColumn + int2Str(i)).Value);
+                                break;
+                            case System.Type::GetType(type_dateTime):
+                                rangeCon += datetime2Str(range.get_Item(toDateColumn + int2Str(i)).Value);
+                                break;
+                            default:
+                                rangeCon += any2Str(range.get_Item(toDateColumn + int2Str(i)).Text);
+                                break;
+                        }
+                    }
+                    rangeCon += any2Str(range.get_Item(flushingPrincipleColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(scrapConstColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(scrapVarColumn + int2Str(i)).Value);
+                    rangeCon += any2Str(range.get_Item(vendIdColumn + int2Str(i)).Value);
+
+                    // check excel content
+                    beforeCheckExcelContentResultFlg = this.checkExcelContent(rangeCon, i);
+
+                    // The current record of the check result.
+                    // true -> add into tempList. false -> do not add into tempList then set the checkExcelContentResultFlg.
+                    if (!beforeCheckExcelContentResultFlg)
+                    {
+                        checkExcelContentResultFlg = beforeCheckExcelContentResultFlg;
+                    }
+                    else
+                    {
+                        // Import data from excel into tempList
+                        this.excelDataToTmpList(rangeCon);
+                    }
+                }
+
+                if (!checkExcelContentResultFlg)
+                {
+                    // 2.2.5 Finish Process
+                    return;
+
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// can Run In New Session
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listHeaderCell</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Define header layout
+    /// </summary>
+    private void listHeaderCell()
+    {
+        headerCellList.addEnd(siteColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(bomVersionColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(bomVersionNameColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(parentItemColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(lineNumberColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(childItemColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(lineTypeColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(perSeriesColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(quantityColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(locationColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(fromDateColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(toDateColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(flushingPrincipleColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(scrapConstColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(scrapVarColumn + any2Str(HeaderLine));
+        headerCellList.addEnd(vendIdColumn + any2Str(HeaderLine));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkHeaderCell</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check header layout
+    /// </summary>
+    /// <returns>boolean</returns>
+    private boolean checkHeaderCell()
+    {
+        boolean chkReasult = true;
+        str errorMsg;
+
+        ListEnumerator headerCellListEnumerator = headerCellList.getEnumerator();
+        while (headerCellListEnumerator.moveNext())
+        {
+            str headerValue = KJP_CM_GeneralPurposeMaster::find(bomImportHeaderLayout
+                , headerCellListEnumerator.current()).DestinationCode;
+            str excelValue = range.get_Item(headerCellListEnumerator.current()).Value;
+
+            // ファイル[A1]～[P1]の値がサイト、BOMバージョン、バージョン名称、親品目番号、行番号、子品目番号、行タイプ、生産数量、所要量、倉庫コード、開始日、終了日、部品消費ルール、定量仕損、変動仕損、仕入先では無い場合
+            if (headerValue != excelValue)
+            {
+                errorMsg = strFmt("@KJP:KJP500200", headerCellListEnumerator.current(), headerValue);
+                errorMsgList.addEnd(errorMsg);
+                chkReasult = false;
+            }
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkExcelContent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content
+    /// </summary>
+    /// <param name = "_con">container</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean checkExcelContent(container _con, int _row)
+    {
+
+        // check site
+        chkSiteResult = this.validateSiteId(conPeek(_con, num_1), _row);
+
+        // check bomVersion
+        chkBomVersionResult = this.validateBomVersion(conPeek(_con, num_1), conPeek(_con, num_2),conPeek(_con, num_4), _row);
+
+        // check bomVersionName
+        chkBomVersionNameResult = this.validateBomVersionName(conPeek(_con, num_3), _row);
+
+        // check parentItem
+        chkParentItemResult = this.validateParentItem(conPeek(_con, num_4), _row);
+
+        // check lineNumber
+        chkLineNumberResult = this.validateLineNumber(conPeek(_con, num_5), _row);
+
+        // check childItem
+        chkChildItemResult = this.validateChildItem(conPeek(_con, num_6), _row);
+
+        // check lineType
+        chkLineTypeResult = this.validateLineType(conPeek(_con, num_7), _row);
+
+        // check perSeries
+        chkPerSeriesResult = this.validatePerSeries(conPeek(_con, num_8), _row);
+
+        // check quantity
+        chkQuantityResult = this.validateQuantity(conPeek(_con, num_9), _row);
+
+        // check location && check the correlation between siteId and locationId
+        chkLocationResult = this.validateLocation(conPeek(_con, num_1), conPeek(_con, num_10), _row);
+
+        // check fromDate
+        chkFromDateResult = this.validateFromDate(conPeek(_con, num_11), _row);
+
+        // check toDate
+        chkToDateResult = this.validateToDate(conPeek(_con, num_11), conPeek(_con, num_12), _row);
+
+        // check FlushingPrinciple
+        chkFlushingPrincipleResult = this.validateFlushingPrinciple(conPeek(_con, num_13), _row);
+
+        // check scrapConst
+        chkScrapConstResult = this.validateScrapConst(conPeek(_con, num_14), _row);
+
+        // check scrapVar
+        chkScrapVarResult = this.validateScrapVar(conPeek(_con, num_15), _row);
+
+        // check vendId
+        chkVendIdResult = this.validateVendId(conPeek(_con, num_16),conPeek(_con, num_6), _row);
+
+        if (chkSiteResult && chkbomVersionResult && chkBomVersionNameResult && chkParentItemResult
+            && chkLineNumberResult && chkChildItemResult && chkLineTypeResult && chkPerSeriesResult
+            && chkQuantityResult && chkLocationResult && chkFromDateResult && chkToDateResult
+            && chkFlushingPrincipleResult && chkScrapConstResult && chkScrapVarResult && chkVendIdResult)
+        {
+            checkExcelContentFlg = true;
+            return checkExcelContentFlg;
+        }
+        else
+        {
+            checkExcelContentFlg = false;
+            return checkExcelContentFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSiteId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of siteid
+    /// </summary>
+    /// <param name = "_siteId">siteId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateSiteId(str _siteId, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101172") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101172");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@KJP:KJP101172");
+        str errorExistMsg = strFmt("@KJP:KJP500171", _siteId);
+        str errorAllMsg = blank;
+        int siteLengh = strLen(_siteId);
+
+        // Mandatory check
+        if(blank == _siteId)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeSiteChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 10)
+        if(siteLengh > num_10)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeSiteChkFlg = false;
+
+        }
+
+        // Exist check in InventSite Table.
+        if(blank != _siteId && !InventSite::exist(_siteId))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+
+            beforeSiteChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeSiteChkFlg)
+        {
+            return siteChkFlg;
+        }
+        else
+        {
+            siteChkFlg = beforeSiteChkFlg;
+            return siteChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateBomVersion</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of bomVersion
+    /// </summary>
+    /// <param name = "_siteId">_siteId</param>
+    /// <param name = "_bomVersion">_bomVersion</param>
+    /// <param name = "_parentItem">_parentItem</param>
+    /// <param name = "_row">_row</param>
+    /// <returns>boolean</returns>
+    private boolean validateBomVersion(str _siteId, str _bomVersion, str _parentItem, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS67777") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@SYS67777");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@SYS67777");
+        str errorCorrespondMsg = strFmt("@KJP:KJP500221",_bomVersion);
+        str errorAllMsg = blank;
+        int bomVersionLengh = strLen(_bomVersion);
+
+        // Mandatory check
+        if(blank == _bomVersion)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeBomVersionChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 20)
+        if(bomVersionLengh > num_20)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeBomVersionChkFlg = false;
+
+        }
+
+        // confirmation of consistency of siteId when bomVersionId exist in BOMTable.
+        if(BOMTable::exist(_bomVersion) && BOMTable::find(_bomVersion).SiteId != _siteId)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorCorrespondMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorCorrespondMsg + squareBracketR;
+            }
+
+            beforeBomVersionChkFlg = false;
+        }
+
+        BOMVersion bomVersionExist;
+        select firstonly bomVersionExist
+            where bomVersionExist.BOMId == _bomVersion;
+
+        // confirmation of consistency of parentItem when bomVersionId exist in BOMVersion.
+        if(bomVersionExist && bomVersionExist.ItemId != _parentItem)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorCorrespondMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorCorrespondMsg + squareBracketR;
+            }
+
+            beforeBomVersionChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeBomVersionChkFlg)
+        {
+            return bomVersionChkFlg;
+        }
+        else
+        {
+            bomVersionChkFlg = beforeBomVersionChkFlg;
+            return bomVersionChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateBomVersionName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of bomVersionName
+    /// </summary>
+    /// <param name = "_bomVersionName">bomVersionName</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateBomVersionName(str _bomVersionName, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101524") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101524");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@KJP:KJP101524");
+        str errorAllMsg = blank;
+        int bomVersionNameLengh = strLen(_bomVersionName);
+
+        // Mandatory check
+        if(blank == _bomVersionName)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeBomVersionNameChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 80)
+        if(bomVersionNameLengh > num_80)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeBomVersionNameChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeBomVersionNameChkFlg)
+        {
+            return bomVersionNameChkFlg;
+        }
+        else
+        {
+            bomVersionNameChkFlg = beforeBomVersionNameChkFlg;
+            return bomVersionNameChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateParentItem</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of parentItem
+    /// </summary>
+    /// <param name = "_parentItem">parentItem</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateParentItem(str _parentItem, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101002") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101002");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@KJP:KJP101002");
+        str errorExistMsg = strFmt("@KJP:KJP500166", _parentItem);
+        str errorAllMsg = blank;
+        int parentItemLengh = strLen(_parentItem);
+
+        // Mandatory check
+        if(blank == _parentItem)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeParentItemChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 20)
+        if(parentItemLengh > num_20)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeParentItemChkFlg = false;
+
+        }
+
+        // Exist check in InventItem Table.
+        if(blank != _parentItem && !InventTable::exist(_parentItem))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+
+            beforeParentItemChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeParentItemChkFlg)
+        {
+            return parentItemChkFlg;
+        }
+        else
+        {
+            parentItemChkFlg = beforeParentItemChkFlg;
+            return parentItemChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateLineNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of lineNumber
+    /// </summary>
+    /// <param name = "_lineNumber">lineNumber</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateLineNumber(str _lineNumber, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS101704") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@SYS101704");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@SYS101704");
+        str errorAllMsg = blank;
+        int lineNumberLengh = strLen(_lineNumber);
+
+        // Mandatory check
+        if(blank == _lineNumber)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+
+            beforeLineNumberChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 30)
+        if(lineNumberLengh > num_30)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeLineNumberChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeLineNumberChkFlg)
+        {
+            return lineNumberChkFlg;
+        }
+        else
+        {
+            lineNumberChkFlg = beforeLineNumberChkFlg;
+            return lineNumberChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateChildItem</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of childItem
+    /// </summary>
+    /// <param name = "_childItem">childItem</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateChildItem(str _childItem, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101007") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101007");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@KJP:KJP101007");
+        str errorExistMsg = strFmt("@KJP:KJP500167", _childItem);
+        str errorAllMsg = blank;
+        int childItemLengh = strLen(_childItem);
+
+        // Mandatory check
+        if(blank == _childItem)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeChildItemChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 20)
+        if(childItemLengh > num_20)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeChildItemChkFlg = false;
+
+        }
+
+        // Exist check in InventItem Table.
+        if(blank != _childItem && !InventTable::exist(_childItem))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+
+            beforeChildItemChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeChildItemChkFlg)
+        {
+            return childItemChkFlg;
+        }
+        else
+        {
+            childItemChkFlg = beforeChildItemChkFlg;
+            return childItemChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateLineType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of lineType
+    /// </summary>
+    /// <param name = "_lineType">lineType</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateLineType(str _lineType, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101015") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101015");
+        str errorValueMsg = strFmt("@KJP:KJP500168", _lineType);
+        str errorAllMsg = blank;
+
+        // Mandatory check
+        if(blank == _lineType)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeLineTypeChkFlg = false;
+
+        }
+
+        // Value check (item, phantom, Pegged supply and Vendor.)
+        if(blank != _lineType && itemBOMType != _lineType && peggedSupplyBOMType != _lineType && phantomBOMType != _lineType && vendorBOMType != _lineType)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+
+            beforeLineTypeChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeLineTypeChkFlg)
+        {
+            return lineTypeChkFlg;
+        }
+        else
+        {
+            lineTypeChkFlg = beforeLineTypeChkFlg;
+            return lineTypeChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validatePerSeries</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of perSeries
+    /// </summary>
+    /// <param name = "_perSeries">perSeries</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validatePerSeries(str _perSeries, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101009") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101009");
+        str errorValueMsg = strFmt("@KJP:KJP500172", "@KJP:KJP101009");
+        str errorAllMsg = blank;
+
+        real perSeriesStringToReal;
+        str  perSeriesRealToString;
+
+        perSeriesStringToReal = any2Real(_perSeries);
+        perSeriesRealToString = any2Str(perSeriesStringToReal);
+
+        // Mandatory check
+        if(blank == _perSeries)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+
+            beforePerSeriesChkFlg = false;
+
+        }
+
+        // Number check and Value check
+        if(blank != _perSeries && (perSeriesStringToReal <= num_0 || _perSeries != perSeriesRealToString))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+
+
+            beforePerSeriesChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforePerSeriesChkFlg)
+        {
+            return perSeriesChkFlg;
+        }
+        else
+        {
+            perSeriesChkFlg = beforePerSeriesChkFlg;
+            return perSeriesChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateQuantity</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of quantity
+    /// </summary>
+    /// <param name = "_quantity">quantity</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateQuantity(str _quantity, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101011") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101011");
+        str errorValueMsg = strFmt("@KJP:KJP500172", "@KJP:KJP101011");
+        str errorAllMsg = blank;
+
+        real quantityStringToReal;
+        str  quantityRealToString;
+
+        quantityStringToReal = any2Real(_quantity);
+        quantityRealToString = any2Str(quantityStringToReal);
+
+        // Mandatory check
+        if(blank == _quantity)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeQuantityChkFlg = false;
+
+        }
+
+        // Number check and Value check
+        if(blank != _quantity && (quantityStringToReal <= num_0 || _quantity != quantityRealToString))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+
+            beforeQuantityChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeQuantityChkFlg)
+        {
+            return quantityChkFlg;
+        }
+        else
+        {
+            quantityChkFlg = beforeQuantityChkFlg;
+            return quantityChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateLocation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of location
+    /// </summary>
+    /// <param name = "_siteId">siteId</param>
+    /// <param name = "_location">location</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateLocation(str _siteId, str _location, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@KJP:KJP101013") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@KJP:KJP101013");
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@KJP:KJP101013");
+        str errorExistMsg = strFmt("@KJP:KJP500170", _location);
+        str errorConbinationtMsg = strFmt("@KJP:KJP500202", _siteId, _location);
+        str errorAllMsg = blank;
+
+        int locationLengh = strLen(_location);
+
+        // Mandatory check
+        if(blank == _location)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+            beforeLocationChkFlg = false;
+
+        }
+
+        // Lengh check (Max : 20)
+        if(locationLengh > num_20)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeLocationChkFlg = false;
+
+        }
+
+        // Exist check in InventLocation Table.
+        if(blank != _location && !InventLocation::exist(_location))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+
+            beforeLocationChkFlg = false;
+
+        }
+
+        // check the conbination relationship(SiteId and LocationId)
+        if (blank != _location && blank != _siteId &&  InventLocation::find(_location).InventSiteId != _siteId)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorConbinationtMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorConbinationtMsg + squareBracketR;
+            }
+
+            beforeLocationChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeLocationChkFlg)
+        {
+            return locationChkFlg;
+        }
+        else
+        {
+            locationChkFlg = beforeLocationChkFlg;
+            return locationChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateFromDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of fromDate
+    /// </summary>
+    /// <param name = "_fromDate">fromDate</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateFromDate(str _fromDate, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS5209") ;
+        str errorFormatMsg = strFmt("@KJP:KJP500172", "@SYS5209");
+        str errorAllMsg = blank;
+
+        date fromDateStringToDate;
+        fromDateStringToDate = str2Date(_fromDate,321);
+
+        // Date Format check
+        if(blank != _fromDate && !fromDateStringToDate && _fromDate != dateNullStr)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorFormatMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorFormatMsg + squareBracketR;
+            }
+
+            beforeFromDateChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeFromDateChkFlg)
+        {
+            return fromDateChkFlg;
+        }
+        else
+        {
+            fromDateChkFlg = beforeFromDateChkFlg;
+            return fromDateChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateToDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of toDate
+    /// </summary>
+    /// <param name = "_fromDate">fromDate</param>
+    /// <param name = "_toDate">toDate</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateToDate(str _fromDate, str _toDate, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS14656") ;
+        str errorFormatMsg = strFmt("@KJP:KJP500172", "@SYS14656");
+        str errorReasonabilityMsg = strFmt("@KJP:KJP500173", "@SYS14656", "@SYS5209");
+        str errorAllMsg = blank;
+
+        date fromDateStringToDate;
+        fromDateStringToDate = str2Date(_fromDate,321);
+
+        date toDateStringToDate;
+        toDateStringToDate = str2Date(_toDate,321);
+
+        // Date Format check
+        if(blank != _toDate && !toDateStringToDate && _toDate != dateNullStr)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorFormatMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorFormatMsg + squareBracketR;
+            }
+
+            beforeToDateChkFlg = false;
+
+        }
+        
+        // Reasonability check of date
+        if(blank != _fromDate && blank != _toDate && fromDateStringToDate != dateNull()
+            && toDateStringToDate != dateNull() && (toDateStringToDate < fromDateStringToDate))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorReasonabilityMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorReasonabilityMsg + squareBracketR;
+            }
+
+            beforeToDateChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeToDateChkFlg)
+        {
+            return toDateChkFlg;
+        }
+        else
+        {
+            toDateChkFlg = beforeToDateChkFlg;
+            return toDateChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateFlushingPrinciple</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of flushingPrinciple
+    /// </summary>
+    /// <param name = "_flushingPrinciple">flushingPrinciple</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateFlushingPrinciple(str _flushingPrinciple, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS88155") ;
+        str errorMandatoryMsg = strFmt("@KJP:KJP500164", "@SYS88155");
+        str errorValueMsg = strFmt("@KJP:KJP500169", _flushingPrinciple);
+        str errorAllMsg = blank;
+        
+        // Mandatory check
+        if(blank == _flushingPrinciple)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorMandatoryMsg + squareBracketR;
+            }
+
+
+            beforeFlushingPrincipleChkFlg = false;
+
+        }
+
+        // Value check (start ,finish  ,manual ,available.)
+        if(blank != _flushingPrinciple && startFlushingPrinciple != _flushingPrinciple
+            && finishFlushingPrinciple != _flushingPrinciple && manualFlushingPrinciple != _flushingPrinciple
+            && availableFlushingPrinciple != _flushingPrinciple)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+
+            beforeFlushingPrincipleChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeFlushingPrincipleChkFlg)
+        {
+            return flushingPrincipleChkFlg;
+        }
+        else
+        {
+            flushingPrincipleChkFlg = beforeFlushingPrincipleChkFlg;
+            return flushingPrincipleChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateScrapConst</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of ScrapConst
+    /// </summary>
+    /// <param name = "_scrapConst">scrapConst</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateScrapConst(str _scrapConst, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS73404") ;
+        str errorValueMsg = strFmt("@KJP:KJP500172", "@SYS73404");
+        str errorAllMsg = blank;
+
+        real scrapConstStringToReal;
+        str  scrapConstRealToString;
+
+        scrapConstStringToReal = any2Real(_scrapConst);
+        scrapConstRealToString = any2Str(scrapConstStringToReal);
+
+        // Number check and Value check
+        if(blank != _scrapConst && (scrapConstStringToReal < num_0 || _scrapConst != scrapConstRealToString))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+
+            beforeScrapConstChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeScrapConstChkFlg)
+        {
+            return scrapConstChkFlg;
+        }
+        else
+        {
+            scrapConstChkFlg = beforeScrapConstChkFlg;
+            return scrapConstChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateScrapVar</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of ScrapVar
+    /// </summary>
+    /// <param name = "_scrapVar">scrapVar</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateScrapVar(str _scrapVar, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS73405") ;
+        str errorValueMsg = strFmt("@KJP:KJP500172", "@SYS73405");
+        str errorAllMsg = blank;
+
+        real scrapVarStringToReal;
+        str  scrapVarRealToString;
+
+        scrapVarStringToReal = any2Real(_scrapVar);
+        scrapVarRealToString = any2Str(scrapVarStringToReal);
+
+        // Number check and Value check
+        if(blank != _scrapVar && (scrapVarStringToReal < num_0 || _scrapVar != scrapVarRealToString))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorValueMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorValueMsg + squareBracketR;
+            }
+
+            beforeScrapVarChkFlg = false;
+
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeScrapVarChkFlg)
+        {
+            return scrapVarChkFlg;
+        }
+        else
+        {
+            scrapVarChkFlg = beforeScrapVarChkFlg;
+            return scrapVarChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateVendId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check excel content of vendId
+    /// </summary>
+    /// <param name = "_vendId">_vendId</param>
+    /// <param name = "_childItemId">_childItemId</param>
+    /// <param name = "_row">int</param>
+    /// <returns>boolean</returns>
+    private boolean validateVendId(str _vendId, str _childItemId, int _row)
+    {
+
+        str errorHeaderMsg = strFmt("@KJP:KJP500220",_row , "@SYS14048") ;
+        str errorLenghMsg = strFmt("@KJP:KJP500165", "@SYS14048");
+        str errorExistMsg = strFmt("@KJP:KJP500484", _vendId);
+        str errorVendIdMsg = strFmt("@SYP4881414", _vendId, _childItemId, DateTimeUtil::getSystemDate(DateTimeUtil::getUserPreferredTimeZone()));
+        str errorAllMsg = blank;
+        int vendIdLengh = strLen(_vendId);
+
+        // Lengh check (Max : 20)
+        if (vendIdLengh > num_20)
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorLenghMsg + squareBracketR;
+            }
+
+            beforeVendIdChkFlg = false;
+
+        }
+
+        // Exist check in VendTable.
+        if (blank != _vendId && !VendTable::exist(_vendId))
+        {
+            if (blank == errorAllMsg)
+            {
+                errorAllMsg = errorHeaderMsg + squareBracketL + errorExistMsg + squareBracketR;
+            }
+            else
+            {
+                errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorExistMsg + squareBracketR;
+            }
+
+            beforeVendIdChkFlg = false;
+        }
+        else if (blank != _vendId && VendTable::exist(_vendId))
+        {
+            if (InventTable::find(_childItemId).PdsVendorCheckItem == PdsVendorCheckItem::NotAllowed)
+            {
+                if (!PdsApprovedVendorList::existValid(_childItemId, _vendId, dateNull()))
+                {
+                    if (blank == errorAllMsg)
+                    {
+                        errorAllMsg = errorHeaderMsg + squareBracketL + errorVendIdMsg + squareBracketR;
+                    }
+                    else
+                    {
+                        errorAllMsg = errorAllMsg + backSlash + squareBracketL + errorVendIdMsg + squareBracketR;
+                    }
+                    beforeVendIdChkFlg = false;
+                }
+            }
+        }
+
+        if (blank != errorAllMsg)
+        {
+            errorMsgList.addEnd(errorAllMsg);
+        }
+
+        if (beforeVendIdChkFlg)
+        {
+            return vendIdChkFlg;
+        }
+        else
+        {
+            vendIdChkFlg = beforeVendIdChkFlg;
+            return vendIdChkFlg;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>excelDataToTmpList</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Excel Data to TmpList
+    /// </summary>
+    /// <param name = "_con">container</param>
+    private void excelDataToTmpList(container _con)
+    {
+
+        // site:Column A
+        bomImportTmpRecord.Site = conPeek(_con, num_1);
+
+        // bomVersion:Column B
+        bomImportTmpRecord.BOMVersion = conPeek(_con, num_2);
+
+        // bomVersionName:Column C
+        bomImportTmpRecord.BOMVersionName = conPeek(_con, num_3);
+
+        // parentItem:Column D
+        bomImportTmpRecord.ParentItem = conPeek(_con, num_4);
+
+        // lineNumber:Column E
+        bomImportTmpRecord.LineNumber = conPeek(_con, num_5);
+
+        // childItem:Column F
+        bomImportTmpRecord.ChildItem = conPeek(_con, num_6);
+
+        // lineType:Column G
+        if ( itemBOMType == conPeek(_con, num_7))
+        {
+            bomImportTmpRecord.LineType = BOMType::Item;
+        }
+        else if (peggedSupplyBOMType == conPeek(_con, num_7))
+        {
+            bomImportTmpRecord.LineType = BOMType::PeggedSupply;
+        }
+        else if (phantomBOMType == conPeek(_con, num_7))
+        {
+            bomImportTmpRecord.LineType = BOMType::Phantom;
+        }
+        else if (vendorBOMType == conPeek(_con, num_7))
+        {
+            bomImportTmpRecord.LineType = BOMType::Vendor;
+        }
+
+        // perSeries:Column H
+        bomImportTmpRecord.PerSeries = any2Real(conPeek(_con, num_8));
+
+        // quantity:Column I
+        bomImportTmpRecord.Quantity = any2Real(conPeek(_con, num_9));
+
+        // location:Column J
+        bomImportTmpRecord.Location = conPeek(_con, num_10);
+
+        // fromDate:Column K
+        bomImportTmpRecord.FromDate = str2Date(conPeek(_con, num_11),321);
+
+        // toDate:Column L
+        bomImportTmpRecord.ToDate = str2Date(conPeek(_con, num_12),321);
+
+        // flushingPrinciple:Column M
+        if ( startFlushingPrinciple == conPeek(_con, num_13))
+        {
+            bomImportTmpRecord.FlushingPrinciple = ProdFlushingPrincipBOM::Start;
+        }
+        else if (finishFlushingPrinciple == conPeek(_con, num_13))
+        {
+            bomImportTmpRecord.FlushingPrinciple = ProdFlushingPrincipBOM::Finish;
+        }
+        else if (manualFlushingPrinciple == conPeek(_con, num_13))
+        {
+            bomImportTmpRecord.FlushingPrinciple = ProdFlushingPrincipBOM::Manual;
+        }
+        else if (availableFlushingPrinciple == conPeek(_con, num_13))
+        {
+            bomImportTmpRecord.FlushingPrinciple = ProdFlushingPrincipBOM::Picked;
+        }
+
+        // ScrapConst:Column N
+        bomImportTmpRecord.ScrapConst = any2Real(conPeek(_con, num_14));
+
+        // ScrapVar:Column O
+        bomImportTmpRecord.ScrapVar = any2Real(conPeek(_con, num_15));
+
+        // VendId:Column P
+        bomImportTmpRecord.VendId = conPeek(_con, num_16);
+
+        // excel data to Temp database
+        bomImportTmpRecord.insert();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkUniqueData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check if there are different SiteId or ParentItem for the same BOMVersion in the Excel.
+    /// </summary>
+    private void checkUniqueData()
+    {
+        str errorMsg;
+
+        while select  bomImportTmpRecord
+            order by bomImportTmpRecord.BOMVersion
+        {
+            if(beforeUniqueBomId == bomImportTmpRecord.BOMVersion )
+            {
+                if (beforeUniqueItemId != bomImportTmpRecord.ParentItem
+                    || beforeUniqueSiteId != bomImportTmpRecord.Site)
+                {
+                    beforeUniqueBomId = bomImportTmpRecord.BOMVersion;
+                    beforeUniqueItemId = bomImportTmpRecord.ParentItem;
+                    beforeUniqueSiteId = bomImportTmpRecord.Site;
+                    
+                    chkUniqueFlg = false;
+
+                    errorMsg = strFmt("@KJP:KJP500221", bomImportTmpRecord.BOMVersion) ;
+                    errorMsgList.addEnd(errorMsg);
+
+                }
+                else
+                {
+                    beforeUniqueBomId = bomImportTmpRecord.BOMVersion;
+                    beforeUniqueItemId = bomImportTmpRecord.ParentItem;
+                    beforeUniqueSiteId = bomImportTmpRecord.Site;
+                }
+            }
+            else
+            {
+                beforeUniqueBomId = bomImportTmpRecord.BOMVersion;
+                beforeUniqueItemId = bomImportTmpRecord.ParentItem;
+                beforeUniqueSiteId = bomImportTmpRecord.Site;
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isHaveBomVersionData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check Data exist in BOMVersion or not
+    /// </summary>
+    private void isHaveBomVersionData()
+    {
+        BOMVersion bomVersionSearch;
+        BOMTable bomTableSearch;
+
+        while select  bomImportTmpRecord
+            order by bomImportTmpRecord.Site
+            , bomImportTmpRecord.ParentItem
+            , bomImportTmpRecord.BOMVersion
+            , bomImportTmpRecord.LineNumber
+        {
+            select firstonly bomVersionSearch
+                where bomVersionSearch.BOMId == bomImportTmpRecord.BOMVersion
+                && bomVersionSearch.ItemId == bomImportTmpRecord.ParentItem
+                join bomTableSearch
+                where bomTableSearch.BOMId == bomVersionSearch.BOMId
+                && bomTableSearch.SiteId == bomImportTmpRecord.Site;
+
+            // There are records in bomversion
+            if(bomVersionSearch.RecId)
+            {
+                // Starting from the second record.
+                if (beforeBomId == bomVersionSearch.BOMId && beforeItemId == bomVersionSearch.ItemId
+                    && beforeSiteId == bomTableSearch.SiteId)
+                {
+                    beforeBomId = bomImportTmpRecord.BOMVersion;
+                    beforeItemId = bomImportTmpRecord.ParentItem;
+                    beforeSiteId = bomImportTmpRecord.Site;
+
+                    // insert bom
+                    this.insertBom(bomImportTmpRecord);
+
+                    // Starting from the first record.
+                }
+                else
+                {
+                    beforeBomId = bomImportTmpRecord.BOMVersion;
+                    beforeItemId = bomImportTmpRecord.ParentItem;
+                    beforeSiteId = bomImportTmpRecord.Site;
+
+                    //  delete bom
+                    this.deleteBom(bomImportTmpRecord);
+
+                    // insert bom
+                    this.insertBom(bomImportTmpRecord);
+
+                }
+
+                // There is no records in bomversion
+            }
+            else
+            {
+                beforeBomId = bomImportTmpRecord.BOMVersion;
+                beforeItemId = bomImportTmpRecord.ParentItem;
+                beforeSiteId = bomImportTmpRecord.Site;
+
+                // insert bomVersion
+                this.insertBomVersion(bomImportTmpRecord);
+
+                // insert bomTable
+                this.insertBomTable(bomImportTmpRecord);
+
+                // insert bom
+                this.insertBom(bomImportTmpRecord);
+             
+            }
+
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertBomVersion</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// insert BomVersion
+    /// </summary>
+    /// <param name = "_bomImportTmpSearch">KJP_SM_BomImportTemp</param>
+    private void insertBomVersion(KJP_SM_BomImportTemp _bomImportTmpSearch)
+    {
+
+        BOMVersion insertBomVersionData;
+
+        InventDim inventDimNew;
+
+        inventDimNew.InventSiteId = _bomImportTmpSearch.Site;
+
+        insertBomVersionData.clear();
+        insertBomVersionData.BOMId = _bomImportTmpSearch.BOMVersion;
+        insertBomVersionData.Name = _bomImportTmpSearch.BOMVersionName;
+        insertBomVersionData.ItemId = _bomImportTmpSearch.ParentItem;
+        insertBomVersionData.InventDimId = inventDim::findOrCreate(inventDimNew).inventDimId;
+        insertBomVersionData.PmfTypeId = PmfBOMFormula::BOM;
+        insertBomVersionData.FromQty = num_1;
+        insertBomVersionData.SequenceId = num_1;
+
+        insertBomVersionData.insert();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>deleteBom</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Delete Bom
+    /// </summary>
+    /// <param name = "_bomImportTmpSearch">KJP_SM_BomImportTemp</param>
+    private void deleteBom(KJP_SM_BomImportTemp _bomImportTmpSearch)
+    {
+        BOM bomDelete;
+        bomDelete.skipDataMethods(true);
+        
+        delete_from bomDelete
+            where bomDelete.BOMId == _bomImportTmpSearch.BOMVersion;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertBom</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert Bom
+    /// </summary>
+    /// <param name = "_bomImportTmpSearch">KJP_SM_BomImportTemp</param>
+    private void insertBom(KJP_SM_BomImportTemp _bomImportTmpSearch)
+    {
+
+        BOM insertBomData;
+        InventDim inventDimNew;
+        UnitOfMeasure unitOfMeasure;
+        str errorMsg;
+
+        inventDimNew.InventSiteId = _bomImportTmpSearch.Site;
+        inventDimNew.InventLocationId = _bomImportTmpSearch.Location;
+
+        if (beforeBomIdValue != _bomImportTmpSearch.BOMVersion)
+        {
+            bomLineSeq = num_1 ;
+            bomLineNumberSeq = num_1 ;
+            beforeBomIdValue = _bomImportTmpSearch.BOMVersion;
+        }
+
+        insertBomData.clear();
+        insertBomData.BOMId = _bomImportTmpSearch.BOMVersion;
+        insertBomData.ItemId = _bomImportTmpSearch.ChildItem;
+        insertBomData.InventDimId = inventDim::findOrCreate(inventDimNew).inventDimId;
+        insertBomData.BOMQty = _bomImportTmpSearch.Quantity;
+        insertBomData.BOMQtySerie = _bomImportTmpSearch.PerSeries;
+        insertBomData.BOMType = _bomImportTmpSearch.LineType;
+        insertBomData.ProdFlushingPrincip = _bomImportTmpSearch.FlushingPrinciple;
+        insertBomData.UnitId = InventTable::find(_bomImportTmpSearch.ChildItem).bomUnitId();
+        insertBomData.Position = _bomImportTmpSearch.LineNumber;
+        insertBomData.FromDate = _bomImportTmpSearch.FromDate;
+        insertBomData.ToDate = _bomImportTmpSearch.ToDate;
+        insertBomData.Calculation = NoYes::Yes;
+        insertBomData.LineNum = bomLineNumberSeq;
+        insertBomData.LineCreationSequenceNumber = bomLineSeq;
+        insertBomData.ScrapConst = _bomImportTmpSearch.ScrapConst;
+        insertBomData.ScrapVar = _bomImportTmpSearch.ScrapVar;
+        insertBomData.VendId = _bomImportTmpSearch.VendId;
+        insertBomData.RoundUp = BOMRoundUp::Qty;
+
+        unitOfMeasure = UnitOfMeasure::findBySymbol(insertBomData.UnitId);
+
+        switch(unitOfMeasure.DecimalPrecision)
+        {
+            case num_0:
+                insertBomData.RoundUpQty = real_0;
+                break;
+            case num_1:
+                insertBomData.RoundUpQty = real_1;
+                break;
+            case num_2:
+                insertBomData.RoundUpQty = real_2;
+                break;
+            default:
+                insertBomData.RoundUpQty = real_3;
+                break;
+        }
+
+        insertBomData.insert();
+
+        bomLineSeq ++;
+        bomLineNumberSeq ++;
+
+        //the check of loop
+        chkLoopResult = BOMHierarchyCheck::checkBOMCircularity(_bomImportTmpSearch.BOMVersion);
+
+        if (!chkLoopResult)
+        {
+            chkLoopFlg = false;
+
+            errorMsg = strFmt("@KJP:KJP500174", _bomImportTmpSearch.ChildItem);
+            errorMsgList.addEnd(errorMsg);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertBomTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert BomTable
+    /// </summary>
+    /// <param name = "_bomImportTmpSearch">KJP_SM_BomImportTemp</param>
+    private void insertBomTable(KJP_SM_BomImportTemp _bomImportTmpSearch)
+    {
+    
+        BomTable insertBomTable;
+
+        insertBomTable.clear();
+        insertBomTable.BOMId = _bomImportTmpSearch.BOMVersion;
+        insertBomTable.Name = _bomImportTmpSearch.BOMVersionName;
+        insertBomTable.ItemGroupId = InventTable::find(_bomImportTmpSearch.ParentItem).itemGroupId();
+        insertBomTable.SiteId = _bomImportTmpSearch.Site;
+        insertBomTable.PmfBOMFormula = PmfBOMFormula::BOM;
+
+        insertBomTable.insert();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>bomImportFinishProcess</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Finish Process
+    /// </summary>
+    private void bomImportFinishProcess()
+    {
+        if (dialog.closedOk())
+        {
+            Args args = new Args();
+
+            args.caller(importArgs);
+            args.parmObject(errorMsgList);
+            args.parmEnum(NoYes::No);
+
+            new MenuFunction(menuItemDisplayStr(KJP_SM_BomImportResultPage), MenuItemType::Display).run(args);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

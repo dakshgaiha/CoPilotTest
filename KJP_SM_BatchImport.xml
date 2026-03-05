@@ -1,0 +1,971 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_BatchImport</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using System.IO.Stream;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelPackage;
+using OfficeOpenXml.ExcelRange;
+/// <summary>
+/// Batch import class for import
+/// </summary>
+Class KJP_SM_BatchImport extends RunBase
+{
+    Dialog                  dialog;
+    Filename                filename;
+    private                 ExcelRange range;
+    ExcelWorksheet          worksheet;
+    public static const str OkButtonName = 'OkButton';
+    public static const str FileUploadName = 'FileUpload';
+    public static const str LineNumber = 'A';
+    public static const str PurchaseOrderNumber = 'B';
+    public static const str ItemNumber = 'C';
+    public static const str ProductName = 'D';
+    public static const str BatchNumber = 'E';
+    public static const str BatchQuantity = 'F';
+    public static const str Unit = 'G';
+    public static const str ActualCoefficient = 'H';
+    public static const str ManufactureDate = 'I';
+    public static const str BestBeforeDate = 'J';
+    public static const str ExpirationDate = 'K';
+    public static const str ProductionId = 'L';
+    public static const str dateformatmd = 'yyyy/m/d;@';
+    public static const str dateFormatmmdd = 'yyyy/mm/dd;@';
+    public static const str dateFormatmdd = 'yyyy/m/dd;@';
+    public static const str dateFormatmmd = 'yyyy/mm/d;@';
+
+    public static const int HeaderLine = 1;
+    public static const int AllowDecimalNumber = 3;
+    int                     uploadCount = 0;
+
+    private List headerCellList = new List(Types::String);           
+    private List InventBatchTableList = new List(Types::Record); 
+    private List infoMsgList = new List(Types::String);             
+
+    private Args importArgs;
+
+
+
+
+
+ 
+
+    
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_BatchImport obj = new KJP_SM_BatchImport();
+
+        if (obj.prompt())
+        {
+            obj.setArgs(_args);
+            obj.runOperation();
+           
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// can Run In New Session
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setArgs</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set Args from
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public void setArgs(Args _args)
+    {
+        importArgs = _args;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Dialog form for import
+    /// </summary>
+    /// <returns>Object</returns>
+    public Object dialog()
+    {
+        DialogGroup      dialogGroup;
+        FormBuildControl formBuildControl;
+        FileUploadBuild  dialogFileUpload;
+
+        dialog = super();
+        //Caption
+        dialog.caption("@KJP:KJP101364");
+
+        dialogGroup = dialog.addGroup();
+        formBuildControl = dialog.formBuildDesign().control(dialogGroup.name());
+        dialogFileUpload = formBuildControl.addControlEx(classstr(FileUpload), FileUploadName);
+        dialogFileUpload.style(FileUploadStyle::MinimalWithFilename);
+        dialogFileUpload.baseFileUploadStrategyClassName(classstr(FileUploadTemporaryStorageStrategy));
+        dialogFileUpload.fileTypesAccepted(KJP_CM_ConstantHelper::excelExtension);
+
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialogPostRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog Post Run process
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    public void dialogPostRun(DialogRunbase _dialog)
+    {
+        FileUpload fileUpload = this.getFormControl(_dialog,FileUploadName);
+        fileUpload.notifyUploadCompleted += eventhandler(this.uploadCompleted);
+        this.setDialogOkButtonEnabled(_dialog, false);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>uploadCompleted</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// upload Completed process
+    /// </summary>
+    protected void uploadCompleted()
+    {
+        FileUpload fileUpload = this.getFormControl(dialog,FileUploadName);
+        FileUploadTemporaryStorageResult uploadResult = fileUpload.getFileUploadResult();
+         
+        if (uploadResult.getUploadStatus())
+        {
+            fileUpload.notifyUploadCompleted -= eventhandler(this.UploadCompleted);
+            filename = fileUpload.fileName();
+            this.setDialogOkButtonEnabled(dialog, true);
+        }
+        else
+        {
+            warning(uploadResult.getLogMessage());
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDialogOkButtonEnabled</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set Dialog Ok Button Enabled
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    /// <param name = "_isEnabled">boolean</param>
+    protected void setDialogOkButtonEnabled(DialogRunbase _dialog, boolean _isEnabled)
+    {
+        FormControl okButtonControl = this.getFormControl(_dialog,OkButtonName);
+        if (okButtonControl)
+        {
+            okButtonControl.enabled(_isEnabled);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFormControl</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get Form Control
+    /// </summary>
+    /// <param name = "_dialog">DialogRunbase</param>
+    /// <param name = "_controlName">str</param>
+    /// <returns>FormControl</returns>
+    protected FormControl getFormControl(DialogRunbase _dialog, str _controlName)
+    {
+        return _dialog.formRun().control(_dialog.formRun().controlId( _controlName));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// run
+    /// </summary>
+    public void run()
+    {
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            this.processExcFile();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processExcFile</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// this will process file data and check sheet
+    /// </summary>
+    public void processExcFile()
+    {
+        FileUpload                          fileUploadControl;
+        FileUploadTemporaryStorageResult    fileUploadResult ;
+        str                                 downloadUrl;
+        Stream                              localStream;
+        str                                 fileNameLoc;
+
+        int infologCounter = infologLine();
+        try
+        {
+            fileUploadControl   = this.getFormControl(dialog, FileUploadName);
+            fileUploadResult    = fileUploadControl.getFileUploadResult();
+            fileNameLoc         = fileUploadResult.getFileName();
+           
+            if (fileUploadResult != null && fileUploadResult.getUploadStatus())
+            {
+                downloadUrl = fileUploadResult.getDownloadUrl();
+            }
+            localStream = fileUploadResult.openResult();
+        }
+        catch
+        {
+            str errorString = KJP_SM_RAFPickListImportService::getInfologStr(infologCounter);
+            error(errorString);
+            return;
+        }
+
+        if((localStream != null)
+            && (fileNameLoc != nullValueBaseType(Types::String)))
+        {
+            if(KJP_CM_Utils::checkFileName(fileNameLoc))
+            {
+                this.readExcelData(localStream);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>readExcelData</Name>
+				<Source><![CDATA[
+   /// <summary>
+    ///  Read excel file check columns count
+   /// </summary>
+   /// <param name = "localStream">Read Upload excel data</param>
+    public void readExcelData(Stream localStream)
+    {
+        ExcelPackage        package;
+        ExcelAddressBase    dimension;
+
+        int                 excelRowCount;
+        container           rangeCon;
+        boolean             chkResult = true;
+
+        package     = new ExcelPackage(localStream);
+        package.Load(localStream);
+
+        worksheet   = package.get_Workbook().get_Worksheets().get_Item(1);
+        dimension   = worksheet.Dimension;
+
+        this.listHeaderCell();
+
+        range       = worksheet.Cells;
+        chkResult   = this.CheckSheetName(worksheet);
+
+        // Stop further execution if sheet name is not correct
+        if (!chkResult)
+        {
+            this.importInventBatchcomplete();
+            return;  
+        }
+
+        //check column count
+        chkResult   = this.checkColumnCount();
+        if (!chkResult)
+        {
+            this.importInventBatchcomplete();
+            return;  // Stop further execution 
+        }
+
+            
+        excelRowCount = dimension.End.Row - dimension.Start.Row + 1;
+        
+         //Start with 2 due to header excluded.
+        for (int i = 2; i <= excelRowCount; i++)
+        {
+            chkResult   = true;
+            rangeCon    = conNull();
+            rangeCon    += any2Str(range.get_Item(LineNumber + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(PurchaseOrderNumber + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(ItemNumber + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(ProductName + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(BatchNumber + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(BatchQuantity + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(Unit + int2Str(i)).Value);
+            rangeCon    += any2Str(range.get_Item(ActualCoefficient + int2Str(i)).Value);
+
+            TransDate   DateLocal;
+            TransDate   bestBeforeLoc;
+            TransDate   expDateLocal;
+
+            real manufactureVar = range.get_Item(ManufactureDate + int2Str(i)).Value;
+            if (manufactureVar != 0)
+            {
+                // Assuming 0 indicates blank or empty date value
+                DateLocal = any2Date(manufactureVar - 2);
+            }
+
+            rangeCon += DateLocal;
+
+            // Check if BestBeforeDate is not blank before conversion
+            real bestBeforeDateVar = range.get_Item(BestBeforeDate + int2Str(i)).Value;
+            if (bestBeforeDateVar != 0)
+            {
+                // Assuming 0 indicates blank or empty date value
+                bestBeforeLoc = any2Date(bestBeforeDateVar - 2);
+            }
+
+            rangeCon += bestBeforeLoc;
+
+            // Check if ExpirationDate is not blank before conversion
+            real expDateVar = range.get_Item(ExpirationDate + int2Str(i)).Value;
+            if (expDateVar != 0)
+            {
+                //Assuming 0 indicates blank or empty date value
+                expDateLocal = any2Date(expDateVar - 2);
+            }
+
+            rangeCon += expDateLocal;
+
+            rangeCon += any2Str(range.get_Item(ProductionId + int2Str(i)).Value);
+
+            // Validate the excel data
+
+            chkResult = this.chkExcelData(rangeCon, i);
+
+            if (chkResult)
+            {
+                ItemId                      itemIdCommonFunction                = conPeek(rangeCon, 3);
+                InventBatchId               inventBatchIdCommonFunction         = conPeek(rangeCon,5);
+                PdsBestBeforeDate           bestBeforeDateCommonFunction        = conPeek(rangeCon,10);
+                InventBatchProdDate         inventBatchProdDateCommonFunction   = conPeek(rangeCon,9);
+                InventBatchExpDate          inventBatchExpDateCommonFunction    = conPeek(rangeCon,11);
+                KJP_SM_ActualCoefficient    actualCoefficientCommonFunction     = conPeek(rangeCon,8);
+                ProdId                      prodIdCommonFunction                = conPeek(rangeCon,12);
+                
+                // Make call to the common function
+                int infologCounter = infologLine();
+                try
+                {
+                    ttsbegin;
+                    if(prodIdCommonFunction != nullValueBaseType(Types::String))
+                    {
+                        ProdTable prodTableCommonFunction = ProdTable::find(prodIdCommonFunction);
+                    
+                        this.CallCommonFunction(prodTableCommonFunction.ItemId,
+                                            inventBatchIdCommonFunction,
+                                            inventBatchProdDateCommonFunction,
+                                            actualCoefficientCommonFunction,
+                                            inventBatchExpDateCommonFunction,
+                                            bestBeforeDateCommonFunction);
+
+                        this.UpdateInventDimBatch(prodIdCommonFunction, inventBatchIdCommonFunction);
+                    }
+                    else
+                    {
+                        this.CallCommonFunction(itemIdCommonFunction,
+                                            inventBatchIdCommonFunction,
+                                            inventBatchProdDateCommonFunction,
+                                            actualCoefficientCommonFunction,
+                                            inventBatchExpDateCommonFunction,
+                                            bestBeforeDateCommonFunction);
+                    }
+                    ttscommit;
+                }
+                catch
+                {
+                    str errorString = KJP_SM_RAFPickListImportService::getInfologStr(infologCounter);
+                    errorString     = strFmt("@KJP:KJP500512",
+                                                i,
+                                                workSheet.Name,
+                                                errorString);
+                    
+                    infoMsgList.addEnd(errorString);
+                }
+            }
+        }
+
+        str msg = strFmt("@KJP:KJP500194", uploadCount);
+        infoMsgList.addEnd(msg);
+        
+        this.importInventBatchcomplete();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>listHeaderCell</Name>
+				<Source><![CDATA[
+    private void listHeaderCell()
+    {
+        headerCellList.addEnd(LineNumber + any2Str(HeaderLine));
+        headerCellList.addEnd(PurchaseOrderNumber + any2Str(HeaderLine));
+        headerCellList.addEnd(ItemNumber + any2Str(HeaderLine));
+        headerCellList.addEnd(ProductName + any2Str(HeaderLine));
+        headerCellList.addEnd(BatchNumber + any2Str(HeaderLine));
+        headerCellList.addEnd(BatchQuantity + any2Str(HeaderLine));
+        headerCellList.addEnd(Unit + any2Str(HeaderLine));
+        headerCellList.addEnd(ActualCoefficient + any2Str(HeaderLine));
+        headerCellList.addEnd(ManufactureDate + any2Str(HeaderLine));
+        headerCellList.addEnd(BestBeforeDate + any2Str(HeaderLine));
+        headerCellList.addEnd(ExpirationDate + any2Str(HeaderLine));
+        headerCellList.addEnd(ProductionId + any2Str(HeaderLine));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>chkExcelData</Name>
+				<Source><![CDATA[
+    private boolean chkExcelData(container _con, int _row)
+    { 
+        ItemId              itemIdLoc           = conPeek(_con, 3);
+        PdsBestBeforeDate   bestBeforeDateLoc   = conPeek(_con,10);
+        InventBatchExpDate  inventBatchExpDate  = conPeek(_con,11);
+        ProdId              prodId              = conPeek(_con,12);
+        InventBatchProdDate inventBatchProdDate = conPeek(_con,9);
+        ProdTable           prodTableLoc;
+        boolean             ret = true;
+        
+        ret = this.checkDateFormat(_row);
+
+        if (ret)
+        {
+            ret = this.validatePO(conPeek(_con, 2), _row) && (this.ValidateManufactureDate(inventBatchProdDate, bestBeforeDateLoc, inventBatchExpDate, _row));
+
+            if (ret)
+            {
+                if (prodId)
+                {
+                    prodTableLoc = ProdTable::find(prodId);
+
+                    ret = (this.validatePO(conPeek(_con, 2), _row)) 
+                            && (this.validateProduction(conPeek(_con,2),conPeek(_con,1),conPeek(_con,12),_row)) 
+                            && (this.validateProdBOM(_row,itemIdLoc))
+                            && (this.validateUnit(_row,conPeek(_con, 3),conPeek(_con, 7),conPeek(_con,12)));
+                        
+                        
+                    if (ret)
+                    {
+                        return ret;
+                    }
+                }
+                else
+                {
+                    return ret;
+                }
+            }
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>CheckSheetName</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking sheet name with generalpurposemaster 
+    /// </summary>
+    /// <param name = "_sheet">Sheet Name check</param>
+    /// <returns>True or false</returns>
+    public boolean CheckSheetName(ExcelWorksheet _sheet)
+    {
+        str errorMsg;
+        str destinationcode;
+       
+        KJP_CM_GeneralPurposeMaster  generalPurposeMasterEN;
+        KJP_CM_GeneralPurposeMaster  generalPurposeMasterJP; 
+        str SheetName = _sheet.Name;
+        select firstonly generalPurposeMasterEN where generalPurposeMasterEN.DestinationCode == SheetName && generalPurposeMasterEN.Key == KJP_CM_ConstantHelper::LotInformationSheetNameKey && generalPurposeMasterEN.OriginalCode == KJP_CM_ConstantHelper::origCodeDownloadTemlateFilePath_SM_EN;
+       
+        select firstonly generalPurposeMasterJP where generalPurposeMasterJP.DestinationCode == SheetName && generalPurposeMasterJP.Key == KJP_CM_ConstantHelper::LotInformationSheetNameKey && generalPurposeMasterJP.OriginalCode == KJP_CM_ConstantHelper::origCodeDownloadTemlateFilePath_SM_JA;
+
+        if (generalPurposeMasterEN)
+        {
+            destinationcode = generalPurposeMasterEN.DestinationCode;
+        }
+        else if (generalPurposeMasterJP)
+        {
+            destinationcode = generalPurposeMasterJP.DestinationCode;
+        }
+       
+        if (SheetName != destinationcode)
+        {
+            errorMsg = ("@KJP:KJP500237");
+            infoMsgList.addEnd(errorMsg);
+            return false;
+        }
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>CallCommonFunction</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Calling common function #706 for InventBatch Insert/Update
+    /// </summary>
+    ///  /// <param name = "_conItem">Item id </param>
+    /// <param name = "_conInventBatchId">BatchID</param>
+    /// <param name = "_conManufactureDate">ManufactureDate</param>
+    /// <param name = "_conActualCoefficient">Actual</param>
+    /// <param name = "_conExpDate">expire date</param>
+    /// <param name = "_conBestBeforeDate">Best before date</param>
+    private void CallCommonFunction(ItemId _conItem,InventBatchId _conInventBatchId, InventBatchProdDate _conManufactureDate, KJP_SM_ActualCoefficient _conActualCoefficient, InventBatchExpDate _conExpDate, PdsBestBeforeDate _conBestBeforeDate)
+    {
+        InventBatch   inventBatchLocal;
+        KPJ_SM_BatchImportCommonFunction  function = new KPJ_SM_BatchImportCommonFunction();
+        function.InventBatchCommonFunction(_conItem,_conInventBatchId,_conManufactureDate,_conActualCoefficient,_conExpDate,_conBestBeforeDate );
+       
+        inventBatchLocal = InventBatch::find(_conInventBatchId,_conItem);
+        if (inventBatchLocal)
+        {
+            uploadCount += 1;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>importInventBatchComplete</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// If complete run result form
+    /// </summary>
+    private void importInventBatchComplete()
+    {
+        if (dialog.closedOk())
+        {
+            Args args = new Args();
+            args.caller(importArgs);
+            args.parmObject(infoMsgList);
+            args.parmEnum(NoYes::No);
+
+            new MenuFunction(menuItemDisplayStr(KJP_SM_LotInformationUploadResults), MenuItemType::Display).run(args);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validatePO</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validating purchase order 
+    /// </summary>
+    /// <param name = "_purchId"> Purch id </param>
+    /// <param name = "_row"> Row </param>
+    /// <returns> Boolen </returns>
+    private boolean validatePO(str _purchId,int _row)
+    {
+        boolean chkReasult = true;
+        str errorMsg; 
+          
+        var cells = worksheet.get_Cells();
+        OfficeOpenXml.ExcelRange cell = cells.get_Item(1, 2);
+        str columnname = cell.Value;
+      
+        if (!PurchTable::exist(_purchId))
+        {
+            errorMsg = strFmt("@KJP:KJP500239",_row,worksheet,columnname);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateProdBOM</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validating prod bom
+    /// </summary>
+    /// <param name = "_row"> Excel row</param>
+    /// <param name = "_ItemId"> item id</param>
+    /// <returns> boolen </returns>
+    private boolean validateProdBOM(int _row,ItemId _ItemId)
+    {
+        boolean chkReasult = true;
+        str errorMsg;
+      
+        ProdBOM prodBOM;
+        select firstonly prodBOM where ProdBOM.ItemId == _ItemId; 
+
+        if (!prodBOM)
+        {
+            errorMsg = strFmt("@KJP:KJP500240",_row,worksheet);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>ValidateManufactureDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validating Manufacture date and best before date
+    /// </summary>
+    /// <param name = "_manuFactureDate"> manufacture date </param>
+    /// <param name = "_bestBeforeDate"> best before date</param>
+    /// <param name = "_expDate"> expiry date</param>
+    /// <param name = "row"> row</param>
+    /// <returns> boolen </returns>
+    private boolean ValidateManufactureDate(InventBatchProdDate   _manuFactureDate, PdsBestBeforeDate  _bestBeforeDate, InventBatchExpDate _expDate,int row)
+    {
+        boolean chkReasult = true;
+        str errorMsg;
+       
+        if (!_manuFactureDate)
+        {
+            errorMsg = strFmt("@KJP:KJP500449",row,worksheet);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        else if (!_expDate && _bestBeforeDate)
+        {
+            errorMsg = strFmt("@KJP:KJP500450",row,worksheet);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateUnit</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validating unit
+    /// </summary>
+    /// <param name = "_row">Excel row </param>
+    /// <param name = "_ItemId"> item id</param>
+    /// <param name = "_unitId">unit id</param>
+    /// <param name = "_prodId">prod id</param>
+    /// <returns>boolen</returns>
+    private boolean validateUnit(int _row,ItemId _ItemId,str _unitId,str _prodId)
+    {
+        boolean chkReasult = true;
+        str errorMsg;
+        var cells = worksheet.get_Cells();
+        OfficeOpenXml.ExcelRange cell = cells.get_Item(1, 7);
+        str columnname = cell.Value;
+      
+        ProdBOM prodBOM;
+        select firstonly prodBOM where ProdBOM.ProdId == _prodId && prodBOM.UnitId == _unitId  && prodBOM.ItemId == _ItemId;
+
+        if (!prodBOM)
+        {
+            errorMsg = strFmt("@KJP:KJP500241",_row,worksheet,columnname);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>UpdateInventDimBatch</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Updating batch in inventbatch
+    /// </summary>
+    /// <param name = "_production">prod id</param>
+    /// <param name = "_inventbatchid">invent batch id</param>
+    /// <returns> boolen </returns>
+    private boolean UpdateInventDimBatch(str _production,InventBatchId _inventbatchid)
+    {
+        ProdTable prodTable = prodTable::find(_production,true);
+        InventDim inventDim = InventDim::find(prodTable.InventDimId,true);
+       
+        str errorMsg;
+             
+        boolean chkReasult = true;
+
+        if ((prodTable.ProdStatus == ProdStatus::ReportedFinished) || (prodTable.ProdStatus == ProdStatus::Completed) )
+        {
+            errorMsg = strFmt("@KJP:KJP500313",_production);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        else if (inventDim.inventBatchId)
+        {
+            errorMsg = strFmt("@KJP:KJP500312",_production);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        else if (_inventbatchid && !inventDim.inventBatchId)
+        {
+            inventDim.inventBatchId = _inventbatchid;
+            inventDim = InventDim::findOrCreate(inventDim);
+            prodTable.InventDimId = inventDim.inventDimId;
+            prodTable.update(); 
+           
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateProduction</Name>
+				<Source><![CDATA[
+   /// <summary>
+    /// Validate Production Order if it is related to PO or Not
+   /// </summary>
+   /// <param name = "purchIdLoc">Id</param>
+   /// <param name = "lineNumberLoc">Line Number</param>
+   /// <param name = "production">Production order</param>
+   /// <param name = "_row">Row number</param>
+   /// <returns>Check result</returns>
+    private boolean validateProduction(str purchIdLoc,TradeLineNumber lineNumberLoc,str production,int _row)
+    {
+        boolean         chkReasult = true;
+        str             errorMsg;
+        var cells = worksheet.get_Cells();
+        OfficeOpenXml.ExcelRange cell = cells.get_Item(1, 12);
+        str columnname = cell.Value;
+
+        PurchLine       purchLine = PurchLine::find(purchIdLoc,lineNumberLoc);
+       
+        if ((PurchTable::exist(purchIdLoc) && (purchLine.InventRefId != production )))
+        {
+            errorMsg = strFmt("@KJP:KJP500239",_row,worksheet,columnname);
+            infoMsgList.addEnd(errorMsg);
+            chkReasult = false;
+        }
+        return chkReasult;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkColumnCount</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking excel column count from master
+    /// </summary>
+    /// <returns>True or False</returns>
+    public boolean checkColumnCount()
+    {
+        // Get the number of columns in the Excel sheet
+        int actualColumnCount = worksheet.Dimension.End.Column; 
+
+        // Get the expected column count from a custom table (you can adjust this based on your system)
+        str expectedColumnCount = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::ImportFileColumnCheckKey, KJP_CM_ConstantHelper::origcodeImportFileColumnCheck_LotInformation).DestinationCode;
+
+        // Compare the actual column count with the expected column count
+        if (actualColumnCount == str2Int(expectedColumnCount))
+        {
+            return true;
+        }
+        else
+        {
+            str errorMsg = ("@KJP:KJP500238");
+            infoMsgList.addEnd(errorMsg);
+            return false;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkDateFormat</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  check date format methof if format is YYYY/MM/DD
+    /// </summary>
+    /// <param name = "_row">_row</param>
+    /// <returns>Boolen</returns>
+    public boolean checkDateFormat(int _row)
+    {
+        boolean                 ret = true;
+        str                     cellFormatProd,cellFormatbest,cellFormatexp;
+        var                     cells = worksheet.get_Cells();
+        str                     errorMsg;
+       
+        //Declarations for ManufactureDate
+        OfficeOpenXml.ExcelRange cellProd = cells.get_Item(_row, 9);
+        cellFormatProd = cellProd.Style.Numberformat.Format;
+        str columnvalueProd = cellProd.Value;
+        OfficeOpenXml.ExcelRange cellProdCol = cells.get_Item(1, 9);
+        str columnnameProd = cellProdCol.Value;
+
+        //Declarations for BestBeforeDate
+        OfficeOpenXml.ExcelRange cellbest = cells.get_Item(_row, 10);
+        cellFormatbest = cellbest.Style.Numberformat.Format;
+        str columnvaluebest = cellbest.Value;
+        OfficeOpenXml.ExcelRange cellBestCol = cells.get_Item(1, 10);
+        str                 columnnamebest = cellBestCol.Value;
+
+        //For ExpiryDate Check
+        OfficeOpenXml.ExcelRange cellexp = cells.get_Item(_row, 11);
+        cellFormatexp = cellexp.Style.Numberformat.Format;
+        str columnvalueExp = cellexp.Value;
+        OfficeOpenXml.ExcelRange cellExpCol = cells.get_Item(1, 11);
+        str    columnnameexp = cellExpCol.Value;
+       
+        //check Manufacture/Bestbefore/Expiry dates format
+        if ((columnvalueProd) &&
+            (cellFormatProd != dateformatmd )  &&
+            (cellFormatProd != dateFormatmmdd) &&
+            (cellFormatProd != dateFormatmdd)  &&
+            (cellFormatProd != dateFormatmmd))
+        {
+            errorMsg = strFmt("@KJP:KJP500628",_row,worksheet,columnnameProd);
+            infoMsgList.addEnd(errorMsg);
+            ret = false;
+        }
+        else if ((columnvaluebest) &&
+                (cellFormatbest != dateformatmd )  &&
+                (cellFormatbest != dateFormatmmdd) &&
+                (cellFormatbest != dateFormatmdd)  &&
+                (cellFormatbest != dateFormatmmd))
+        {
+            errorMsg = strFmt("@KJP:KJP500628",_row,worksheet,columnnamebest);
+            infoMsgList.addEnd(errorMsg);
+            ret = false;
+        }
+        else if ((columnvalueExp) &&
+                 (cellFormatexp != dateformatmd )  &&
+                 (cellFormatexp != dateFormatmmdd) &&
+                 (cellFormatexp != dateFormatmdd)  &&
+                 (cellFormatexp != dateFormatmmd))
+        {
+            errorMsg = strFmt("@KJP:KJP500628",_row,worksheet,columnnameexp);
+            infoMsgList.addEnd(errorMsg);
+            ret = false;
+        }
+        
+        // Check Manufacture Date Format using validateDateCell
+        if (!this.validateDateCell(_row, 9, worksheet.get_Cells()))
+        {
+            errorMsg = strFmt("@KJP:KJP500628", _row, worksheet, columnnameProd);
+            infoMsgList.addEnd(errorMsg);
+            ret = false;
+        }
+        // Check Best Before Date Format using validateDateCell
+        else if (!this.validateDateCell(_row, 10, worksheet.get_Cells()))
+        {
+            errorMsg = strFmt("@KJP:KJP500628", _row, worksheet, columnnamebest);
+            infoMsgList.addEnd(errorMsg);
+            ret = false;
+        }
+        // Check Expiry Date Format using validateDateCell
+        else if (!this.validateDateCell(_row, 11, worksheet.get_Cells()))
+        {
+            errorMsg = strFmt("@KJP:KJP500628", _row, worksheet, columnnameexp);
+            infoMsgList.addEnd(errorMsg);
+            ret = false;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateDateCell</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Method to validate the date value of a cell.
+    /// </summary>
+    /// <param name = "_rowCounter">_rowCounter</param>
+    /// <param name = "_colCounter">_colCounter</param>
+    /// <param name = "_range">_range</param>
+    /// <returns>True if the value in the cell is in expected date format, false otherwise</returns>
+    public boolean validateDateCell(int _rowCounter, int _colCounter, OfficeOpenXml.ExcelRange _range)
+    {
+        boolean ret = true;
+
+        // Get the value of the date cell as a string
+        str valueStr = _range.get_Item(_rowCounter, _colCounter).Text;
+
+        if (valueStr == nullValueBaseType(Types::String))
+        {
+            return true;
+        }
+
+        // Trim spaces around the string
+        valueStr = strLTrim(valueStr);
+        valueStr = strRTrim(valueStr);
+
+        // Replace date characters with separators if needed
+        valueStr = strReplace(valueStr, KJP_CM_ConstantHelper::dateCharacter, KJP_CM_ConstantHelper::dateSeperator);
+
+        // Check if the string has the correct length and if it's valid
+        if (strLen(valueStr) >= KJP_CM_ConstantHelper::DateStringLengthMin &&
+                strLen(valueStr) <= KJP_CM_ConstantHelper::DateStringLengthMax)
+        {
+            // Try converting the string to a date object                                               
+            date dateValue = str2Date(valueStr, 321);
+
+            // Convert the date back to a string in the desired format and compare
+            str dateStr = date2Str(dateValue, 321, DateDay::Auto, DateSeparator::Slash, DateMonth::Auto, DateSeparator::Slash, DateYear::Digits4);
+            dateStr = strReplace(dateStr, KJP_CM_ConstantHelper::dateCharacter, KJP_CM_ConstantHelper::dateSeperator);
+
+            // If the original string doesn't match the formatted date string, it's invalid
+            if (valueStr != dateStr)
+            {
+                return false;  // Invalid date format
+            }
+        }
+        else
+        {
+            return false;  // Invalid length
+        }
+
+        return ret;  // Date is valid
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

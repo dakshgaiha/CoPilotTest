@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DataOutputForPSIReportIntegrationController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// KJP_SM_DataOutputForPSIReportIntegrationController
+/// </summary>
+class KJP_SM_DataOutputForPSIReportIntegrationController extends SysOperationServiceController
+{
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Control to run the CreatingMonthEndInventoryTable
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    public static void main(Args _args)
+    {
+        SysOperationServiceController controller = new KJP_SM_DataOutputForPSIReportIntegrationController(
+            classStr(KJP_SM_DataOutputForPSIReportIntegrationService),
+            methodStr(KJP_SM_DataOutputForPSIReportIntegrationService, runDataOutputForPSIReportIntegrationController),
+            SysOperationExecutionMode::Synchronous);
+
+        KJP_SM_DataOutputForPSIReportIntegrationController::runMain(_args, controller);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runMain</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Control to run the CreatingMonthEndInventoryTableBatchDialog
+    /// </summary>
+    /// <param name = "_args">Args</param>
+    /// <param name = "_controller">SysOperationServiceController</param>
+    private static void runMain(Args _args, SysOperationServiceController _controller)
+    {
+        _controller.parmDialogCaption("@KJP:KJP103774");
+        _controller.parmArgs(_args);
+        _controller.parmLoadFromSysLastValue(true);
+        _controller.showBatchTab(true);
+        _controller.startOperation();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

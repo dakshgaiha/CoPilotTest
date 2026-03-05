@@ -1,0 +1,1669 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_EastWestAppDataDL</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+using System.IO;
+using OfficeOpenXml;
+using OfficeOpenXml.ExcelRange;
+class KJP_SM_EastWestAppDataDL
+{
+    static TransDate dateInMonth;                               // 今日
+    static TransDate firstDateOfMonth;                          // 本月第一日
+    
+    static TransDate dateInThreeMonthAfter;                     // 3か月後の今日
+    static TransDate lastDateOfThreeMonthAfter;                 // 3か月後月の最後日
+    
+    static TransDate dateInThreeMonthBefore;                    // 3か月前月の今日
+    static TransDate firstDateOfThreeMonthBefore;               // 3か月前月の第一日
+    
+    static TransDate dateInPreMonth;                            // 前月の今日
+    static TransDate lastDateOfPreMonth;                        // 前月の最後日
+
+    static str originalCodeOne;
+    static str originalCodeTwo;
+    static int currentRow;
+
+    static const str    CodeLike01               = '*01';
+    static const str    CodeLike02               = '*02';
+    static const str    Com                      = ',';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main
+    /// </summary>
+    /// <param name = "_args"></param>
+    public static void main(Args _args)
+    {
+        dateInMonth = KJP_CM_Utils::convertUtcToDate(KJP_CM_Utils::getSystemDateTimeUserTimeZone());
+        firstDateOfMonth = dateStartMth(dateInMonth);
+        
+        dateInThreeMonthAfter = dateMthFwd(dateInMonth, 2);
+        lastDateOfThreeMonthAfter = endMth(dateInThreeMonthAfter);
+        
+        dateInThreeMonthBefore = dateMthFwd(dateInMonth, -3);
+        firstDateOfThreeMonthBefore = dateStartMth(dateInThreeMonthBefore);
+        
+        dateInPreMonth = prevMth(dateInMonth);
+        lastDateOfPreMonth = endMth(dateInPreMonth);
+        
+        originalCodeOne = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::distribution_SM_Key,KJP_CM_ConstantHelper::origCodeDistribution_SM_01).OriginalCode;
+        originalCodeTwo = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::distribution_SM_Key,KJP_CM_ConstantHelper::origCodeDistribution_SM_02).OriginalCode;
+
+        FormRun         fr;
+        str             callerFormName;
+        
+        fr = _args.caller();
+        callerFormName = fr.form().name();
+
+        KJP_SM_EastWestAppDataDL obj = new KJP_SM_EastWestAppDataDL();
+        obj.export(fr, callerFormName);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>export</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Export method
+    /// </summary>
+    /// <param name = "_fr"></param>
+    /// <param name = "_callerFormName"></param>
+    public void export(FormRun _fr, str _callerFormName)
+    {
+        try
+        {
+            FormDataSource  fds;
+            str             fileName;                                   //　ファイル名
+            container       sheetNameCon;                               //  シート名
+            container       onHandInventoryCon;                         //　手持在庫リスト情報
+            container       planReceiptNumTOCon;                        //　予定入庫数情報（移動オーダー）
+            container       planReceiptNumPOCon;                        //　予定入庫数情報（発注書）
+            container       soPerFormanceCon;                           //　販売注文実績情報
+            container       demandForecasCon;                           //　需要予測情報
+            container       poVolumeCon;                                //  製造オーダー出来高情報
+            container       remainMoveQtyCon;                           //  移動残数量情報
+            Set             itemIdSet = new Set(Types::String);         //  画面選択するレコードの品目
+            SetEnumerator   setEnumerator;                              //  画面選択するレコードの品目用
+            Map prodMap     = new Map(Types::String, Types::AnyType);   // すべての製造オーダー用
+            container       currentProdIdCon;
+            Map inventBatchMap = new Map(Types::String, Types::AnyType);//  移動残数量情報用
+            container       currentInventBatchCon;
+            str             currentItemId;                              //　当前品目
+            str             infoStr;   
+
+            //　計画製造オーダー：按分
+            if('@KJP:KJP101370' == _callerFormName)
+            {
+                infoStr = '@KJP:KJP101578';
+                fds = _fr.dataSource(FormDataSourceStr(ReqTransPo,ReqPo));
+
+                ReqPo reqPo;
+                reqPo = fds.getFirst(true);
+            
+                while (reqPo.RecId)
+                {
+                    if (reqPo.ItemId && !itemIdSet.in(reqPo.ItemId))
+                    {
+                        itemIdSet.add(reqPo.ItemId);
+                    }
+
+                    reqPo = fds.getNext();
+                }
+                
+                fileName = '@KJP:KJP101373';
+                sheetNameCon = ['@KJP:KJP101376','@KJP:KJP101377','@KJP:KJP101379','@KJP:KJP101380'];
+            }
+            //　オーダー残購買注文明細行：購入品
+            else if('@KJP:KJP101371' == _callerFormName)
+            {
+                infoStr = '@KJP:KJP101579';
+                fds = _fr.dataSource(FormDataSourceStr(PurchLineBackOrderListPage,PurchLineBackOrderWorkspace));
+
+                PurchLineBackOrderWorkspace PurchLineBackOrderWorkspace;
+                PurchLineBackOrderWorkspace = fds.getFirst(true);
+
+                while (PurchLineBackOrderWorkspace.RecId)
+                {
+
+                    if (PurchLineBackOrderWorkspace.ItemId && !itemIdSet.in(PurchLineBackOrderWorkspace.ItemId))
+                    {
+                        itemIdSet.add(PurchLineBackOrderWorkspace.ItemId);
+                    }
+                    
+                    PurchLineBackOrderWorkspace = fds.getNext();
+                }
+
+                fileName = '@KJP:KJP101374';
+                sheetNameCon = ['@KJP:KJP101376', '@KJP:KJP101377', '@KJP:KJP101378', '@KJP:KJP101379', '@KJP:KJP101380'];
+                planReceiptNumPOCon = ['@KJP:KJP101383','@KJP:KJP101384','@KJP:KJP101385','@KJP:KJP101460','@KJP:KJP101386','@KJP:KJP101387','@KJP:KJP101390','@KJP:KJP101396','@KJP:KJP101392'];
+
+            }
+            //　すべての製造オーダー：製品
+            else
+            {
+                infoStr = '@KJP:KJP101579';
+                fds = _fr.dataSource(FormDataSourceStr(ProdTableListPage,ProdTable));
+
+                ProdTable prodTable;
+                prodTable = fds.getFirst(true);
+                while (prodTable.RecId)
+                {
+                    if (ProdTable.ItemId && !itemIdSet.in(ProdTable.ItemId))
+                    {
+                        itemIdSet.add(ProdTable.ItemId);
+
+                    }
+
+                    container       prodIdCon;
+
+                    if(prodMap.exists(ProdTable.ItemId))
+                    {
+                        prodIdCon = prodMap.lookup(ProdTable.ItemId);
+                    }
+
+                    prodIdCon += prodTable.ProdId;
+                    prodMap.insert(ProdTable.ItemId, prodIdCon);
+
+                    inventBatchMap = this.findRemainitemIdbatchIdforRemain(prodTable, inventBatchMap);
+
+                 prodTable = fds.getNext();
+
+                }
+
+                fileName = '@KJP:KJP101375';
+                sheetNameCon = ['@KJP:KJP101376','@KJP:KJP101377','@KJP:KJP101379','@KJP:KJP101380','@KJP:KJP101381','@KJP:KJP101382'];
+                poVolumeCon = ['@KJP:KJP101383','@KJP:KJP101385','@KJP:KJP101387','@KJP:KJP101398','@KJP:KJP101392','@KJP:KJP101390','@KJP:KJP101399'];
+                remainMoveQtyCon = ['@KJP:KJP101383','@KJP:KJP101385','@KJP:KJP101401','@KJP:KJP101402','@KJP:KJP101400'];
+            }
+            onHandInventoryCon = ['@KJP:KJP101383','@KJP:KJP101384','@KJP:KJP101385','@KJP:KJP101460','@KJP:KJP101386','@KJP:KJP101387','@KJP:KJP101388','@KJP:KJP101389','@KJP:KJP101395','@KJP:KJP101390','@KJP:KJP101391','@KJP:KJP102752','@KJP:KJP102753','@KJP:KJP102754','@KJP:KJP102755'];
+            planReceiptNumTOCon = ['@KJP:KJP101383','@KJP:KJP101384','@KJP:KJP101385','@KJP:KJP101388','@KJP:KJP101460','@KJP:KJP101400','@KJP:KJP101386','@KJP:KJP101387','@KJP:KJP101401','@KJP:KJP101402'];
+            soPerFormanceCon = ['@KJP:KJP101383','@KJP:KJP101385','@KJP:KJP101390','@KJP:KJP101403','@KJP:KJP101404'];
+            demandForecasCon = ['@KJP:KJP101383','@KJP:KJP101390','@KJP:KJP101405','@KJP:KJP101406'];
+
+            DocuFileSaveResult saveResult = DocuFileSave::promptForSaveLocation(fileName,'@KJP:KJP101407', null, infoStr);
+            if (saveResult&& saveResult.parmAction() != DocuFileSaveAction::Cancel)
+            {
+                saveResult.parmOpenParameters('@KJP:KJP101409');
+                saveResult.parmOpenInNewWindow(false);
+            
+                Stream workbookStream = new System.IO.MemoryStream();
+                MemoryStream memoryStream = new System.IO.MemoryStream();
+                
+                using(var package = new OfficeOpenXml.ExcelPackage(memoryStream))
+
+                {
+                    ttsbegin;
+
+                    for (int num = 1; num <= conLen(sheetNameCon); num++)
+                    {
+                        // シート作成
+                        var worksheets = package.get_Workbook().get_Worksheets();
+                        var worksheet = worksheets.Add(conPeek(sheetNameCon,num));
+                        
+                        var cells = worksheet.get_Cells();
+                        currentRow=1;
+
+                        //　手持在庫リスト情報
+                        if('@KJP:KJP101376' == conPeek(sheetNameCon,num))
+                        {
+                            this.setExcelHeader(onHandInventoryCon, cells);
+                        }
+                        // 需要予測情報
+                        else if ('@KJP:KJP101380' == conPeek(sheetNameCon,num))
+                        {
+                            // ヘッダー作成
+                            this.setExcelHeader(demandForecasCon,cells);
+                        }
+                        //　販売注文実績情報
+                        else if ('@KJP:KJP101379' == conPeek(sheetNameCon,num))
+                        {
+                            //  ヘッダー作成
+                            this.setExcelHeader(soPerFormanceCon, cells);
+                        }
+                        //　予定入庫数情報（移動オーダー） ヘッダー作成
+                        else if ('@KJP:KJP101377' == conPeek(sheetNameCon,num))
+                        {
+                            //  ヘッダー作成
+                            this.setExcelHeader(planReceiptNumTOCon, cells);
+                        }
+                        //　予定入庫数情報（発注書）
+                        else if('@KJP:KJP101371' == _callerFormName && '@KJP:KJP101378' == conPeek(sheetNameCon,num))
+                        {
+                            // ヘッダー作成
+                            this.setExcelHeader(planReceiptNumPOCon, cells);
+                        }
+                        //　製造オーダー出来高情報
+                        else if ('@KJP:KJP101372' == _callerFormName && '@KJP:KJP101381' == conPeek(sheetNameCon,num))
+                        {
+                            //　ヘッダー作成
+                            this.setExcelHeader(poVolumeCon, cells);
+                            // データ作成
+
+                            if (!itemIdSet.empty())
+                            {
+                                setEnumerator = itemIdSet.getEnumerator();
+                                setEnumerator.reset();
+                                while (setEnumerator.moveNext())
+                                {
+                                    currentItemId = setEnumerator.current();
+                                    if(prodMap.exists(currentItemId))
+                                    {
+                                        currentProdIdCon = prodMap.lookup(currentItemId);
+                                    }
+                                    //　データ作成
+                                    this.setPoVolumeData(cells, currentItemId, currentProdIdCon);
+                                }
+                            }
+  
+                        }
+                        //　移動残数量情報
+                        else if ('@KJP:KJP101372' == _callerFormName && '@KJP:KJP101382' == conPeek(sheetNameCon,num))
+                        {
+                            //　ヘッダー作成
+                            this.setExcelHeader(remainMoveQtyCon, cells);
+
+                            if (!itemIdSet.empty())
+                            {
+                                setEnumerator = itemIdSet.getEnumerator();
+                                setEnumerator.reset();
+                                while (setEnumerator.moveNext())
+                                {
+                                    currentItemId = setEnumerator.current();
+                                    if(inventBatchMap.exists(currentItemId))
+                                    {
+                                        currentInventBatchCon = inventBatchMap.lookup(currentItemId);
+                                    }
+                                    //　データ作成
+                                    this.setRemainMoveQtyData(cells, currentItemId, currentInventBatchCon);
+                                }
+                            }
+
+                        }
+
+                        // データ作成
+                        if (!itemIdSet.empty())
+                        {
+                            setEnumerator = itemIdSet.getEnumerator();
+                            setEnumerator.reset();
+                            while (setEnumerator.moveNext())
+                            {
+                                currentItemId = setEnumerator.current();
+
+                                //　手持在庫リスト情報
+                                if('@KJP:KJP101376' == conPeek(sheetNameCon,num))
+                                {
+                                    // データ作成
+                                    this.setOnHandInventoryData(_callerFormName, cells, currentItemId);
+                                }
+                                // 需要予測情報
+                                else if ('@KJP:KJP101380' == conPeek(sheetNameCon,num))
+                                {
+                                    // データ作成
+                                    this.setDemandForecastData(_callerFormName,cells, currentItemId);
+                                }
+                                //　販売注文実績情報
+                                else if ('@KJP:KJP101379' == conPeek(sheetNameCon,num))
+                                {
+                                    //　データ作成
+                                    this.setSoPerFormanceData(cells, currentItemId);
+                                }
+                                //　予定入庫数情報（移動オーダー）
+                                else if ('@KJP:KJP101377' == conPeek(sheetNameCon,num))
+                                {
+                                    //　データ作成
+                                    this.setPlanReceiptNumTOData(_callerFormName, cells, currentItemId);
+                                }
+                                //　予定入庫数情報（発注書）
+                                else if('@KJP:KJP101371' == _callerFormName && '@KJP:KJP101378' == conPeek(sheetNameCon,num))
+                                {
+                                    //　データ作成
+                                    this.setPlanReceiptNumSOData(cells, currentItemId);
+                                }
+
+                            }
+                        }
+
+                    }
+                    ttscommit;
+                    package.save();
+                }
+                memoryStream.Seek(0,System.IO.SeekOrigin::Begin);
+                //Download the file.
+                DocuFileSave::processSaveResult(memoryStream,saveResult);
+            }
+        }
+        catch (Exception::CLRError)
+        {
+            // if the statement can't be generated, report an error and return null
+            error("@SYS135884");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setExcelHeader</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// setExcelHeader
+    /// </summary>
+    /// <param name = "_con"></param>
+    /// <param name = "_cells"></param>
+    public void setExcelHeader(container _con, ExcelRange _cells)
+    {
+        // ヘッダー作成
+        for (int headerNum = 1; headerNum <= conLen(_con); headerNum++)
+        {
+            var cell = _cells.get_Item(currentRow,headerNum);
+            cell.set_Value(conPeek(_con,headerNum));
+            cell=null;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setOnHandInventoryData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  手持在庫リスト情報
+    /// </summary>
+    /// <param name = "_callerFormName"></param>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    public void setOnHandInventoryData(str _callerFormName, ExcelRange _cells, str _currentItemId)
+    {
+        InventTable inventTable;                                        //　品目マスタ
+        InventBatch inventBatch;                                        //　バッチマスタ
+        InventDim inventDim;                                            //　在庫分析コード
+        InventSum inventSum;                                            //　手持在庫
+        InventLocation inventLocation;                                  //　倉庫マスタ
+        Qty physicalInventQty;
+        
+        UnitOfMeasureConversion unitOfMeasureConversionSales;                //  単位換算マスタ
+        UnitOfMeasureConversion unitOfMeasureConversionPurch;                //  単位換算マスタ
+        str inventLocationIdLastTwo;                                    //  倉庫後２桁
+        
+        Map conversionSalesMap = new Map(Types::String,Types::Real);
+        Map conversionFormulaeSalesMap = new Map(Types::String,Types::String);
+        Map conversionPurchMap = new Map(Types::String,Types::Real);
+        Map conversionFormulaePurchMap = new Map(Types::String,Types::String);
+
+        int onHandCount = 0;
+
+        while select inventTable
+            order by inventBatch.inventBatchId, inventDim.InventLocationId
+        where inventTable.ItemId == _currentItemId
+        
+        join inventSum
+        where inventSum.ItemId == inventTable.ItemId
+            && inventSum.Closed == 0
+        
+        join InventLocationId
+        from inventDim
+        where inventDim.inventDimId == inventSum.InventDimId
+        
+        join inventLocation
+        where inventLocation.InventLocationId == inventDim.InventLocationId
+        && (inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+        || inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+
+        outer join
+        inventBatchId
+        ,KJPSMReservationControlFlag
+        ,PdsBestBeforeDate
+        ,expDate
+        from inventBatch
+        where inventDim.inventBatchId == inventBatch.inventBatchId
+            && inventBatch.itemid == inventTable.ItemId
+        {
+            inventLocationIdLastTwo = subStr(inventLocation.InventLocationId,strLen(inventLocation.InventLocationId),-2);
+
+            if (originalCodeOne == inventLocationIdLastTwo || originalCodeTwo == inventLocationIdLastTwo)
+            {
+                physicalInventQty = inventSum.physicalInventCalculated();
+                if (physicalInventQty != 0)
+                {
+                    onHandCount++;
+                    currentRow++;
+            
+                    // 品目番号,製品名,バッチ番号,消費期限,有効期限,在庫単位,
+                    // 販売単位,発注書単位,
+                    // 倉庫,現物在庫,単位
+                    var cell = _cells.get_Item(currentRow,1);
+                    cell.set_Value(inventTable.ItemId);
+                    cell=null;
+                                    
+                    cell = _cells.get_Item(currentRow,2);
+                    cell.set_Value(inventTable.itemName());
+                    cell=null;
+                                    
+                    cell = _cells.get_Item(currentRow,3);
+                    cell.set_Value(inventBatch.inventBatchId);
+                    cell=null;
+
+                    cell = _cells.get_Item(currentRow,4);
+                    cell.set_Value(inventBatch.KJPSMReservationControlFlag);
+                    cell=null;
+
+                    cell = _cells.get_Item(currentRow,5);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.PdsBestBeforeDate));
+                    cell=null;
+                    
+                    cell = _cells.get_Item(currentRow,6);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate));
+                    cell=null;
+                                    
+                    cell = _cells.get_Item(currentRow,7);
+                    cell.set_Value(inventTable.inventUnitId());
+                    cell=null;
+
+                    cell = _cells.get_Item(currentRow,8);
+                    cell.set_Value(inventTable.salesUnitId());
+                    cell=null;
+
+                    cell = _cells.get_Item(currentRow,9);
+                    cell.set_Value(inventTable.purchUnitId());
+                    cell=null;
+
+                    cell = _cells.get_Item(currentRow,10);
+                    cell.set_Value(inventDim.InventLocationId);
+                    cell=null;
+                                    
+                    cell = _cells.get_Item(currentRow,11);
+                    cell.set_Value(physicalInventQty);
+                    cell=null;
+
+                    // 販売単位換算数,販売単位換算数式,発注書単位換算数,発注書単位換算数式
+                    unitOfMeasureConversionSales = this.getUnitOfMeasureConversion(_currentItemId,ModuleInventPurchSales::Sales);
+
+                    if (unitOfMeasureConversionSales.RecId)
+                    {
+                        if (!ConversionSalesMap.exists(_currentItemId))
+                        {
+                            if(0 != unitOfMeasureConversionSales.Factor)
+                            {
+                                ConversionSalesMap.insert(_currentItemId, unitOfMeasureConversionSales.Factor);
+                
+                                cell = _cells.get_Item(currentRow,12);
+                                cell.set_Value(ConversionSalesMap.lookup(_currentItemId));
+                                cell=null;
+                            }
+                        }
+                        else
+                        {
+                            cell = _cells.get_Item(currentRow,12);
+                            cell.set_Value(ConversionSalesMap.lookup(_currentItemId));
+                            cell=null;
+                        }
+                
+                        if (!conversionFormulaeSalesMap.exists(_currentItemId))
+                        {
+                            if('@SCM:UnitOfMeasureConversionNoFormula' != unitOfMeasureConversionSales.displayQuickFormulaWithLocalSeparators())
+                            {
+                                conversionFormulaeSalesMap.insert(_currentItemId, unitOfMeasureConversionSales.displayQuickFormulaWithLocalSeparators());
+                                cell = _cells.get_Item(currentRow,13);
+                                cell.set_Value(conversionFormulaeSalesMap.lookup(_currentItemId));
+                                cell=null;
+                            }
+                            
+                        }
+                        else
+                        {
+                            cell = _cells.get_Item(currentRow,13);
+                            cell.set_Value(conversionFormulaeSalesMap.lookup(_currentItemId));
+                            cell=null;
+                    
+                        }
+                
+                    }
+                    else
+                    {
+                        cell = _cells.get_Item(currentRow,12);
+                        cell.set_Value(null);
+                        cell=null;
+                        
+                        cell = _cells.get_Item(currentRow,13);
+                        cell.set_Value(null);
+                        cell=null;
+                    }
+
+                    // 販売単位換算数,販売単位換算数式,発注書単位換算数,発注書単位換算数式
+                    unitOfMeasureConversionPurch = this.getUnitOfMeasureConversion(_currentItemId,ModuleInventPurchSales::Purch);
+
+                    if (unitOfMeasureConversionPurch.RecId)
+                    {
+                        if (!ConversionPurchMap.exists(_currentItemId))
+                        {
+                            if(0 != unitOfMeasureConversionPurch.Factor)
+                            {
+                                ConversionPurchMap.insert(_currentItemId, unitOfMeasureConversionPurch.Factor);
+                
+                                cell = _cells.get_Item(currentRow,14);
+                                cell.set_Value(ConversionPurchMap.lookup(_currentItemId));
+                                cell=null;
+                            }
+                        }
+                        else
+                        {
+                            cell = _cells.get_Item(currentRow,14);
+                            cell.set_Value(ConversionPurchMap.lookup(_currentItemId));
+                            cell=null;
+                        }
+                
+                        if (!conversionFormulaePurchMap.exists(_currentItemId))
+                        {
+                            if('@SCM:UnitOfMeasureConversionNoFormula' != unitOfMeasureConversionPurch.displayQuickFormulaWithLocalSeparators())
+                            {
+                                conversionFormulaePurchMap.insert(_currentItemId, unitOfMeasureConversionPurch.displayQuickFormulaWithLocalSeparators());
+                                cell = _cells.get_Item(currentRow,15);
+                                cell.set_Value(conversionFormulaePurchMap.lookup(_currentItemId));
+                            }
+                            
+                        }
+                        else
+                        {
+                            cell = _cells.get_Item(currentRow,15);
+                            cell.set_Value(conversionFormulaePurchMap.lookup(_currentItemId));
+                        }
+                
+                    }
+                    else
+                    {
+                        cell = _cells.get_Item(currentRow,14);
+                        cell.set_Value(null);
+                        cell=null;
+                        
+                        cell = _cells.get_Item(currentRow,15);
+                        cell.set_Value(null);
+                    }
+
+                }
+
+            }
+              
+        }
+        if (onHandCount == 0)
+        {
+            inventTable = InventTable::find(_currentItemId);
+            currentRow++;
+            var cell = _cells.get_Item(currentRow,1);
+            cell.set_Value(inventTable.ItemId);
+            cell=null;
+                                    
+            cell = _cells.get_Item(currentRow,2);
+            cell.set_Value(inventTable.itemName());
+            cell=null;
+                                    
+            cell = _cells.get_Item(currentRow,7);
+            cell.set_Value(inventTable.inventUnitId());
+            cell=null;
+
+            cell = _cells.get_Item(currentRow,8);
+            cell.set_Value(inventTable.salesUnitId());
+            cell=null;
+
+            cell = _cells.get_Item(currentRow,9);
+            cell.set_Value(inventTable.purchUnitId());
+            cell=null;
+
+            unitOfMeasureConversionSales = this.getUnitOfMeasureConversion(_currentItemId, ModuleInventPurchSales::Sales);
+        
+            if(0 != unitOfMeasureConversionSales.Factor)
+            {
+                cell = _cells.get_Item(currentRow,12);
+                cell.set_Value(unitOfMeasureConversionSales.Factor);
+                cell=null;
+            }
+        
+            if('@SCM:UnitOfMeasureConversionNoFormula' != unitOfMeasureConversionSales.displayQuickFormulaWithLocalSeparators())
+            {
+                cell = _cells.get_Item(currentRow,13);
+                cell.set_Value(unitOfMeasureConversionSales.displayQuickFormulaWithLocalSeparators());
+            }
+
+            unitOfMeasureConversionPurch = this.getUnitOfMeasureConversion(_currentItemId, ModuleInventPurchSales::Purch);
+        
+            if(0 != unitOfMeasureConversionPurch.Factor)
+            {
+                cell = _cells.get_Item(currentRow,14);
+                cell.set_Value(unitOfMeasureConversionPurch.Factor);
+                cell=null;
+            }
+        
+            if('@SCM:UnitOfMeasureConversionNoFormula' != unitOfMeasureConversionPurch.displayQuickFormulaWithLocalSeparators())
+            {
+                cell = _cells.get_Item(currentRow,15);
+                cell.set_Value(unitOfMeasureConversionPurch.displayQuickFormulaWithLocalSeparators());
+            }
+        
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getUnitOfMeasureConversion</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// getUnitOfMeasureConversion
+    /// </summary>
+    /// <param name = "_currentItemId"></param>
+    /// <param name = "_moduleInventPurchSales"></param>
+    public unitOfMeasureConversion getUnitOfMeasureConversion(str _currentItemId,ModuleInventPurchSales _moduleInventPurchSales)
+    {
+        InventTable inventTable;                                        //　品目マスタ
+        UnitOfMeasure unitOfMeasureFrom;                                //　単位マスタ
+        UnitOfMeasure unitOfMeasureTo;                                  //　単位マスタ
+        InventTableModule inventTableModuleFrom;                        //　在庫モジュール
+        InventTableModule inventTableModuleTo;                          //　在庫モジュール
+
+        EcoResProduct ecoResProduct;                                    //  製品マスタ
+        UnitOfMeasureConversion unitOfMeasureConversion;                //  単位換算マスタ
+
+        select firstonly unitOfMeasureConversion
+        join unitOfMeasureFrom
+            where unitOfMeasureFrom.RecId == unitOfMeasureConversion.FromUnitOfMeasure
+
+        join unitOfMeasureTo
+            where unitOfMeasureTo.RecId == unitOfMeasureConversion.ToUnitOfMeasure
+
+        join inventTableModuleFrom
+            where inventTableModuleFrom.ModuleType == _moduleInventPurchSales
+            && inventTableModuleFrom.UnitId == unitOfMeasureFrom.Symbol
+
+        join inventTableModuleTo
+            where inventTableModuleTo.ModuleType == ModuleInventPurchSales::Invent
+            && inventTableModuleTo.UnitId == unitOfMeasureTo.Symbol
+
+        join ecoResProduct
+            where unitOfMeasureConversion.Product == ecoResProduct.RecId
+
+        join inventTable
+            where inventTable.PRODUCT == ecoResProduct.RECID
+            && inventTableModuleFrom.ItemId == inventTable.ItemId
+            && inventTableModuleTo.ItemId == inventTable.ItemId
+                        && inventTable.ItemId  == _currentItemId;
+
+        return unitOfMeasureConversion;
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setDemandForecastData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 需要予測情報
+    /// </summary>
+    /// <param name = "_callerFormName"></param>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    public void setDemandForecastData(str _callerFormName, ExcelRange _cells, str _currentItemId)
+    {
+        InventDim                       inventDim;                              //在庫分析コード
+        ForecastSales                   forecastSales;                          //需要予測
+        KJP_CM_GeneralPurposeMaster     generalPurposeMaster;                   //汎用マスタ
+        // 按分
+        if ('@KJP:KJP101370' == _callerFormName)
+        {
+            while select
+            ItemId,
+            StartDate,
+            SalesQty,
+            ModelId
+            from forecastSales
+                order by inventDim.InventLocationId, forecastSales.StartDate
+            where forecastSales.ItemId  == _currentItemId
+            && firstDateOfMonth <= forecastSales.StartDate
+            && forecastSales.StartDate <= lastDateOfThreeMonthAfter // "未来３か月（当月含む）"
+
+            join generalPurposeMaster
+            where forecastSales.ModelId == generalPurposeMaster.OriginalCode
+            && generalPurposeMaster.Key == '@KJP:KJP101411'
+            
+            join InventLocationId
+            from inventDim
+            where forecastSales.InventDimId == inventDim.inventDimId
+            {
+                currentRow++;
+                                    
+                var cell = _cells.get_Item(currentRow,1);
+                cell.set_Value(ForecastSales.ItemId);
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,2);
+                cell.set_Value(InventDim.InventLocationId);
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,3);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(ForecastSales.StartDate));
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,4);
+                cell.set_Value(any2Str(ForecastSales.SalesQty));
+                                
+            }
+        }
+        // 製品
+        else if('@KJP:KJP101372' == _callerFormName)
+        {
+            Set forecastSet   = new Set(Types::Int64);
+
+            while select
+            ItemId,
+            StartDate,
+            SalesQty,
+            ModelId,
+            RecId
+            from forecastSales
+                order by inventDim.InventLocationId, forecastSales.StartDate
+            where forecastSales.ItemId  == _currentItemId
+            && firstDateOfMonth <= forecastSales.StartDate
+            && forecastSales.StartDate <= lastDateOfThreeMonthAfter // "未来３か月（当月含む）"
+
+            join generalPurposeMaster
+            where forecastSales.ModelId == generalPurposeMaster.OriginalCode
+            && (generalPurposeMaster.Key == '@KJP:KJP101411' || generalPurposeMaster.Key == '@KJP:KJP101412')
+
+            join InventLocationId
+            from inventDim
+            where forecastSales.InventDimId == inventDim.inventDimId
+            {
+
+                if (!forecastSet.in(forecastSales.RecId))
+                {
+                    forecastSet.add(forecastSales.RecId);
+
+                    currentRow++;
+
+                    var cell = _cells.get_Item(currentRow,1);
+                    cell.set_Value(ForecastSales.ItemId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,2);
+                    cell.set_Value(InventDim.InventLocationId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,3);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(ForecastSales.StartDate));
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,4);
+                    cell.set_Value(any2Str(ForecastSales.SalesQty));
+
+                }
+
+            }
+        
+        }
+        // 購入品
+        else
+        {
+            while select
+            ItemId,
+            StartDate,
+            SalesQty,
+            ModelId
+            from forecastSales
+                order by inventDim.InventLocationId, forecastSales.StartDate
+            where forecastSales.ItemId  == _currentItemId
+            && firstDateOfMonth <= forecastSales.StartDate
+            && forecastSales.StartDate <= lastDateOfThreeMonthAfter // "未来３か月（当月含む）"
+            
+            join generalPurposeMaster
+            where forecastSales.ModelId == generalPurposeMaster.OriginalCode
+            && generalPurposeMaster.Key == '@KJP:KJP101413'
+            
+            join InventLocationId
+            from inventDim
+            where forecastSales.InventDimId == inventDim.inventDimId
+            {
+                currentRow++;
+                                    
+                var cell = _cells.get_Item(currentRow,1);
+                cell.set_Value(ForecastSales.ItemId);
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,2);
+                cell.set_Value(InventDim.InventLocationId);
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,3);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(ForecastSales.StartDate));
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,4);
+                cell.set_Value(any2Str(ForecastSales.SalesQty));
+                                
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setSoPerFormanceData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 販売注文実績情報
+    /// </summary>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    public void setSoPerFormanceData(ExcelRange _cells, str _currentItemId)
+    {
+        CustInvoiceJour                     custInvoiceJour;
+        CustInvoiceTrans                    custInvoiceTrans;
+        SalesTable                          salesTable;
+        InventTrans                         InventTrans;
+        InventDim                           inventDim;                              //　在庫分析コード
+        InventLocation                      inventLocation;                         //  倉庫マスタ
+        str                                 inventLocationIdLastTwo;                //  倉庫後２桁
+
+        while select *
+        from salesTable
+            order by inventDim.inventBatchId, InventLocation.InventLocationId, custInvoiceTrans.DlvDate
+        where salesTable.SalesType != SalesType::ReturnItem
+
+        join custInvoiceJour
+        where custInvoiceJour.SalesId == salesTable.SalesId
+
+        join ItemId,Qty,DlvDate
+        from custInvoiceTrans
+        where custInvoiceTrans.SalesId == custInvoiceJour.SalesId
+        && custInvoiceTrans.InvoiceId == custInvoiceJour.InvoiceId
+        && custInvoiceTrans.InvoiceDate == custInvoiceJour.InvoiceDate
+        && custInvoiceTrans.numberSequenceGroup == custInvoiceJour.numberSequenceGroup
+        && custInvoiceTrans.ItemId == _currentItemId
+        && firstDateOfThreeMonthBefore <= custInvoiceTrans.DlvDate 
+        && custInvoiceTrans.DlvDate <= lastDateOfPreMonth // 当月含まない過去三か月
+
+        join inventBatchId,InventLocationId
+        from inventDim
+        where custInvoiceTrans.InventDimId == InventDim.inventDimId
+            
+        join InventLocationId
+        from inventLocation
+        where inventLocation.InventLocationId == inventDim.InventLocationId
+
+        && (inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+        || inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+       
+        {
+            inventLocationIdLastTwo = subStr(inventLocation.InventLocationId,strLen(inventLocation.InventLocationId),-2);
+
+            if (originalCodeOne == inventLocationIdLastTwo || originalCodeTwo == inventLocationIdLastTwo)
+            {
+                currentRow++;
+                
+                var cell = _cells.get_Item(currentRow,1);
+                cell.set_Value(custInvoiceTrans.ItemId);
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,2);
+                cell.set_Value(inventDim.inventBatchId);
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,3);
+                cell.set_Value(inventDim.InventLocationId);
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,4);
+                cell.set_Value(any2Str(custInvoiceTrans.Qty));
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,5);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(custInvoiceTrans.DlvDate));
+
+            }
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPlanReceiptNumTOData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 予定入庫数情報（移動オーダー）
+    /// </summary>
+    /// <param name = "_callerFormName"></param>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    public void setPlanReceiptNumTOData(str _callerFormName, ExcelRange _cells, str _currentItemId)
+    {
+        InventTransferLine              inventTransferLine;                     // 移動オーダー明細行
+        InventTransferTable             inventTransferTable;                    // 移動オーダー
+        InventTable                     inventTable;                            // 品目マスタ
+        InventLocation                  inventLocationFrom;                     // 移動元倉庫マスタ
+        InventLocation                  inventLocationTo;                       // 移動先倉庫マスタ
+        InventDim                       InventDim;                              // 在庫分析コード
+        InventBatch                     inventBatch;                            // バッチマスタ
+        str inventLocationIdLastTwoFrom;
+        str inventLocationIdLastTwoTo;
+                            
+        inventTable = InventTable::find(_currentItemId);
+        // 按分東西SP配分結果、移動オーダー                      
+        if('@KJP:KJP101370' == _callerFormName)
+        {
+            while select
+            ItemId
+            ,UnitId
+            ,QtyTransfer
+            from inventTransferLine
+                order by inventBatch.inventBatchId, inventTransferTable.InventLocationIdFrom, inventTransferTable.InventLocationIdTo
+            where inventTransferLine.ItemId == _currentItemId
+            && firstDateOfMonth <= inventTransferLine.ReceiveDate
+            && inventTransferLine.ReceiveDate <= lastDateOfThreeMonthAfter // 未来三か月（当月含む）
+            && (inventTransferLine.RemainStatus == InventTransferRemainStatus::Receiving
+            || inventTransferLine.RemainStatus == InventTransferRemainStatus::Shipping)
+             
+            join
+            InventLocationIdFrom,
+            InventLocationIdTo
+            from inventTransferTable
+            where inventTransferTable.TransferId == inventTransferLine.TransferId
+            
+            join inventBatchId
+            from InventDim
+            where inventTransferLine.InventDimId == InventDim.inventDimId
+            
+            join inventBatchId
+                ,KJPSMReservationControlFlag
+            ,PdsBestBeforeDate
+            ,expDate
+            from inventBatch
+            where inventBatch.inventBatchId == InventDim.inventBatchId
+                && inventBatch.itemId == inventTable.ItemId
+            
+            join inventLocationFrom
+            where
+            inventLocationFrom.InventLocationId == inventTransferTable.InventLocationIdFrom
+            && inventLocationFrom.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::UbeFactory
+            && inventLocationFrom.KJPSMReturnsWareHouse == NoYes::No
+            
+            join inventLocationTo
+            where inventLocationTo.InventLocationId == inventTransferTable.InventLocationIdTo
+            && (inventLocationTo.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+            || inventLocationTo.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+            {
+                inventLocationIdLastTwoTo = subStr(inventLocationTo.InventLocationId,strLen(inventLocationTo.InventLocationId),-2);
+
+                if (originalCodeOne == inventLocationIdLastTwoTo || originalCodeTwo == inventLocationIdLastTwoTo)
+                {
+                    currentRow++;
+                    var cell = _cells.get_Item(currentRow,1);
+                    cell.set_Value(inventTransferLine.ItemId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,2);
+                    cell.set_Value(inventTransferLine.itemName());
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,3);
+                    cell.set_Value(inventBatch.inventBatchId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,4);
+                    cell.set_Value(inventTransferLine.UnitId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,5);
+                    cell.set_Value(inventBatch.KJPSMReservationControlFlag);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,6);
+                    cell.set_Value(inventTransferLine.QtyTransfer);
+                    cell=null;
+                                       
+                    cell = _cells.get_Item(currentRow,7);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.PdsBestBeforeDate));
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,8);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate));
+                    cell=null;
+                                       
+                    cell = _cells.get_Item(currentRow,9);
+                    cell.set_Value(inventTransferTable.InventLocationIdFrom);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,10);
+                    cell.set_Value(inventTransferTable.InventLocationIdTo);
+
+                }     
+            }
+        }   
+        // 製品東西SP配分結果、移動オーダー
+        if ('@KJP:KJP101372' == _callerFormName)
+        {
+            while select
+            ItemId
+            ,UnitId
+            ,QtyTransfer
+            from inventTransferLine
+                order by inventBatch.inventBatchId, inventTransferTable.InventLocationIdFrom, inventTransferTable.InventLocationIdTo
+            where inventTransferLine.ItemId == _currentItemId
+            && firstDateOfMonth <= inventTransferLine.ReceiveDate
+            && inventTransferLine.ReceiveDate <= lastDateOfThreeMonthAfter // 未来三か月（当月含む）
+            && (inventTransferLine.RemainStatus == InventTransferRemainStatus::Receiving
+            || inventTransferLine.RemainStatus == InventTransferRemainStatus::Shipping)
+             
+            join
+            InventLocationIdFrom,
+            InventLocationIdTo
+            from inventTransferTable
+            where inventTransferTable.TransferId == inventTransferLine.TransferId
+            
+            join inventBatchId
+            from InventDim
+            where inventTransferLine.InventDimId == InventDim.inventDimId
+            
+            join inventBatchId
+                ,KJPSMReservationControlFlag
+                ,PdsBestBeforeDate
+            ,expDate
+            from inventBatch
+            where inventBatch.inventBatchId == InventDim.inventBatchId
+                && inventBatch.itemId == inventTable.ItemId
+            
+            join inventLocationFrom
+            where
+            inventLocationFrom.InventLocationId == inventTransferTable.InventLocationIdFrom
+                && (inventLocationFrom.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::TakasakiFactory
+                || inventLocationFrom.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::UbeFactory
+                || inventLocationFrom.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::CMODomestic)
+            && inventLocationFrom.KJPSMReturnsWareHouse == NoYes::No
+            
+            
+            join inventLocationTo
+            where inventLocationTo.InventLocationId == inventTransferTable.InventLocationIdTo
+            && (inventLocationTo.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+            || inventLocationTo.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+            {
+                inventLocationIdLastTwoTo = subStr(inventLocationTo.InventLocationId,strLen(inventLocationTo.InventLocationId),-2);
+                
+                if (originalCodeOne == inventLocationIdLastTwoTo || originalCodeTwo == inventLocationIdLastTwoTo)
+                {
+                    currentRow++;
+                    var cell = _cells.get_Item(currentRow,1);
+                    cell.set_Value(inventTransferLine.ItemId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,2);
+                    cell.set_Value(inventTransferLine.itemName());
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,3);
+                    cell.set_Value(inventBatch.inventBatchId);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,4);
+                    cell.set_Value(inventTransferLine.UnitId);
+                    cell=null;
+
+                    cell = _cells.get_Item(currentRow,5);
+                    cell.set_Value(inventBatch.KJPSMReservationControlFlag);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,6);
+                    cell.set_Value(inventTransferLine.QtyTransfer);
+                    cell=null;
+        
+                    cell = _cells.get_Item(currentRow,7);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.PdsBestBeforeDate));
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,8);
+                    cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate));
+                    cell=null;
+                                        
+                    cell = _cells.get_Item(currentRow,9);
+                    cell.set_Value(inventTransferTable.InventLocationIdFrom);
+                    cell=null;
+                                
+                    cell = _cells.get_Item(currentRow,10);
+                    cell.set_Value(inventTransferTable.InventLocationIdTo);
+                }           
+            }
+        }
+        // 東西SP間移動（按分、製品、購入品）
+        while select
+        ItemId
+        ,UnitId
+        ,QtyTransfer
+        from inventTransferLine
+            order by inventBatch.inventBatchId, inventTransferTable.InventLocationIdFrom, inventTransferTable.InventLocationIdTo
+        where inventTransferLine.ItemId == _currentItemId
+        && firstDateOfMonth <= inventTransferLine.ReceiveDate
+        && inventTransferLine.ReceiveDate <= lastDateOfThreeMonthAfter // 未来三か月（当月含む）
+        && (inventTransferLine.RemainStatus == InventTransferRemainStatus::Receiving
+        || inventTransferLine.RemainStatus == InventTransferRemainStatus::Shipping)
+        
+        join
+        InventLocationIdFrom,
+        InventLocationIdTo
+        from inventTransferTable
+        where inventTransferTable.TransferId == inventTransferLine.TransferId
+        
+        join inventBatchId
+        from InventDim
+        where inventTransferLine.InventDimId == InventDim.inventDimId
+        
+        join inventBatchId
+            ,KJPSMReservationControlFlag
+            ,PdsBestBeforeDate
+        ,expDate
+        from inventBatch
+        where inventBatch.inventBatchId == InventDim.inventBatchId
+            && inventBatch.itemId == inventTable.ItemId
+        
+        join inventLocationFrom
+        where inventLocationFrom.InventLocationId == inventTransferTable.InventLocationIdFrom
+        && (inventLocationFrom.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+        || inventLocationFrom.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+        
+        join inventLocationTo
+        where inventLocationTo.InventLocationId == inventTransferTable.InventLocationIdTo
+        && (inventLocationTo.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+        || inventLocationTo.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+        {
+            inventLocationIdLastTwoFrom = subStr(inventLocationFrom.InventLocationId,strLen(inventLocationFrom.InventLocationId),-2);
+            inventLocationIdLastTwoTo = subStr(inventLocationTo.InventLocationId,strLen(inventLocationTo.InventLocationId),-2);
+
+            if ((originalCodeOne == inventLocationIdLastTwoFrom || originalCodeTwo == inventLocationIdLastTwoFrom)
+            && (originalCodeOne == inventLocationIdLastTwoTo || originalCodeTwo == inventLocationIdLastTwoTo))
+            {
+                currentRow++;
+
+                var cell = _cells.get_Item(currentRow,1);
+                cell.set_Value(inventTransferLine.ItemId);
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,2);
+                cell.set_Value(inventTransferLine.itemName());
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,3);
+                cell.set_Value(inventBatch.inventBatchId);
+                cell=null;
+                            
+                cell = _cells.get_Item(currentRow,4);
+                cell.set_Value(inventTransferLine.UnitId);
+                cell=null;
+
+                cell = _cells.get_Item(currentRow,5);
+                cell.set_Value(inventBatch.KJPSMReservationControlFlag);
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,6);
+                cell.set_Value(inventTransferLine.QtyTransfer);
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,7);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.PdsBestBeforeDate));
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,8);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate));
+                cell=null;
+                                        
+                cell = _cells.get_Item(currentRow,9);
+                cell.set_Value(inventTransferTable.InventLocationIdFrom);
+                cell=null;
+                                
+                cell = _cells.get_Item(currentRow,10);
+                cell.set_Value(inventTransferTable.InventLocationIdTo);
+
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPlanReceiptNumSOData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 予定入庫数情報（発注書）
+    /// </summary>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    public void setPlanReceiptNumSOData(ExcelRange _cells, str _currentItemId)
+    {
+        //　データ作成
+        PurchLine                       purchLine;
+        PurchTable                      purchTable;
+        InventDim                       inventDim;                              //　在庫分析コード
+        InventLocation                  inventLocation;                         //  倉庫マスタ
+        InventBatch                     inventBatch;                            //　バッチマスタ
+        str inventLocationIdLastTwo;
+        
+        while select
+            ItemId,
+            RemainPurchPhysical,
+            PurchUnit
+            from purchLine
+                order by inventBatch.inventBatchId, inventDim.InventLocationId
+            where purchLine.ItemId == _currentItemId
+            && firstDateOfMonth <= purchLine.ConfirmedDlv
+            && purchLine.ConfirmedDlv <= lastDateOfThreeMonthAfter // 未来三か月（当月含む）
+
+            && purchLine.IsDeleted == NoYes::No
+            && purchLine.RemainPurchPhysical != 0
+        
+            join purchTable
+            where purchTable.PurchId == purchLine.PurchId
+            && purchTable.DocumentState == VersioningDocumentState::Confirmed
+            && purchTable.PurchStatus == PurchStatus::Backorder
+        
+            join InventLocationId
+            from inventDim
+            where inventDim.inventDimId == purchLine.InventDimId
+
+            join inventLocation
+            where inventLocation.InventLocationId == inventDim.InventLocationId
+            && (inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+            || inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP)
+
+            join inventBatchId
+            ,KJPSMReservationControlFlag
+            ,PdsBestBeforeDate
+            ,expDate
+            from inventBatch
+            where inventBatch.inventBatchId == InventDim.inventBatchId
+            && inventBatch.itemId == _currentItemId
+        {
+            inventLocationIdLastTwo = subStr(inventLocation.InventLocationId,strLen(inventLocation.InventLocationId),-2);
+            
+            if (originalCodeOne == inventLocationIdLastTwo || originalCodeTwo == inventLocationIdLastTwo)
+            {
+                currentRow++;
+                var cell = _cells.get_Item(currentRow,1);
+                cell.set_Value(purchLine.ItemId);
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,2);
+                cell.set_Value(purchLine.itemName());
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,3);
+                cell.set_Value(inventBatch.inventBatchId);
+                cell=null;
+
+                cell = _cells.get_Item(currentRow,4);
+                cell.set_Value(inventBatch.KJPSMReservationControlFlag);
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,5);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.PdsBestBeforeDate));
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,6);
+                cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate));
+                cell=null;
+               
+                cell = _cells.get_Item(currentRow,7);
+                cell.set_Value(inventDim.InventLocationId);
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,8);
+                cell.set_Value(purchLine.RemainPurchPhysical);
+                cell=null;
+        
+                cell = _cells.get_Item(currentRow,9);
+                cell.set_Value(purchLine.PurchUnit);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPoVolumeDataQuery</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 製造オーダー出来高情報用
+    /// </summary>
+    /// <param name = "_currentItemId"></param>
+    /// <param name = "_currentProdIdCon"></param>
+    private Query setPoVolumeDataQuery(str _currentItemId, container _currentProdIdCon)
+    {
+        Query                       query;
+        QueryBuildDataSource        prodTableDS, prodJournalTableDS, prodJournalProdDS, inventTableDS, inventDimDS, inventBatchDS;
+             
+        query = new Query();
+
+        prodTableDS = query.addDataSource(tableNum(ProdTable));
+        prodTableDS.addSelectionField(fieldNum(ProdTable, ItemId));
+        prodTableDS.addSelectionField(fieldNum(ProdTable, ProdId));
+        prodTableDS.addRange(fieldNum(ProdTable, ItemId)).value(_currentItemId);
+        str rangeValue = this.getRangeValue(_currentProdIdCon);
+        prodTableDS.addRange(fieldNum(ProdTable, ProdId)).value(rangeValue);
+        prodTableDS.fetchMode(QueryFetchMode::One2One);
+            
+        prodJournalTableDS = prodTableDS.addDataSource(tableNum(Prodjournaltable));
+        prodJournalTableDS.addRange(fieldNum(Prodjournaltable, JournalType)).value(SysQuery::value(ProdJournalType::ReportFinished));
+        prodJournalTableDS.joinMode(JoinMode::InnerJoin);
+        prodJournalTableDS.addLink(fieldNum(ProdTable, ProdId), fieldNum(Prodjournaltable, ProdId));
+        prodJournalTableDS.fetchMode(QueryFetchMode::One2One);
+
+        prodJournalProdDS = prodJournalTableDS.addDataSource(tableNum(ProdJournalProd));
+        prodJournalProdDS.addSelectionField(fieldNum(ProdJournalProd, QtyGood));
+        prodJournalProdDS.addSelectionField(fieldNum(ProdJournalProd, KJPSMShippingDestinationSP));
+        prodJournalProdDS.joinMode(JoinMode::InnerJoin);
+        prodJournalProdDS.addLink(fieldNum(ProdJournalTable, JournalId), fieldNum(ProdJournalProd, JournalId));
+        prodJournalProdDS.addLink(fieldNum(ProdTable, ProdId), fieldNum(ProdJournalProd, ProdId), prodTableDS.name());
+        prodJournalProdDS.fetchMode(QueryFetchMode::One2One);
+
+        inventTableDS = prodTableDS.addDataSource(tableNum(InventTable));
+        inventTableDS.joinMode(JoinMode::InnerJoin);
+        inventTableDS.addLink(fieldNum(ProdTable, ItemId), fieldNum(InventTable, ItemId));
+        inventTableDS.fetchMode(QueryFetchMode::One2One);
+
+        inventDimDS = prodJournalProdDS.addDataSource(tableNum(InventDim));
+        inventDimDS.addSelectionField(fieldNum(InventDim, InventLocationId));
+        inventDimDS.joinMode(JoinMode::InnerJoin);
+        inventDimDS.addLink(fieldNum(ProdJournalProd, InventDimId), fieldNum(InventDim, InventDimId));
+        inventDimDS.fetchMode(QueryFetchMode::One2One);
+        inventDimDS.addSortField(fieldNum(inventDim, inventBatchId),SortOrder::Ascending);
+        inventDimDS.addSortField(fieldNum(inventDim, InventLocationId),SortOrder::Ascending);
+
+        inventBatchDS = inventDimDS.addDataSource(tableNum(InventBatch));
+        inventBatchDS.addSelectionField(fieldNum(InventBatch, inventBatchId));
+        inventBatchDS.addSelectionField(fieldNum(InventBatch, expDate));
+        inventBatchDS.joinMode(JoinMode::InnerJoin);
+        inventBatchDS.addLink(fieldNum(InventDim, inventBatchId), fieldNum(InventBatch, inventBatchId));
+        inventBatchDS.addLink(fieldNum(InventTable, itemId), fieldNum(InventBatch, itemId), inventTableDS.name());
+        inventBatchDS.fetchMode(QueryFetchMode::One2One);
+
+        return query;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPoVolumeData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 製造オーダー出来高情報
+    /// </summary>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    /// <param name = "_currentProdIdCon"></param>
+    public void setPoVolumeData(ExcelRange _cells, str _currentItemId, container _currentProdIdCon)
+    {
+        
+        //　データ作成
+        Query               query;
+        QueryRun            queryRun;
+        ProdTable               prodTable;                  //　製造オーダー
+        Prodjournaltable        prodJournalTable;           //  生産仕訳帳テーブル
+        ProdJournalProd         prodJournalProd;            //　生産仕訳トランザクション
+        InventTable             inventTable;                //　品目マスタ
+        InventDim               inventDim;                  //　在庫分析コード
+        InventBatch             inventBatch;                //　バッチマスタ
+        query = this.setPoVolumeDataQuery(_currentItemId,_currentProdIdCon);
+        queryRun = new QueryRun(query);
+
+        while (queryRun.next())
+        {
+            prodTable                                   = queryRun.get(tableNum(ProdTable));
+            prodJournalTable                            = queryRun.get(tableNum(Prodjournaltable));
+            prodJournalProd                             = queryRun.get(tableNum(ProdJournalProd));
+            inventTable                                 = queryRun.get(tableNum(InventTable));
+            inventDim                                   = queryRun.get(tableNum(InventDim));
+            inventBatch                                 = queryRun.get(tableNum(InventBatch));
+            currentRow++;
+        
+            var cell = _cells.get_Item(currentRow,1);
+            cell.set_Value(prodTable.ItemId);
+            cell=null;
+        
+            cell = _cells.get_Item(currentRow,2);
+            cell.set_Value(inventBatch.inventBatchId);
+            cell=null;
+        
+            cell = _cells.get_Item(currentRow,3);
+            cell.set_Value(KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate));
+            cell=null;
+        
+            cell = _cells.get_Item(currentRow,4);
+            cell.set_Value(prodJournalProd.QtyGood);
+            cell=null;
+        
+            cell = _cells.get_Item(currentRow,5);
+            cell.set_Value(inventTable.inventUnitId());
+            cell=null;
+        
+            cell = _cells.get_Item(currentRow,6);
+            cell.set_Value(inventDim.InventLocationId);
+            cell=null;
+        
+            cell = _cells.get_Item(currentRow,7);
+            cell.set_Value(prodJournalProd.KJPSMShippingDestinationSP);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getRangeValue</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 条件作成共通
+    /// </summary>
+    /// <param name = "_con"></param>
+    /// <returns></returns>
+    private str getRangeValue(container _con)
+    {
+        str RangeValue = SysQuery::valueUnlimited();
+
+        for (int i = 1; i <= conLen(_con); i++)
+        {
+            RangeValue += SysQuery::value(conPeek(_con, i));
+            if (i < conLen(_con))
+            {
+                RangeValue += Com;
+            }
+        }
+
+        return RangeValue;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setRemainMoveQtyDataQuery</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 移動残数量情報用
+    /// </summary>
+    /// <param name = "_currentItemId"></param>
+    /// <param name = "_currentInventBatchCon"></param>
+    /// <returns></returns>
+    private Query setRemainMoveQtyDataQuery(str _currentItemId, container _currentInventBatchCon)
+    {
+        Query                       query;
+        QueryBuildDataSource        inventTransferLineDS, inventTransferTableDS, inventLocationFromDS, inventLocationToDS, inventDimDS;
+
+        query = new Query();
+        
+        inventTransferLineDS = query.addDataSource(tableNum(InventTransferLine));
+        inventTransferLineDS.addSelectionField(fieldNum(InventTransferLine, ItemId));
+        inventTransferLineDS.addSelectionField(fieldNum(InventTransferLine, QtyTransfer));
+        inventTransferLineDS.addRange(fieldNum(InventTransferLine, ItemId)).value(_currentItemId);
+        inventTransferLineDS.fetchMode(QueryFetchMode::One2One);
+
+        inventDimDS = inventTransferLineDS.addDataSource(tableNum(InventDim));
+        inventDimDS.addSelectionField(fieldNum(InventDim, inventBatchId));
+        inventDimDS.joinMode(JoinMode::InnerJoin);
+        inventDimDS.addLink(fieldNum(InventTransferLine, InventDimId), fieldNum(InventDim, inventDimId));
+        inventDimDS.fetchMode(QueryFetchMode::One2One);
+        str inventBatchRangeValue = this.getRangeValue(_currentInventBatchCon);
+        inventDimDS.addRange(fieldNum(InventDim, inventBatchId)).value(inventBatchRangeValue);
+
+        inventTransferTableDS = inventTransferLineDS.addDataSource(tableNum(InventTransferTable));
+        inventTransferTableDS.addSelectionField(fieldNum(InventTransferTable, InventLocationIdFrom));
+        inventTransferTableDS.addSelectionField(fieldNum(InventTransferTable, InventLocationIdTo));
+        inventTransferTableDS.joinMode(JoinMode::InnerJoin);
+        inventTransferTableDS.addLink(fieldNum(InventTransferLine, TransferId), fieldNum(InventTransferTable, TransferId));
+        inventTransferTableDS.fetchMode(QueryFetchMode::One2One);
+        
+        inventLocationFromDS = inventTransferTableDS.addDataSource(tableNum(InventLocation));
+        inventLocationFromDS.joinMode(JoinMode::InnerJoin);
+        inventLocationFromDS.addLink(fieldNum(InventTransferTable, InventLocationIdFrom), fieldNum(InventLocation, InventLocationId));
+        inventLocationFromDS.fetchMode(QueryFetchMode::One2One);
+        container tucCon = [KJP_SM_WarehouseClassification::TakasakiFactory, KJP_SM_WarehouseClassification::UbeFactory, KJP_SM_WarehouseClassification::CMODomestic];
+        str tucRangeValue = this.getRangeValue(tucCon);
+        inventLocationFromDS.addRange(fieldNum(InventLocation, KJPSMWarehouseClassification)).value(tucRangeValue);
+        inventLocationFromDS.addRange(fieldNum(InventLocation, KJPSMReturnsWareHouse)).value(SysQuery::value(NoYes::No));
+        
+        inventLocationToDS = inventTransferTableDS.addDataSource(tableNum(InventLocation));
+        inventLocationToDS.joinMode(JoinMode::InnerJoin);
+        inventLocationToDS.addLink(fieldNum(InventTransferTable, InventLocationIdTo), fieldNum(InventLocation, InventLocationId));
+        inventLocationToDS.fetchMode(QueryFetchMode::One2One);
+        container ewCon = [KJP_SM_WarehouseClassification::EastSP, KJP_SM_WarehouseClassification::WestSP];
+        str ewRangeValue = this.getRangeValue(ewCon);
+        inventLocationToDS.addRange(fieldNum(InventLocation, KJPSMWarehouseClassification)).value(ewRangeValue);
+        inventLocationToDS.addRange(fieldNum(InventLocation, InventLocationId)).value(CodeLike01);
+        inventLocationToDS.addRange(fieldNum(InventLocation, InventLocationId)).value(CodeLike02);
+
+        inventDimDS.addSortField(fieldNum(inventDim, inventBatchId),SortOrder::Ascending);
+        inventTransferTableDS.addSortField(fieldNum(InventTransferTable, InventLocationIdFrom),SortOrder::Ascending);
+        inventTransferTableDS.addSortField(fieldNum(InventTransferTable, InventLocationIdTo),SortOrder::Ascending);
+
+        return query;
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setRemainMoveQtyData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 移動残数量情報
+    /// </summary>
+    /// <param name = "_cells"></param>
+    /// <param name = "_currentItemId"></param>
+    /// <param name = "_currentInventBatchCon"></param>
+    public void setRemainMoveQtyData(ExcelRange _cells, str _currentItemId, container _currentInventBatchCon)
+    {
+        
+        Query               query;
+        QueryRun            queryRun;
+        InventTransferLine              inventTransferLine;                     //移動オーダー明細行
+        InventTransferTable             inventTransferTable;                    //移動オーダー
+        InventLocation                  inventLocationFrom;                     //移動先倉庫マスタ
+        InventLocation                  inventLocationTo;                       //移動先倉庫マスタ
+        InventDim                       InventDim;                              //在庫分析コード
+        str inventLocationIdLastTwo;
+
+        query = this.setRemainMoveQtyDataQuery(_currentItemId,_currentInventBatchCon);
+        queryRun = new QueryRun(query);
+
+        while (queryRun.next())
+        {
+            inventTransferLine                             = queryRun.get(tableNum(InventTransferLine));
+            inventTransferTable                            = queryRun.get(tableNum(InventTransferTable));
+            inventLocationFrom                             = queryRun.get(tableNum(InventLocation),1);
+            inventLocationTo                               = queryRun.get(tableNum(InventLocation),2);
+            InventDim                                      = queryRun.get(tableNum(InventDim));
+
+            currentRow++;
+            
+            var cell = _cells.get_Item(currentRow,1);
+            cell.set_Value(inventTransferLine.ItemId);
+            cell=null;
+            
+            cell = _cells.get_Item(currentRow,2);
+            cell.set_Value(InventDim.inventBatchId);
+            cell=null;
+            
+            cell = _cells.get_Item(currentRow,3);
+            cell.set_Value(inventTransferTable.InventLocationIdFrom);
+            cell=null;
+            
+            cell = _cells.get_Item(currentRow,4);
+            cell.set_Value(inventTransferTable.InventLocationIdTo);
+            cell=null;
+            
+            cell = _cells.get_Item(currentRow,5);
+            cell.set_Value(inventTransferLine.QtyTransfer);
+
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>findRemainitemIdbatchIdforRemain</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 移動残数量情報用品目番号とバッチ番号取得
+    /// </summary>
+    /// <param name = "_prodTable"></param>
+    /// <param name = "_inventBatchMap"></param>
+    public Map findRemainitemIdbatchIdforRemain(ProdTable _prodTable , Map _inventBatchMap)
+    {
+        //　移動残数量情報用品目番号とバッチ番号取得
+        Prodjournaltable        prodJournalTable;           //  生産仕訳帳テーブル
+        ProdJournalProd         prodJournalProd;            //　生産仕訳トランザクション
+        InventDim               inventDim;                  //　在庫分析コード
+        InventBatch             inventBatch;                //　バッチマスタ
+
+        while select *
+        from  prodJournalTable
+        where prodJournalTable.ProdId == _prodTable.ProdId
+        && ProdJournalTable.JournalType == ProdJournalType::ReportFinished
+
+        join  prodJournalProd
+        where prodJournalProd.ProdId == _prodTable.ProdId
+        && ProdJournalProd.JournalId == ProdJournalTable.JournalId
+        
+        join inventDim
+        where inventDim.inventDimId == prodJournalProd.InventDimId
+        
+        join inventBatchId
+        from inventBatch
+        where inventBatch.inventBatchId  == inventDim.inventBatchId
+        && inventBatch.itemId == _prodTable.ItemId
+        {
+            
+            container       inventBatchIdCon;                                  //  画面選択するレコードのバッチ番号
+
+            if(_inventBatchMap.exists(_prodTable.ItemId))
+            {
+                inventBatchIdCon = _inventBatchMap.lookup(_prodTable.ItemId);
+            }
+
+            if (conFind(inventBatchIdCon,inventBatch.inventBatchId) == 0)
+            {
+                inventBatchIdCon += inventBatch.inventBatchId;
+            }
+
+            _inventBatchMap.insert(_prodTable.ItemId, inventBatchIdCon);
+
+
+        }
+
+        return _inventBatchMap;
+
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,485 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_GQPSUQJudgementResultEntryClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// GQPSUQJudgementResultEntry Class
+/// </summary>
+class KJP_SM_GQPSUQJudgementResultEntryClass extends RunBase
+{
+    private const str GQPBatchStatus = 'GQPBatchStatus';
+    private const str SUQBatchStatus = 'SUQBatchStatus';
+    private const str GQPRelease = 'GQPRelease';
+    private const str GQPReject = 'GQPReject';
+    private const str SUQ = 'SUQ';
+    private const str strBlank = '';
+
+    PdsDispositionCode      pdsNewDispositionCode;
+    TransDate               pdsGQPJudgmentDate;
+    ItemId                  pdsItemId;
+    InventBatchId           pdsInventBatchId;
+    RecId                   pdsInventBatchRecId;
+    str                     menuItemName;
+
+    DialogField             dlgNewCode;
+    DialogField             dlgGQPJudgmentDate;
+
+    boolean                 isGQP;
+    PdsDispositionCode      pdsGQPQuarantine;
+    PdsDispositionCode      pdsGQPRelease;
+    PdsDispositionCode      pdsGQPReject;
+    PdsDispositionCode      pdsQCQuarantine;
+    PdsDispositionCode      pdsQCPass;
+    PdsDispositionCode      pdsQCFail;
+    PdsDispositionCode      pdsGMPQuarantine;    
+    PdsDispositionCode      pdsSUQ;
+
+    static str              formTitle;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// class construct
+    /// </summary>
+    /// <returns>KJP_SM_GQPSUQJudgementResultEntryClass</returns>
+    public static KJP_SM_GQPSUQJudgementResultEntryClass construct()
+    {
+        return new KJP_SM_GQPSUQJudgementResultEntryClass();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Main method
+    /// </summary>
+    /// <param name = "_args">_args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_GQPSUQJudgementResultEntryClass judgementResultEntry = KJP_SM_GQPSUQJudgementResultEntryClass::construct();
+
+        if (!judgementResultEntry.initFromArgs(_args))
+        {
+            throw error("@PRO212");
+        }
+
+        if (judgementResultEntry.prompt())
+        {
+            judgementResultEntry.runOperation();
+
+            Object callerForm = _args.caller();
+            if (callerForm && formHasMethod(callerForm, identifierStr(doRefresh)))
+            {
+                callerForm.doRefresh();
+            }
+            info("@PRO195");
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>dialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// User dialog for collection of disposition code information
+    /// </summary>
+    /// <returns>
+    /// Initialized dialog
+    /// </returns>
+    /// <remarks>
+    /// The user is provided a dialog to provide a new disposition code.
+    /// </remarks>
+    public Object dialog()
+    {
+        DialogGroup     dialogMainGroup;
+        DialogGroup     dialogLeftGroup;
+        DialogGroup     dialogRightGroup;
+
+        DialogRunbase   dialog = super();
+
+        dialogMainGroup = dialog.addGroup("@PRO189");
+        dialogMainGroup.columns(2);
+
+        dialogLeftGroup = dialog.addGroup(strBlank, dialogMainGroup);
+
+        DialogField dlgItemId = dialog.addField(extendedtypestr(ItemId), "@SYS12836");
+        dlgItemId.allowEdit(false);
+        dlgItemId.value(this.parmGetItemNumber());
+
+        dlgGQPJudgmentDate = dialog.addField(extendedtypestr(TransDate), "@KJP:KJP100732");
+        FormBuildDateControl fbdcGQPJudgmentDate = dlgGQPJudgmentDate.control();
+        fbdcGQPJudgmentDate.mandatory(true);
+        fbdcGQPJudgmentDate.visible(isGQP);
+
+        dialogRightGroup = dialog.addGroup(strBlank, dialogMainGroup);
+        DialogField dlgBatchNumber = dialog.addField(extendedtypestr(Range), "@SYS53635");
+        dlgBatchNumber.allowEdit(false);
+        dlgBatchNumber.value(this.parmGetBatchNumber());
+
+        dlgNewCode = dialog.addFieldValue(extendedtypestr(PdsDispositionCode), pdsNewDispositionCode, "@KKC00210");
+        FormBuildStringControl fbscCode = dlgNewCode.control();
+        fbscCode.mandatory(true);
+        if (isGQP)
+        {
+            fbscCode.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(KJP_SM_GQPSUQJudgementResultEntryClass, GQPDispositionCode_lookup), this);
+        }
+        else
+        {
+            fbscCode.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(KJP_SM_GQPSUQJudgementResultEntryClass, SUQDispositionCode_lookup), this);
+        }
+        
+        return dialog;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>description</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog title
+    /// </summary>
+    /// <returns>dialog title</returns>
+    public static ClassDescription description()
+    {
+        return formTitle;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getFromDialog</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get information entered by user
+    /// </summary>
+    /// <returns>
+    /// true.
+    /// </returns>
+    /// <remarks>
+    /// Method retrieves the information entered by user and set the class
+    /// variable pdsNewDispositionCode and start date.
+    /// </remarks>
+    public boolean getFromDialog()
+    {
+        boolean ret;
+
+        ret = super();
+
+        pdsNewDispositionCode = dlgNewCode.value();
+
+        if (!pdsNewDispositionCode)
+        {
+            ret = checkFailed("@PRO989");
+        }
+
+        pdsGQPJudgmentDate = dlgGQPJudgmentDate.value();
+
+        if (isGQP && !pdsGQPJudgmentDate)
+        {
+            ret = checkFailed("@KJP:KJP500203");
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initFromArgs</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// dialog init
+    /// </summary>
+    /// <param name = "_args">_args</param>
+    /// <returns>check result true or false</returns>
+    public boolean initFromArgs(Args _args)
+    {
+        isGQP = false;
+        if (!_args.dataset() ||
+            (_args.menuItemName() != menuItemActionStr(KJP_SM_GQPJudgementResultEntry) &&
+             _args.menuItemName() != menuItemActionStr(KJP_SM_SUQJudgementResultEntry)))
+        {
+            return false;
+        }
+
+        if (_args.menuItemName() == menuItemActionStr(KJP_SM_GQPJudgementResultEntry))
+        {
+            formTitle = "@KJP:KJP101452";
+            isGQP = true;
+        }
+
+        if (_args.menuItemName() == menuItemActionStr(KJP_SM_SUQJudgementResultEntry))
+        {
+            formTitle = "@KJP:KJP101453";
+        }
+
+        boolean ret = false;
+
+        if (_args.dataset() == tableNum(InventBatch))
+        {
+            InventBatch inventBatch = _args.record();
+            pdsItemId = inventBatch.itemId;
+            pdsInventBatchId = inventBatch.inventBatchId;
+            pdsInventBatchRecId = inventBatch.RecId;
+
+            ret = true;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmGetBatchNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get or set Batch Number
+    /// </summary>
+    /// <param name = "_pdsInventBatchId">_pdsInventBatchId</param>
+    /// <returns>pdsInventBatchId</returns>
+    public InventBatchId parmGetBatchNumber(InventBatchId _pdsInventBatchId = pdsInventBatchId)
+    {
+        pdsInventBatchId = _pdsInventBatchId;
+
+        return pdsInventBatchId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmGetItemNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get or set Item Number
+    /// </summary>
+    /// <param name = "_pdsItemId">_pdsItemId</param>
+    /// <returns>pdsItemId</returns>
+    public ItemId parmGetItemNumber(ItemId _pdsItemId = pdsItemId)
+    {
+        pdsItemId = _pdsItemId;
+ 
+        return pdsItemId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmGetBatchRecId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get or set InventBatch RecId
+    /// </summary>
+    /// <param name = "_recId">_recId</param>
+    /// <returns>pdsInventBatchRecId</returns>
+    public RecId parmGetBatchRecId(RecId _recId = pdsInventBatchRecId)
+    {
+        pdsInventBatchRecId = _recId;
+
+        return pdsInventBatchRecId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>canRunInNewSession</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// May be run in new session
+    /// </summary>
+    /// <returns>false</returns>
+    protected boolean canRunInNewSession()
+    {
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Update batch Disposition code
+    /// </summary>
+    /// <remarks>
+    /// Method runs through all batches that are within the range selected
+    /// by the user and updates these qualifying batches
+    /// </remarks>
+    /// <exception cref="Exception::Error">
+    /// Disposition code is not valid
+    /// </exception>
+    /// <exception cref="Exception::Error">
+    /// Invalid range so not records updated
+    /// </exception>
+    /// <exception cref="Exception::Error">
+    /// Invalid range so not records updated
+    /// </exception>
+    public void run()
+    {
+        super();
+
+        this.validateNewDispositionCode();
+
+        if ((this.parmGetBatchNumber() == '')
+            || (this.parmGetItemNumber() == ''))
+        {
+            throw error("@PRO194");
+        }
+
+        ttsbegin;
+
+        InventBatch inventBatch;
+        select firstonly inventBatch where inventBatch.RecId == this.parmGetBatchRecId();
+        InventBatch newInventBatch = InventBatch::find(inventBatch.InventBatchId, inventBatch.ItemId, true);
+
+        if (#PdsBatchAttribEnabled && newInventBatch.pdsBatchAttribCheckMandatory() && !newInventBatch.pdsBatchAttribValidateMandatory())
+        {
+            throw error(strfmt("@PRO1685", newInventBatch.pdsBatchAttribMandatory().PdsBatchAttribId, inventBatch.InventBatchId));
+        }
+
+        newInventBatch.PdsDispositionCode = pdsNewDispositionCode;
+        if (isGQP)
+        {
+            newInventBatch.KJPSMGQPJudgmentDate = pdsGQPJudgmentDate;
+        
+        }
+        newInventBatch.update();
+
+        PdsHistoryInventDisposition pdsHistoryInventDisposition;
+        pdsHistoryInventDisposition.ItemId = inventBatch.ItemId;
+        pdsHistoryInventDisposition.InventBatchId = inventBatch.InventBatchId;
+        pdsHistoryInventDisposition.OldDispositionCode = inventBatch.PdsDispositionCode;
+        pdsHistoryInventDisposition.NewDispositionCode = newInventBatch.PdsDispositionCode;
+        pdsHistoryInventDisposition.insert();
+
+        ttscommit;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateNewDispositionCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate New Disposition Code
+    /// </summary>
+    private void validateNewDispositionCode()
+    {
+        if (pdsNewDispositionCode != '' && !PdsDispositionMaster::exist(pdsNewDispositionCode))
+        {
+            throw error("@PRO211");
+        }
+
+        if (isGQP)
+        {
+            if (!pdsGQPRelease)
+            {
+                pdsGQPRelease = KJP_CM_GeneralPurposeMaster::find(GQPBatchStatus, GQPRelease).DestinationCode;
+            }
+
+            if (!pdsGQPReject)
+            {
+                pdsGQPReject = KJP_CM_GeneralPurposeMaster::find(GQPBatchStatus, GQPReject).DestinationCode;
+            }
+            
+            if(pdsNewDispositionCode != pdsGQPRelease && pdsNewDispositionCode != pdsGQPReject)
+            {
+                throw error("@PRO211");
+            }
+        }
+        else
+        {
+            if (!pdsSUQ)
+            {
+                pdsGQPReject = KJP_CM_GeneralPurposeMaster::find(GQPBatchStatus, GQPReject).DestinationCode;
+            }
+            if(pdsNewDispositionCode != pdsSUQ)
+            {
+                throw error("@PRO211");
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>GQPDispositionCode_lookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// GQP Disposition Code lookup
+    /// </summary>
+    /// <param name = "_control">_control</param>
+    private void GQPDispositionCode_lookup(FormStringControl _control)
+    {
+        SysTableLookup sysTableLookup;
+        QueryBuildDataSource qbds;
+        Query query = new Query();
+
+        if (!pdsGQPRelease)
+        {
+            pdsGQPRelease = KJP_CM_GeneralPurposeMaster::find(GQPBatchStatus, GQPRelease).DestinationCode;
+        }
+
+        if (!pdsGQPReject)
+        {
+            pdsGQPReject = KJP_CM_GeneralPurposeMaster::find(GQPBatchStatus, GQPReject).DestinationCode;
+        }
+
+        qbds = query.addDataSource(tableNum(PdsDispositionMaster));
+        qbds.addRange(fieldNum(PdsDispositionMaster, DispositionCode)).value(
+            strFmt('((%1 == "%2") || (%3 == "%4"))',
+            fieldStr(PdsDispositionMaster, DispositionCode),
+            queryValue(pdsGQPRelease),
+            fieldStr(PdsDispositionMaster, DispositionCode),
+            queryValue(pdsGQPReject))
+            );
+        sysTableLookup = SysTableLookup::newParameters(tableNum(PdsDispositionMaster), _control, true);
+        sysTableLookup.addLookupfield(fieldNum(PdsDispositionMaster, DispositionCode));
+        sysTableLookup.addLookupfield(fieldNum(PdsDispositionMaster, Status));
+        sysTableLookup.parmQuery(query);
+        sysTableLookup.performFormLookup();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>SUQDispositionCode_lookup</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// SUQ Disposition Code lookup
+    /// </summary>
+    /// <param name = "_control">_control</param>
+    private void SUQDispositionCode_lookup(FormStringControl _control)
+    {
+        SysTableLookup sysTableLookup;
+        QueryBuildDataSource qbds;
+        Query query = new Query();
+
+        if (!pdsSUQ)
+        {
+            pdsSUQ = KJP_CM_GeneralPurposeMaster::find(SUQBatchStatus, SUQ).DestinationCode;
+        }
+        qbds = query.addDataSource(tableNum(PdsDispositionMaster));
+        qbds.addRange(fieldNum(PdsDispositionMaster, DispositionCode)).value(pdsSUQ);
+        sysTableLookup = SysTableLookup::newParameters(tableNum(PdsDispositionMaster), _control, true);
+        sysTableLookup.addLookupfield(fieldNum(PdsDispositionMaster, DispositionCode));
+        sysTableLookup.addLookupfield(fieldNum(PdsDispositionMaster, Status));
+        sysTableLookup.parmQuery(query);
+        sysTableLookup.performFormLookup();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventJournalMovementFormInventJournalTableHospitalCode_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Code Extension of DataField [KJPSMHospitalCode] of DataSource [InventJournalTable] of Form [InventJournalMovement].
+/// </summary>
+[ExtensionOf(formDataFieldStr(InventJournalMovement, InventJournalTable, KJPSMHospitalCode))]
+public final class KJP_SM_InventJournalMovementFormInventJournalTableHospitalCode_Extension
+{
+}
+
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>modified</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Executes on field modification
+    /// </summary>
+    public void modified()
+    {
+        next modified();
+
+        // HospitalCodeに基づいて、項目が編集可能かどうか設定する。
+        element.kjp_sm_allowEditByKJPSMHospitalCode();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validate when field [HospitalCode] modification
+    /// </summary>
+    /// <returns>boolean</returns>
+    public boolean validate()
+    {
+        boolean ret = next validate();
+
+        FormDataSource inventJournalTable_ds = element.dataSource(formDataSourceStr(InventJournalMovement, InventJournalTable)) as FormDataSource;
+        InventJournalTable inventJournalTable = inventJournalTable_ds.cursor();
+
+        // 「払出先」未登録も可能
+        if (!KJP_CM_Utils::mandatoryInputValidation(inventJournalTable.KJPSMHospitalCode))
+        {
+            return ret;
+        }
+
+        // 「払出先」にコードを直接入力した場合に、営業病医院マスタに存在しないコードであればエラーとする。
+        if (!KJP_SM_HospitalMasterView::exist(inventJournalTable.KJPSMHospitalCode))
+        {
+            // 払出先 %1 は営業病医院マスタに存在しません。
+            ret = checkFailed(strFmt("@KJP:KJP500227", inventJournalTable.KJPSMHospitalCode)) && ret;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

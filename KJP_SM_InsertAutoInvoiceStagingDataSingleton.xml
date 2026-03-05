@@ -1,0 +1,674 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InsertAutoInvoiceStagingDataSingleton</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///  Data insert class
+/// </summary>
+class KJP_SM_InsertAutoInvoiceStagingDataSingleton
+{
+    static KJP_SM_InsertAutoInvoiceStagingDataSingleton instance;
+    KJP_CM_ExecutionDateTime executionDateTime;
+    container salesPoolTransferWholeSalersFrom, salePoolReturnOrder;
+    FiscalCalendarPeriod fisCalPeriod;
+
+    public static const str functionName = KJP_CM_FunctionIdConst::dfbMfg0774_001;
+
+
+
+  
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>insertInvoiceStagingHeader</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Header table
+    /// </summary>
+    /// <param name = "_salesTable">SalesTable</param>
+    /// <param name = "_saleLine">SalesLine</param>
+    /// <param name = "_wmsPickingRoute">WMSPickingRoute</param>
+    public void insertInvoiceStagingHeader(SalesTable _salesTable, 
+                                            SalesLine _saleLine,
+                                            KJP_SM_SequenceNo _seqNo,
+                                            WMSPickingRoute _wmsPickingRoute = nullValueBaseType(Types::Record))
+    {
+        KJP_SM_InvoiceStagingHeader stagingHeader;
+
+        stagingHeader.clear();
+        stagingHeader.InvoicePostStatus             = KJP_SM_InvoicePostStatus::Executing;
+        stagingHeader.SalesId                       = _salesTable.SalesId;
+        stagingHeader.WMSPickingRouteRefId          = _wmsPickingRoute ? _wmsPickingRoute.RecId : 0;
+        stagingHeader.SalesOrderType                = _salesTable.SalesType;
+        stagingHeader.SalesPoolId                   = _salesTable.SalesPoolId;
+        stagingHeader.TradeType                     = this.getTradeType(_salesTable, _saleLine);
+        stagingHeader.JDInvoiceSendClassification   = this.getInvoiceSendCategory(_saleLine);
+        if(_wmsPickingRoute)
+        {
+            stagingHeader.DocumentDate                  = _wmsPickingRoute.DlvDate;
+        }
+        else
+        {
+           
+            stagingHeader.DocumentDate                  = this.getDocumentDate(_salesTable,_saleLine);
+        }
+        if(_wmsPickingRoute)
+        {
+            stagingHeader.InvoiceDate                   = this.getInvoiceDate(_wmsPickingRoute.DlvDate);
+        }
+        else
+        {
+            stagingHeader.InvoiceDate                   = _salesTable.SalesType == SalesType::Sales ? this.getInvoiceDate(_saleLine.ShippingDateRequested)
+                                                           :this.getInvoiceDate(dateNull(), _salesTable.KJPSMReturnReferenceDate);
+        }
+        stagingHeader.VoucherNumber                 = _wmsPickingRoute ? _wmsPickingRoute.pickingRouteID : this.getVoucherNumber(_salesTable.SalesId);
+        stagingHeader.ExecutionDateTime             = executionDateTime;
+        stagingHeader.SequenceNo                    = _seqNo;
+        if(stagingHeader.validateWrite())
+        {
+            stagingHeader.insert();
+        }
+       
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertStagingLines</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Staging Line
+    /// </summary>
+    /// <param name = "_salesLine">Sales line</param>
+    /// <param name = "_inventBatchId">Batch id</param>
+    /// <param name = "_inventDim">Invent Dim</param>
+    /// <param name = "loopcount">Loop count</param>
+    /// <param name = "_wmsPickingRoute">WmsPickingROute</param>
+    /// <param name = "_wmsOrderTrans">OrderTrans</param>
+    /// <returns>True/False</returns>
+    public boolean insertStagingLines(SalesLine _salesLine, 
+                                InventBatchId _inventBatchId,
+                                InventDim _inventDim,
+                                int loopcount = 1,
+                                WMSPickingRoute _wmsPickingRoute = nullValueBaseType(Types::Record), 
+                                WMSOrderTrans _wmsOrderTrans = nullValueBaseType(Types::Record)
+                                )
+    {   
+        KJP_SM_InvoiceStagingLine stagingLine;
+        
+        stagingLine.clear();
+        stagingLine.SalesId                 = _salesLine.SalesId;
+        stagingLine.WMSPickingRouteRefId    = _wmsPickingRoute.RecId ? _wmsPickingRoute.RecId : 0;
+        if(_wmsOrderTrans)
+        {
+            stagingLine.LineNumber              = real2int(_wmsOrderTrans.KJPSMLineNum);
+        }
+        else
+        {
+            stagingLine.LineNumber              = loopcount;
+        }
+        stagingLine.BatchNumber             = _inventBatchId;
+        if(_wmsOrderTrans)
+        {
+            UnitOfMeasureSymbol inventorySymbol = InventTableModule::getUnitIdByModuleType(_salesLine.ItemId, ModuleInventPurchSales::Invent);
+            UnitOfMeasureSymbol salesSymbol     = InventTableModule::getUnitIdByModuleType(_salesLine.ItemId, ModuleInventPurchSales::Sales);
+
+            stagingLine.Qty                     = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(_salesLine.ItemId, 
+                                                                        _inventDim.InventDimId,
+                                                                        _wmsOrderTrans.qty,
+                                                                        inventorySymbol,
+                                                                        salesSymbol);
+        }
+        else
+        {
+            stagingLine.Qty                 = _salesLine.SalesQty;
+        }
+        stagingLine.UnitPrice               = _salesLine.SalesPrice;
+        stagingLine.LineAmount              = stagingLine.Qty * stagingLine.UnitPrice;
+        if(_wmsOrderTrans)
+        {
+            stagingLine.InventTransId       = _wmsOrderTrans.inventTransId;
+        }
+        else
+        {
+            stagingLine.InventTransId       = _salesLine.InventTransId;
+        }
+        if(stagingLine.validateWrite())
+        {
+
+            stagingLine.insert();
+            return true;
+        }
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>instance</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Instance class
+    /// </summary>
+    /// <returns>Instance</returns>
+    public static KJP_SM_InsertAutoInvoiceStagingDataSingleton instance()
+    {
+        if (!instance)
+        {
+            instance = new KJP_SM_InsertAutoInvoiceStagingDataSingleton();
+        }
+
+        return instance;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkShippingDateRequested</Name>
+				<Source><![CDATA[
+   /// <summary>
+   /// Shipping date requested
+   /// </summary>
+   /// <param name = "_salesId">SalesId</param>
+   /// <returns>True/False</returns>
+    private boolean checkShippingDateRequested(SalesId _salesId)
+    {
+        SalesLine saleLine;
+        int counter;
+
+        while select ShippingDateRequested from saleLine
+            group by saleLine.ShippingDateRequested
+            where saleLine.SalesId == _salesId
+            && saleLine.SalesStatus != SalesStatus::Canceled
+
+        {
+            counter++;
+        }
+        if(counter == 1)
+        {
+            return true;
+        }
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getVoucherNumber</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Voucher number
+    /// </summary>
+    /// <param name = "_salesId">SalesId</param>
+    /// <returns>voucher number</returns>
+    private str getVoucherNumber(SalesId _salesId)
+    {
+        System.String salesId = _salesId;
+
+        return salesId.Remove(1, 1);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getDocumentDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Document date
+    /// </summary>
+    /// <param name = "_salesTable">SalesTable</param>
+    /// <param name = "_salesLine">Sales Line</param>
+    /// <returns>Document date</returns>
+    private date getDocumentDate(SalesTable _salesTable, SalesLine _salesLine)
+    {
+        return (_salesTable.SalesType == SalesType::Sales ? _salesLine.ShippingDateRequested : _salesTable.KJPSMReturnReferenceDate);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkInventTransReservePhysical</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Invent Trans Reserve Physical
+    /// </summary>
+    /// <param name = "_salesId">SalesId</param>
+    /// <returns>integer</returns>
+    private int64 checkInventTransReservePhysical(SalesId _salesId)
+    {
+        InventTrans         inventTrans;
+        InventTransOrigin   inventTransOrigin;  
+        SalesLine           salesLine;
+
+        select count(RecId) from inventTrans
+            where inventTrans.StatusIssue != StatusIssue::ReservPhysical
+            join InventTransId from inventTransOrigin
+            where inventTransOrigin.RecId == inventTrans.InventTransOrigin
+            exists join salesLine
+            where salesLine.InventTransId == inventTransOrigin.InventTransId
+            && SalesLine.SalesId == _salesId;
+
+        return inventTrans.RecId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkLedgerCalendarPeriod</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// ledgerCalendarPeriod
+    /// </summary>
+    /// <param name = "_checkDate">CheckDate</param>
+    /// <returns>true/false</returns>
+    private boolean checkLedgerCalendarPeriod(date _checkDate)
+    {
+        if(_checkDate >= fisCalPeriod.StartDate)
+        {
+            return true;
+        }
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getInvoiceSendCategory</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// InvoiceSendCategory
+    /// </summary>
+    /// <param name = "_salesLine">Line</param>
+    /// <returns>Classification</returns>
+    private KJP_SM_JDInvoiceSendClassification  getInvoiceSendCategory(SalesLine _salesLine)
+    {
+        KJP_SM_JDNETTransmissionConditionMaster transConditionMatser;
+
+        CustAccount accountNum = DimensionAttributeValueSetStorage::find(_salesLine.DefaultDimension).getDisplayValueByDimensionAttribute(DimensionAttribute::findByLocalizedName(KJP_CM_ConstantHelper::customer).RecId);
+        
+        select count(RecId) from transConditionMatser
+            where transConditionMatser.LedgerAccountCode == accountNum
+            && transConditionMatser.InvoiceSendTarget == NoYes::Yes;
+
+        if(transConditionMatser.RecId > 0)
+        {
+            return KJP_SM_JDInvoiceSendClassification::NotSend;
+        }
+        return KJP_SM_JDInvoiceSendClassification::NotTarget;
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getTradeType</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// TradeType
+    /// </summary>
+    /// <param name = "_salesTable">SalesType</param>
+    /// <param name = "_salesLine">SalesLine</param>
+    /// <returns>String</returns>
+    private str getTradeType(SalesTable _salesTable, SalesLine _salesLine)
+    {
+        DictEnum dictEnum;
+        KJP_SM_InvoicePostingReturnOrderFlag returnFlag;
+        str tradeTypeSearchKey;
+
+        const str colon = '::';
+        dictEnum = new DictEnum(enumNum(SalesType));
+
+        KJP_CM_DestinationCode priceFlag = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_SalesAutomateInvoicePosting_PriceCheckFlagKey, _salesTable.SalesPoolId).DestinationCode;
+        returnFlag = _salesTable.SalesType == SalesType::Sales && _salesLine.InventTransIdReturn != nullValueBaseType(Types::String) ? KJP_SM_InvoicePostingReturnOrderFlag::CrNote : KJP_SM_InvoicePostingReturnOrderFlag::Normal;
+        
+        if(priceFlag == KJP_CM_ConstantHelper::zeroStr)
+        {
+            tradeTypeSearchKey =  _salesTable.SalesPoolId + colon + enum2Symbol(enumNum(SalesType), enum2Int(_salesTable.SalesType)) + colon + enum2Symbol(enumNum(KJP_SM_InvoicePostingReturnOrderFlag), returnFlag) + colon + enum2Symbol(enumNum(KJP_SM_InvoicePostingPriceCheck),KJP_SM_InvoicePostingPriceCheck::Any);
+        }
+
+        if(priceFlag == KJP_CM_ConstantHelper::stringOne)
+        {
+            if(_salesLine.LineAmount > 0)
+            {
+                tradeTypeSearchKey =  _salesTable.SalesPoolId + colon + enum2Symbol(enumNum(SalesType), enum2Int(_salesTable.SalesType)) + colon +  enum2Symbol(enumNum(KJP_SM_InvoicePostingReturnOrderFlag), returnFlag) + colon + enum2Symbol(enumNum(KJP_SM_InvoicePostingPriceCheck),KJP_SM_InvoicePostingPriceCheck::Plus);
+            }
+       
+            else
+            {
+                tradeTypeSearchKey =  _salesTable.SalesPoolId + colon + enum2Symbol(enumNum(SalesType), enum2Int(_salesTable.SalesType)) + colon +  enum2Symbol(enumNum(KJP_SM_InvoicePostingReturnOrderFlag), returnFlag) + colon + enum2Symbol(enumNum(KJP_SM_InvoicePostingPriceCheck),KJP_SM_InvoicePostingPriceCheck::Minus);
+            }
+        }
+        
+        return(KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_SalesAutomateInvoicePosting_TradeType_DefinitionKey,
+                                                   tradeTypeSearchKey).DestinationCode);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPoolIdDetails</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Set sales pool id
+    /// </summary>
+    public void setPoolIdDetails()
+    {
+        KJP_CM_GeneralPurposeMaster generalPurposeMasterTransfer, generalPurposeMasterReturnOrder;
+
+        while select DestinationCode from generalPurposeMasterTransfer
+            where generalPurposeMasterTransfer.Key == KJP_CM_ConstantHelper::KJP_SM_SalesAutomateInvoicePosting_SalesPool_TransferBetweenWholesalersToKey
+        {
+            salesPoolTransferWholeSalersFrom += generalPurposeMasterTransfer.DestinationCode;
+        }
+
+        while select DestinationCode from generalPurposeMasterReturnOrder
+            where generalPurposeMasterReturnOrder.Key == KJP_CM_ConstantHelper::KJP_SM_SalesAutomateInvoicePosting_SalesPool_ReturnOrderKey
+        {
+            salePoolReturnOrder += generalPurposeMasterReturnOrder.DestinationCode;
+        }
+
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateHeaderData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validate header data
+    /// </summary>
+    /// <param name = "_salesLine">Line</param>
+    /// <returns>True/False</returns>
+    public boolean validateHeaderData(SalesLine _salesLine)
+    {
+        if(this.checkShippingDateRequested(_salesLine.SalesId) //2
+            && this.validateShippingDateReuqested(_salesLine.SalesId) //1
+            && this.checkSalesStatusReturn(_salesLine.SalesId) //3
+            && this.checkSalesTransferFrom(_salesLine.SalesId)//4
+            && this.checkTaxDetails(_salesLine.SalesId))
+        {
+            return true;
+        }
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateShippingDateReuqested</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validate Ship date
+    /// </summary>
+    /// <param name = "_salesId">salesId</param>
+    /// <returns>True/False</returns>
+    private boolean validateShippingDateReuqested(SalesId _salesId)
+    {
+        SalesLine salesLine;
+        
+        select firstonly ShippingDateRequested from salesLine
+            where salesLine.ShippingDateRequested > DateTimeUtil::date(executionDateTime)
+            && salesLine.SalesId == _salesId
+            && salesLine.SalesStatus != SalesStatus::Canceled;
+
+        if(salesLine.ShippingDateRequested)
+        {
+            return false;
+        }
+        return true;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmExecutionDateTime</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Execution date time
+    /// </summary>
+    /// <param name = "_executionDateTime">ExecutionDateTime</param>
+    /// <returns>ExecutionDateTime</returns>
+    public KJP_CM_ExecutionDateTime parmExecutionDateTime(KJP_CM_ExecutionDateTime _executionDateTime = executionDateTime)
+    {
+        executionDateTime = _executiondateTime;
+
+        return executionDateTime;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkSalesStatusReturn</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// SalesReturn
+    /// </summary>
+    /// <param name = "_salesId">SalesId</param>
+    /// <returns>True/False</returns>
+    public boolean checkSalesStatusReturn(SalesId _salesId)
+    {
+        SalesTable salesTable;
+
+        boolean ret = true;
+
+        select firstonly SalesType, SalesPoolId, SalesStatus from salesTable
+            where salesTable.SalesId == _salesId;
+        
+        if(salesTable.SalesType == SalesType::ReturnItem && conFind(salePoolReturnOrder, salesTable.SalesPoolId) != nullValueBaseType(Types::Integer))
+        {
+            if(salesTable.SalesStatus != SalesStatus::Delivered)
+            {
+                ret = false;
+            }
+       
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkSalesTransferFrom</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// SalesTransferFrom
+    /// </summary>
+    /// <param name = "_salesId">SalesId</param>
+    /// <returns>True/False</returns>
+    public boolean checkSalesTransferFrom(SalesId _salesId)
+    {
+        SalesTable  salesTable;
+        SalesLine   salesLine;
+
+        boolean ret = true;
+
+        select firstonly SalesType, SalesPoolId, SalesStatus from salesTable
+            where salesTable.SalesId == _salesId;
+
+        select firstonly RecId from salesLine
+            where salesLine.SalesId == _salesId
+            && salesLine.InventTransId == null
+            && salesLine.InventTransIdReturn != null
+            && salesLine.SalesStatus != SalesStatus::Canceled;
+        
+        if(salesTable.SalesType == SalesType::Sales && conFind(salesPoolTransferWholeSalersFrom, SalesTable.SalesPoolId) != nullValueBaseType(Types::Integer) && !salesLine.RecId)
+        {
+            if(this.checkInventTransReservePhysical(_salesId) > 0)
+            {
+                ret = false;
+            }
+       
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getcalendarId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get calendar period
+    /// </summary>
+    public void getcalendarId()
+    {
+        LedgerFiscalCalendarPeriod      ledgerFiscalCalendarPeriod;
+        LedgerPeriodModuleAccessControl moduleAccessControl;
+
+        LedgerRecId             ledger = Ledger::primaryLedger(CompanyInfo::findDataArea(curExt()).RecId);
+
+        select firstonly minof(StartDate) from fisCalPeriod
+            where fisCalPeriod.Type == FiscalPeriodType::Operating
+            exists join ledgerFiscalCalendarPeriod
+            where ledgerFiscalCalendarPeriod.FiscalCalendarPeriod == fisCalPeriod.RecId
+            && ledgerFiscalCalendarPeriod.Status == FiscalPeriodStatus::Open
+            && ledgerFiscalCalendarPeriod.Ledger == ledger
+            exists join moduleAccessControl
+            where moduleAccessControl.LedgerFiscalCalendarPeriod == ledgerFiscalCalendarPeriod.RecId
+            && moduleAccessControl.SalesAccessLevel == ModulePeriodStat::All;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getInvoiceDate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get invoice date
+    /// </summary>
+    /// <param name = "_checkDate">Date</param>
+    /// <param name = "_returnReferenceDate">Date</param>
+    /// <returns>Invoice Date</returns>
+    public date getInvoiceDate(date _checkDate, date _returnReferenceDate = dateNull())
+    {
+        date invoiceDate;
+
+        invoiceDate = DateTimeUtil::date(executionDateTime);
+        if(_checkDate != dateNull())
+        {
+            if(this.checkLedgerCalendarPeriod(_checkDate))
+            {
+                invoiceDate = _checkDate;
+            }
+            else
+            {
+                invoiceDate = fisCalPeriod.StartDate;
+            }
+        }
+
+        else if(mthOfYr(_returnReferenceDate) != mthOfYr(DateTimeUtil::date(executionDateTime)))
+        {
+            if(this.checkLedgerCalendarPeriod(_returnReferenceDate))
+            {
+                invoiceDate = _returnReferenceDate;
+            }
+        }
+        return invoiceDate;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkTaxDetails</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check Tax details
+    /// </summary>
+    /// <param name = "_salesId">SalesId</param>
+    /// <param name = "_pickingRouteId">Picking Route id </param>
+    /// <returns>True/False</returns>
+    public boolean checkTaxDetails(SalesId _salesId, RouteId _pickingRouteId = '')
+    {
+        SalesLine       salesLine;
+        WMSOrderTrans   wmsOrderTrans;
+        boolean         isValid = true;
+    
+        if (_pickingRouteId == nullValueBaseType(Types::String))
+        {
+
+            while select TaxGroup, TaxItemGroup from salesLine
+                where salesLine.salesId == _salesId
+                && salesLine.SalesStatus != SalesStatus::Canceled
+               
+            {
+                if(!this.checkTaxOnItem(salesLine.TaxItemGroup, salesLine.TaxGroup))
+                {
+                    KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName, executionDateTime,
+                        strFmt("@KJP:KJP500604",
+                        "@KJP:KJP101991",
+                        _salesId,
+                        "@KJP:KJP102008",
+                        salesLine.TaxItemGroup,
+                        "@KJP:KJP102006",
+                        salesLine.TaxGroup),
+                        KJP_CM_LogType::Warning);
+                    isValid = false;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            while select TaxGroup, TaxItemGroup from salesLine
+                where salesLine.SalesId == _salesId
+                exists join wmsOrderTrans
+                where wmsOrderTrans.inventTransId == salesLine.InventTransId
+                && wmsOrderTrans.routeId == _pickingRouteId
+            {
+                if(!this.checkTaxOnItem(salesLine.TaxItemGroup, salesLine.TaxGroup))
+                {
+                    KJP_CM_JobExecutionLogTable::insertIntoJobExecutionLogTable(functionName, executionDateTime,
+                        strFmt("@KJP:KJP500604",
+                        "@KJP:KJP101991",
+                        _salesId,
+                        "@KJP:KJP102008",
+                        salesLine.TaxItemGroup,
+                        "@KJP:KJP102006",
+                        salesLine.TaxGroup),
+                        KJP_CM_LogType::Warning);
+                    isValid = false;
+                    break;
+                }
+            }
+             
+        }
+        return isValid;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkTaxOnItem</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check tax On Item is valid
+    /// </summary>
+    /// <param name = "_taxItemGroup">taxItem Group</param>
+    /// <param name = "_taxGroup">Tax Group</param>
+    /// <returns>True False</returns>
+    public boolean checkTaxOnItem(TaxItemGroup _taxItemGroup, TaxGroup _taxGroup)
+    {
+        TaxOnItem       taxOnItem;
+        TaxGroupData    taxGroupData;
+
+        select firstonly RecId from taxOnItem
+                where taxOnItem.TaxItemGroup == _taxItemGroup
+                join TaxGroup,TaxCode from taxGroupData
+                where taxGroupData.TaxCode == taxOnItem.TaxCode
+                && taxGroupData.TaxGroup == _taxGroup;
+
+        return taxOnItem.RecId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

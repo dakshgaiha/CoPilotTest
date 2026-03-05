@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AutomaticReservationandCreatePickingList_Service</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Service class to perform automatic reservation and pick list creation
+/// </summary>
+class KJP_SM_AutomaticReservationandCreatePickingList_Service extends KJP_CM_IFBatchBase
+{
+    container                       currentShipmentPickingRoute;
+    int                             maxPickingLines, lineNum;
+    int64                           numberOfRecordsProcessed;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Starting point of batch job creation
+    /// </summary>
+    void processRun()
+    {
+        SalesTable                      salesTable;
+        KJP_CM_GeneralPurposeMaster     generalPurposeMaster, generalPurposeMasterLoc;
+        LogisticsAddressState           logisticsAddressState;
+        boolean                         ret;
+        SalesLine                       salesLine;
+        InventTransOrigin               inventTransOrigin;
+        InventTrans                     inventTrans;
+
+        generalPurposeMasterLoc     = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::SalesReservationKey, KJP_CM_ConstantHelper::origcodeSalesReservation_PickingLineMax);
+        maxPickingLines             = str2Int(generalPurposeMasterLoc.DestinationCode);
+
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+
+            while select salesTable
+            order by salesid asc
+                where salestable.salesstatus == Salesstatus::BackOrder
+                    && (salestable.DocumentStatus == DocumentStatus::Confirmation
+                    || salestable.DocumentStatus == DocumentStatus::PickingList
+                    || salestable.DocumentStatus == DocumentStatus::PackingSlip
+                    || salestable.DocumentStatus == DocumentStatus::Invoice)
+                    && salestable.SalesType == SalesType::Sales
+            exists join generalPurposeMaster
+                where generalPurposeMaster.Key == KJP_CM_ConstantHelper::SalesMgtKey
+                    && generalPurposeMaster.OriginalCode == KJP_CM_ConstantHelper::origcodeSalesMgt_SalesPoolDomestic
+                    && generalPurposeMaster.DestinationCode == salesTable.SalesPoolId
+
+            {
+                try
+                {
+                    ret = KJP_SM_AutomaticReservationandCreatePickingList_Service::validateSalesHeader(salesTable);
+                    if (ret)
+                    {
+                        select firstonly RecId from inventTrans
+                            exists join inventTransOrigin
+                            exists join salesLine
+                                where salesLine.SalesId == salesTable.SalesId
+                                    && salesLine.KJPSMHoldCode == KJP_CM_ConstantHelper::blankValue
+                                    && salesLine.InventTransId == inventTransOrigin.InventTransId
+                                    && inventTrans.InventTransOrigin == inventTransOrigin.RecId
+                                    && (inventTrans.StatusIssue == StatusIssue::OnOrder
+                                    || inventTrans.StatusIssue == StatusIssue::ReservPhysical
+                                    || inventTrans.StatusIssue == StatusIssue::ReservOrdered);
+                        if (inventTrans)
+                        {
+                            this.executeReservation(salesTable, logisticsAddressState);
+                        }
+                        select firstonly RecId from inventTrans
+                            exists join inventTransOrigin
+                            exists join salesLine
+                                where salesLine.SalesId == salesTable.SalesId
+                                    && salesLine.KJPSMHoldCode == KJP_CM_ConstantHelper::blankValue
+                                    && salesLine.InventTransId == inventTransOrigin.InventTransId
+                                    && inventTrans.InventTransOrigin == inventTransOrigin.RecId
+                                    && (inventTrans.StatusIssue == StatusIssue::ReservPhysical
+                            || inventTrans.StatusIssue == StatusIssue::ReservOrdered);
+
+                        if (inventTrans)
+                        {
+                            ttsbegin;
+                            this.processPickingList(salesTable);
+                            ttscommit;
+                        }
+                    }
+                }
+                catch
+                {
+                    error(strFmt("@KJP:KJP500340", "@SYS9694", salesTable.SalesId));
+                }
+            }
+            numberOfSuccess = numberOfRecordsProcessed;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateSalesHeader</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Validating sales header address information
+    /// </summary>
+    /// <returns>checks whether the StateCode_IN field is present or not</returns>
+    /// <param name = "_salesTable">salesTable</param>
+    public static boolean validateSalesHeader(SalesTable _salesTable)
+    {
+        boolean                         ret = true;
+        KJP_CM_GeneralPurposeMaster     generalPurposeMasterLoc;
+        LogisticsPostalAddress          logisticsPostalAddress;
+        LogisticsAddressState           logisticsAddressState;
+        
+        if (_salesTable.SalesStatus != Salesstatus::BackOrder
+            || _salesTable.SalesType != SalesType::Sales)
+        {
+            ret = false;
+        }
+
+        if (ret)
+        {
+            select firstonly generalPurposeMasterLoc
+                where generalPurposeMasterLoc.Key == KJP_CM_ConstantHelper::SalesMgtKey
+                    && generalPurposeMasterLoc.OriginalCode == KJP_CM_ConstantHelper::origcodeSalesMgt_SalesPoolDomestic
+                    && generalPurposeMasterLoc.DestinationCode == _salesTable.SalesPoolId;
+            if (!generalPurposeMasterLoc)
+            {
+                ret = false;
+            }
+        }
+
+        if (ret)
+        {
+            select firstonly logisticsPostalAddress
+                where logisticsPostalAddress.recid == _salesTable.deliveryAddress().RecId
+                    outer join logisticsAddressState
+                        where logisticsAddressState.CountryRegionId == logisticsPostalAddress.CountryRegionId
+                            && logisticsAddressState.StateId == logisticsPostalAddress.State;
+            if (logisticsAddressState == null || logisticsAddressState.StateCode_IN == KJP_CM_ConstantHelper::blankValue)
+            {
+                infolog.add(Exception::Warning, strFmt("@KJP:KJP500258", _salesTable.SalesId));
+                ret = false;
+            }
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>executeReservation</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Callig execute reservation actual class
+    /// </summary>
+    /// <param name = "_salesTable">salesTable</param>
+    /// <param name = "_logisticsAddressState">logisticsAddressState</param>
+    private void executeReservation(SalesTable _salesTable, LogisticsAddressState _logisticsAddressState)
+    {
+        SalesLine               salesLine;
+        InventTable             inventTable;
+        InventDim               inventDim;
+        InventLocation          inventLocation;
+        InventTransOrigin       inventTransOrigin;
+        InventTrans             inventTrans;
+
+        Info(strfmt("@KJP:KJP500599", "@KJP:KJP103990", "@SYS9694", _salesTable.SalesId));
+
+        while select salesLine
+            order by LineCreationSequenceNumber
+                where salesLine.SalesId == _salesTable.SalesId
+                    && salesLine.KJPSMStatus == KJP_SM_Status::Open
+                    && salesLine.KJPSMAutoReservationFlag == NoYes::Yes
+            exists join inventTable
+                where inventTable.ItemId == salesLine.ItemId
+            exists join inventDim
+                where inventDim.inventDimId == salesLine.InventDimId
+            exists join inventLocation
+                where inventLocation.InventLocationId == inventDim.InventLocationId
+            exists join inventTransOrigin
+                where inventTransOrigin.InventTransId == salesLine.InventTransId
+            exists join inventTrans
+                where inventTrans.InventTransOrigin == inventTransOrigin.RecId
+                    && (inventTrans.StatusIssue == StatusIssue::OnOrder
+                        || inventTrans.StatusIssue == StatusIssue::ReservOrdered
+                        || inventTrans.StatusIssue == StatusIssue::ReservPhysical)
+        {
+            ttsbegin;
+            KJP_SM_ProcessAutoReservation::processAutoReservation(salesLine, _logisticsAddressState);
+            ttscommit;
+        }
+
+        Info(strFmt("@KJP:KJP500600", "@KJP:KJP103990", "@SYS9694", _salesTable.SalesId));
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processPickingList</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Perform the picking list creation
+    /// </summary>
+    /// <param name = "_salesTable">salesTable</param>
+    private void processPickingList(SalesTable _salesTable)
+    {
+        SalesLine                       salesLine;
+        container                       pendingSalesLines;
+        InventTransOrigin               inventTransOrigin;
+        InventTrans                     inventTrans, inventTrans1;
+        int64                           batchCountPerSalesLine, lineCount;
+        KJP_SM_PackagingConditionCode   prevPackagingConditionCode, prevOldPickingRouteId;
+        WMSOrderTrans                   wmsOrderTrans;
+
+        while select salesLine
+            order by KJPSMPackagingConditionCode, KJPSMOldPickingRouteID, LineCreationSequenceNumber
+                where salesLine.SalesId == _salesTable.salesId
+                    && salesLine.KJPSMHoldCode == KJP_CM_ConstantHelper::blankValue
+                exists join inventTransOrigin
+                    where inventTransOrigin.InventTransId == salesLine.InventTransId
+                exists join inventTrans
+                    where inventTrans.InventTransOrigin == inventTransOrigin.RecId
+                        && inventTrans.StatusReceipt == StatusReceipt::None
+                        && inventTrans.StatusIssue == StatusIssue::ReservPhysical                       
+                        && inventTrans.PickingRouteID == KJP_CM_ConstantHelper::blankValue
+                notexists join wmsOrderTrans
+                    where wmsOrderTrans.inventTransId == salesLine.InventTransId
+                    && wmsOrderTrans.expeditionStatus != WMSExpeditionStatus::Cancelled
+        {
+            if (salesLine.KJPSMPackagingConditionCode != prevPackagingConditionCode || salesLine.KJPSMOldPickingRouteID != prevOldPickingRouteId)
+            {
+                batchCountPerSalesLine  = KJP_CM_ConstantHelper::numberZero;
+                lineCount               = KJP_CM_ConstantHelper::numberZero;
+            }
+
+            if (batchCountPerSalesLine !=  maxPickingLines)
+            {
+                select count(RecId) from inventTrans1
+                    exists join inventTransOrigin
+                        where inventTransOrigin.InventTransId == salesLine.InventTransId
+                            && inventTrans1.InventTransOrigin == inventTransOrigin.RecId;
+                if (inventTrans1.RecId > maxPickingLines)
+                {
+                    this.updateSalesLineHoldCode(salesLine);
+                }
+                else
+                {
+                    batchCountPerSalesLine += inventTrans1.RecId;
+            
+                    if (batchCountPerSalesLine <= maxPickingLines)
+                    {
+                        lineCount++;
+                        currentShipmentPickingRoute = this.createPickList(salesLine, lineCount > KJP_CM_ConstantHelper::numberOne);
+                    }
+                    else
+                    {
+                        batchCountPerSalesLine -= inventTrans1.RecId;
+                        pendingSalesLines += [salesLine.RecId];
+                    }
+                }
+            }
+            else
+            {
+                pendingSalesLines += [salesLine.RecId];
+            }
+            prevPackagingConditionCode = salesLine.KJPSMPackagingConditionCode;
+            prevOldPickingRouteId = salesLine.KJPSMOldPickingRouteID;
+
+        }
+
+        this.processPendingSalesLines(pendingSalesLines);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateSalesLineHoldCode</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Updating the hold code
+    /// </summary>
+    /// <param name = "_salesLine">salesLine</param>
+    public void updateSalesLineHoldCode(SalesLine   _salesLine)
+    {
+        SalesLine   salesLine;
+
+        select firstonly forupdate salesLine
+            where salesLine.RecId == _salesLine.RecId;
+        if (salesLine)
+        {
+            salesLine.KJPSMHoldCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::holdCode_SM_Key, KJP_CM_ConstantHelper::origcodeHoldCode_PickingCancelHoldCode).DestinationCode;
+            salesLine.KJPSMStatus   = KJP_SM_Status::OnHold;
+            salesLine.update();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processPendingSalesLines</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Perform pick list creation for pending sales lines
+    /// </summary>
+    /// <param name = "_pendingSalesLines">ppendingSalesLines</param>
+    public void processPendingSalesLines(container _pendingSalesLines)
+    {
+        int                                 i, lineCount;
+        int64                               batchCountPerSalesLine;
+        RecId                               recId;
+        SalesLine                           salesLine;
+        KJP_SM_PackagingConditionCode       prevPackagingConditionCode, prevOldPickingRouteId;
+        InventTransOrigin                   inventTransOrigin;
+        InventTrans                         inventTrans;
+        container                           pendingSalesLines;
+
+        for (i = KJP_CM_ConstantHelper::numberOne; i <= conLen(_pendingSalesLines); i++)
+        {
+            recId = conPeek(_pendingSalesLines, i);
+
+            select firstonly salesLine
+                where salesLine.RecId == recId;
+
+            if (salesLine.KJPSMPackagingConditionCode != prevPackagingConditionCode)
+            {
+                batchCountPerSalesLine  = KJP_CM_ConstantHelper::numberZero;
+                lineCount               = KJP_CM_ConstantHelper::numberZero;
+            }
+
+            if (batchCountPerSalesLine !=  maxPickingLines || salesLine.KJPSMOldPickingRouteID != prevOldPickingRouteId)
+            {
+                select count(RecId) from inventTrans
+                    exists join inventTransOrigin
+                        where inventTransOrigin.InventTransId == salesLine.InventTransId
+                            && inventTrans.InventTransOrigin == inventTransOrigin.RecId;
+                if (inventTrans.RecId > maxPickingLines)
+                {
+                    this.updateSalesLineHoldCode(salesLine);
+                }
+                else
+                {
+                    batchCountPerSalesLine += inventTrans.RecId;
+            
+                    if (batchCountPerSalesLine <= maxPickingLines)
+                    {
+                        lineCount++;
+                        currentShipmentPickingRoute = this.createPickList(salesLine, lineCount > KJP_CM_ConstantHelper::numberOne);
+                    }
+                    else
+                    {
+                        pendingSalesLines += [salesLine.RecId];
+                    }
+                }
+            }
+            else
+            {
+                pendingSalesLines += [salesLine.RecId];
+            }
+            prevPackagingConditionCode  = salesLine.KJPSMPackagingConditionCode;
+            prevOldPickingRouteId       = salesLine.KJPSMOldPickingRouteID;
+        }
+        if (conLen(pendingSalesLines))
+        {
+            this.processPendingSalesLines(pendingSalesLines);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createPickList</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Pick list header creation
+    /// </summary>
+    /// <param name = "_salesLine">salesLine</param>
+    /// <param name = "_reUseHeader">reUseHeader</param>
+    /// <returns>container of shipment and picking route</returns>
+    private container createPickList(SalesLine   _salesLine, boolean _reUseHeader = NoYes::No)
+    {
+        WMSShipment             wmsShipment;
+        SalesTable              salesTable;
+        WMSPickingRoute         wmsPickingRoute;
+        WMSPickingRouteLink     wmsPickingRouteLink;
+        
+        if (!_reUseHeader)
+        {
+            lineNum = KJP_CM_ConstantHelper::numberOne;
+            salesTable = SalesTable::find(_salesLine.SalesId);
+            wmsShipment.clear();
+            wmsShipment.initTypeOrderPick();
+            wmsShipment.insert();
+
+            wmsPickingRoute.clear();
+            wmsPickingRoute.initTypeOrderPick(wmsShipment, WMSExpeditionStatus::Activated, WMSPickRequestTable::construct(salesTable),KJP_CM_ConstantHelper::blankValue, true);
+            wmsPickingRoute.ActivationDateTime          = DateTimeUtil::getSystemDateTime();
+            wmsPickingRoute.KJPSMShippingCategory       = KJP_SM_ShippingCategory::Normal;
+            wmsPickingRoute.KJPSMPackagingConditionCode = _salesLine.KJPSMPackagingConditionCode;
+            wmsPickingRoute.KJPSMPackagingCategory      = _salesLine.KJPSMPackagingCategory;
+            wmsPickingRoute.KJPSMSlipRemarks            = salesTable.KJPSMSlipRemarks;
+            wmsPickingRoute.KJPSMOriginalVoucherNumber  = _salesLine.KJPSMOldPickingRouteID;
+            wmsPickingRoute.DlvDate                     = _salesLine.ShippingDateRequested;
+            wmsPickingRoute.transRefId                  = _salesLine.SalesId;
+            wmsPickingRoute.transType                   = InventTransType::Sales;
+            wmsPickingRoute.inventLocationId            = _salesLine.inventDim().InventLocationId;
+            wmsPickingRoute.insert();
+        
+            wmsPickingRouteLink.initFromSalesTable(salesTable);
+            wmsPickingRouteLink.initFromWMSPickingRoute(wmsPickingRoute);
+            wmsPickingRouteLink.insert();
+
+            if (wmsPickingRoute)
+            {
+                numberOfRecordsProcessed++;
+            }
+
+        }
+        else
+        {
+            [wmsShipment, wmsPickingRoute] = [conPeek(currentShipmentPickingRoute, KJP_CM_ConstantHelper::numberOne), conPeek(currentShipmentPickingRoute, KJP_CM_ConstantHelper::numberTwo)];
+        }
+        this.createPickLine(_salesLine, wmsShipment, wmsPickingRoute.PickingRouteID);
+        
+        return [wmsShipment, wmsPickingRoute];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>createPickLine</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Pick list lines creation
+    /// </summary>
+    /// <param name = "_salesLine">salesLine</param>
+    /// <param name = "_wmsShipment">wmsShipment</param>
+    /// <param name = "_pickingRouteId">pickingRouteId</param>
+    private void createPickLine(SalesLine _salesLine, WMSShipment _wmsShipment, WMSPickingRouteID _pickingRouteId)
+    {
+        InventMovement                  inventMovement;
+        WMSOrder                        wmsOrder;
+        WMSOrderCreate                  orderCreate;
+        WMSOrderTrans                   wmsOrderTrans;
+       
+        InventTrans                     inventTrans;
+        InventTransOrigin               inventTransOrigin;
+        Qty                             qty;
+        InventDim                          inventDim;
+        
+        while select inventTrans
+            order by inventDim.inventBatchId
+            join inventDim
+                   where  inventDim.inventDimId  ==  inventTrans.inventDimId
+            exists join inventTransOrigin
+                where inventTransOrigin.InventTransId == _salesLine.InventTransId
+                    && inventTrans.InventTransOrigin == inventTransOrigin.RecId
+        {
+           
+            qty = -(inventTrans.Qty);
+
+            // Inventory Movement object is required to create new SalesPickingList lines
+            inventMovement = InventMovement::construct(_salesLine);
+            orderCreate = WMSOrderCreate::newMovement(inventMovement, qty);
+            orderCreate.parmMustBeWMSOrderControlled(true);
+            orderCreate.parmQty(qty);
+            orderCreate.parmRecalculateMaxQtyForValidation(false);
+            orderCreate.parmMaxQty(qty);
+            orderCreate.run();
+            wmsOrder = orderCreate.parmWMSOrder();
+            wmsOrder.updateShipment(_wmsShipment, qty, _pickingRouteId, false);
+
+            select firstonly forupdate wmsOrderTrans
+                where wmsOrderTrans.orderId ==  wmsOrder.orderId
+                    && wmsOrderTrans.expeditionStatus == WMSExpeditionStatus::Registered;
+            if (wmsOrderTrans)
+            {
+                wmsOrderTrans.expeditionStatus = WMSExpeditionStatus::Activated;
+                wmsOrderTrans.KJPSMLineNum     = lineNum;
+                wmsOrderTrans.update();
+            }
+            lineNum++;
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

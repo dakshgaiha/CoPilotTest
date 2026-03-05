@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DataOutputForPSIReportIntegrationUIBuilder</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// KJP_SM_DataOutputForPSIReportIntegrationUIBuilder
+/// </summary>
+class KJP_SM_DataOutputForPSIReportIntegrationUIBuilder extends SysOperationAutomaticUIBuilder
+{
+    const str Blank     = '';
+
+    DialogField cBrandField;
+    DialogField cItemNameStdField;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>build</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Build UI for DataOutputForPSIReportIntegrationBatchDialog
+    /// </summary>
+    [Hookable(false)]
+    public void build()
+    {
+        super();
+
+        cBrandField = this.bindInfo().getDialogField(this.dataContractObject(), methodStr(KJP_SM_DataOutputForPSIReportIntegrationContract, parmBrand));
+
+        cBrandField.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(KJP_SM_DataOutputForPSIReportIntegrationUIBuilder, lookupBrand), this);
+
+        cBrandField.registerOverrideMethod(methodStr(FormStringControl, modified), methodStr(KJP_SM_DataOutputForPSIReportIntegrationUIBuilder, modifiedBrand), this);
+
+        cItemNameStdField = this.bindInfo().getDialogField(this.dataContractObject(), methodStr(KJP_SM_DataOutputForPSIReportIntegrationContract, parmItemNameStd));
+
+        cItemNameStdField.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(KJP_SM_DataOutputForPSIReportIntegrationUIBuilder, lookupItemNameStd), this);
+
+        DialogField propertyStdField = this.bindInfo().getDialogField(this.dataContractObject(), methodStr(KJP_SM_DataOutputForPSIReportIntegrationContract, parmProperty));
+
+        propertyStdField.registerOverrideMethod(methodStr(FormStringControl, lookup), methodStr(KJP_SM_DataOutputForPSIReportIntegrationUIBuilder, lookupProperty), this);
+        
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postBuild</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// postBuild
+    /// </summary>
+    public void postBuild()
+    {
+        super();
+
+        SysOperationDialog wkDialog     = dialog as SysOperationDialog;
+        wkDialog.mainFormGroup().columns(1);
+
+        DialogGroup wkDialogGroup   = wkDialog.addGroup();
+        FormBuildControl wkFormBuildControl = wkDialog.formBuildDesign().control(wkDialogGroup.name());
+
+        FormBuildStaticTextControl staticText = wkFormBuildControl.addControl(FormControlType::StaticText, 'staticText');
+        staticText.text("@KJP:KJP103775");
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lookupBrand</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// lookupBrand
+    /// </summary>
+    /// <param name = "_formStringControl">FormStringControl</param>
+    public void lookupBrand(FormStringControl _formStringControl)
+    {
+
+        Query wkQuery = new Query();
+        QueryBuildDataSource qbds = wkQuery.addDataSource(tableNum(KJP_SM_CategoryLookupView));
+        qbds.addRange(fieldNum(KJP_SM_CategoryLookupView, ERCPHCode)).value(SysQuery::value(Blank));
+        LanguageId wkLanguageId = new xInfo().language();
+        qbds.addRange(fieldNum(KJP_SM_CategoryLookupView, LanguageId)).value(wkLanguageId);
+        DataAreaId wkDataAreaId = curExt();
+        qbds.addRange(fieldNum(KJP_SM_CategoryLookupView, DataArea)).value(wkDataAreaId);
+        qbds.addOrderByField(fieldNum(KJP_SM_CategoryLookupView, ERCCode), SortOrder::Ascending);
+       
+        SysTableLookup wkSysTableLookup = SysTableLookup::newParameters(tableNum(KJP_SM_CategoryLookupView), _formStringControl);
+
+        wkSysTableLookup.addLookupfield(fieldNum(KJP_SM_CategoryLookupView, ERCCode));
+        wkSysTableLookup.addLookupfield(fieldNum(KJP_SM_CategoryLookupView, FriendlyName));
+        wkSysTableLookup.parmQuery(wkQuery);
+        wkSysTableLookup.performFormLookup();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lookupItemNameStd</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// lookupItemNameStd
+    /// </summary>
+    /// <param name = "_formStringControl">FormStringControl</param>
+    public void lookupItemNameStd(FormStringControl _formStringControl)
+    {
+        DataAreaId wkDataAreaId = curExt();
+
+        if (cBrandField.value() == Blank)
+        {
+
+            Query wkQuery = new Query();
+            QueryBuildDataSource qbds = wkQuery.addDataSource(tableNum(KJP_SM_ItemNameStdLookupView));
+            qbds.addRange(fieldNum(KJP_SM_ItemNameStdLookupView, ERCPHCode)).value(SysQuery::value(Blank));
+            LanguageId wkLanguageId = new xInfo().language();
+            qbds.addRange(fieldNum(KJP_SM_ItemNameStdLookupView, LanguageId)).value(wkLanguageId);
+            qbds.addRange(fieldNum(KJP_SM_ItemNameStdLookupView, DataArea)).value(wkDataAreaId);
+            qbds.addOrderByField(fieldNum(KJP_SM_ItemNameStdLookupView, ERCCode), SortOrder::Ascending);
+       
+            SysTableLookup wkSysTableLookup = SysTableLookup::newParameters(tableNum(KJP_SM_ItemNameStdLookupView), _formStringControl);
+            wkSysTableLookup.addLookupfield(fieldNum(KJP_SM_ItemNameStdLookupView, ERCCode));
+            wkSysTableLookup.addLookupfield(fieldNum(KJP_SM_ItemNameStdLookupView, FriendlyName));
+            wkSysTableLookup.parmQuery(wkQuery);
+            wkSysTableLookup.performFormLookup();
+
+        }
+        else
+        {
+            Query wkQuery = new Query();
+            QueryBuildDataSource qbds = wkQuery.addDataSource(tableNum(KJP_SM_ItemNameStdLookupView));
+            KJP_SM_CategoryLookupView CLV = KJP_SM_CategoryLookupView::findByCode(cBrandField.value());
+            qbds.addRange(fieldNum(KJP_SM_ItemNameStdLookupView, ERCParentCategory)).value(SysQuery::value(CLV.RecId));
+            LanguageId wkLanguageId = new xInfo().language();
+            qbds.addRange(fieldNum(KJP_SM_ItemNameStdLookupView, LanguageId)).value(wkLanguageId);
+            qbds.addRange(fieldNum(KJP_SM_ItemNameStdLookupView, DataArea)).value(wkDataAreaId);
+            qbds.addOrderByField(fieldNum(KJP_SM_ItemNameStdLookupView, ERCCode), SortOrder::Ascending);
+
+            SysTableLookup wkSysTableLookup = SysTableLookup::newParameters(tableNum(KJP_SM_ItemNameStdLookupView), _formStringControl);
+            wkSysTableLookup.addLookupfield(fieldNum(KJP_SM_ItemNameStdLookupView, ERCCode));
+            wkSysTableLookup.addLookupfield(fieldNum(KJP_SM_ItemNameStdLookupView, FriendlyName));
+            wkSysTableLookup.parmQuery(wkQuery);
+            wkSysTableLookup.performFormLookup();
+
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>lookupProperty</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// lookupProperty
+    /// </summary>
+    /// <param name = "_formStringControl">FormStringControl</param>
+    public void lookupProperty(FormStringControl _formStringControl)
+    {
+
+        SysTableLookup wkSysTableLookup = SysTableLookup::newParameters(tableNum(WrkCtrProperty), _formStringControl);
+        wkSysTableLookup.addLookupfield(fieldNum(WrkCtrProperty, PropertyId));
+        wkSysTableLookup.performFormLookup();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>modifiedBrand</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// modifiedBrand
+    /// </summary>
+    /// <param name = "_formStringControl">FormStringControl</param>
+    /// <returns>boolean</returns>
+    public boolean modifiedBrand(FormStringControl _formStringControl)
+    {
+        cItemNameStdField.value(Blank);
+
+        return true;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

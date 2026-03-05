@@ -1,0 +1,744 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DelivaeryPackageReportDP</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///  Report data provider class for ASetSlip(DeliveryNoticePackageReceipt) Report
+/// </summary>
+[SRSReportParameterAttribute(classStr(KJP_SM_DelivaeryPackageReportContract))]
+public class KJP_SM_DelivaeryPackageReportDP extends SrsReportDataProviderPreProcessTempDb
+{
+    #define.EmptyString('')
+    #define.NumberZero(0)
+    #define.SjisEnc('shift_jis')
+
+    WMSPickingRoute         wMSPickingRouteMain,wMSPickingRoute;
+    Map                     pickingRouteMap;
+    MapEnumerator           pickingRoutemapEnum;
+    Qty                     retQty;
+
+    const str   nullSpace       = '';
+    const str   zenkakuSpace    = '　';
+    const str   zeroSpace       = '0';
+    const str   zero2Space      = '00';
+    const str   deliveryNotice  = '1';
+    const str   packageReceipt  = '2';
+    const int   lineDataFive    = 5;
+    const str   lf              = '\r';
+    const str   cr              = '\n';
+    const int   maxLen          = 60;
+
+    boolean     isDataExist     = false;
+    int         pageNo          = 1;
+
+
+    KJP_SM_DeliveryNoticePackageReceiptTemp deliveryNoticePackageReceiptTemp;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>getKJP_SM_DeliveryNoticePackageReceiptTemp</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get temp table buffer
+    /// </summary>
+    /// <returns>Table buffer</returns>
+    [
+        SRSReportDataSetAttribute(tablestr(KJP_SM_DeliveryNoticePackageReceiptTemp))
+    ]
+    public KJP_SM_DeliveryNoticePackageReceiptTemp getKJP_SM_DeliveryNoticePackageReceiptTemp()
+    {
+        select deliveryNoticePackageReceiptTemp;
+        return deliveryNoticePackageReceiptTemp;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processReport</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// execute report
+    /// </summary>
+    public void processReport()
+    {
+        InventTransferTable     inventTransferTable;
+        QueryRun                queryRun;
+  
+        KJP_SM_DelivaeryPackageReportContract contract = this.parmDataContract() as KJP_SM_DelivaeryPackageReportContract;
+        Query query  = new Query(SysOperationHelper::base64Decode(contract.parmQuery()));
+        queryRun = new QueryRun(query);
+        if (contract.parmMenuItemName() == menuItemOutputStr(KJP_SM_DelivaeryPackageReport))
+        {
+            // loop InventTransferTable
+            while (queryRun.next())
+            {
+                inventTransferTable = queryRun.get(tableNum(InventTransferTable));
+
+                if(InventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::Yes)
+                {
+                    this.insertInventTransData(inventTransferTable);
+                   
+                    
+                }
+            }
+        }
+        else if (contract.parmMenuItemName() == menuItemOutputStr(KJP_SM_AsetSlipOutput))
+        {
+            this.insertWPickingRouteData(query);
+        }
+        if(!isDataExist)
+        {
+            deliveryNoticePackageReceiptTemp.insert();
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventTransData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// insert deliveryNoticePackageReceiptTemp table
+    /// </summary>
+    /// <param name = "_inventTransferTable">inventTransferTable</param>
+    public void insertInventTransData(InventTransferTable _inventTransferTable)
+    {
+        InventTransferTable                 inventTransferTable;
+        InventTransferLine                  inventTransferLine;
+        InventLocation                      inventLocationTo,inventLocationFrom;
+        InventTable                         inventTable;
+        InventDim                           inventDim;
+        InventBatch                         inventBatch;
+        EcoResProduct                       ecoResProduct;
+        UnitOfMeasureConversion             unitOfMeasureConversionPackage;
+        InventTableModule                   inventTableModule;
+        InventLocationLogisticsLocation     inventLocationLogisticsLocationFrom,inventLocationLogisticsLocationTo;
+        LogisticsPostalAddress              logisticsPostalAddressFrom,logisticsPostalAddressTo;
+        LogisticsLocation                   logisticsLocationFrom,logisticsLocationFromPhone,logisticsLocationTo,logisticsLocationToPhone;
+        InventLocationLogisticsLocationRole inventLocationLogisticsLocationRoleFrom,inventLocationLogisticsLocationRoleTo;
+        LogisticsLocationRole               logisticsLocationRoleFrom,logisticsLocationRoleTo;
+        LogisticsElectronicAddress          logisticsElectronicAddressFrom,logisticsElectronicAddressTo;
+        InventTransferId                    transferId;
+
+
+        UnitOfMeasureRecId                  unitRecIdFrom;
+        UnitOfMeasureRecId                  unitRecIdToPackage;
+        real                                fraction;
+        int64                               insertNullData;
+        str                                 remarks;
+
+        while select inventTransferTable
+            order by inventTransferLine.LineNum
+            join inventTransferLine
+            where inventTransferLine.TransferId         == inventTransferTable.TransferId
+            join inventTable
+            where inventTable.itemId                    == inventTransferLine.ItemId
+            join inventDim
+            where inventTransferLine.InventDimId        == inventDim.inventDimId
+            join inventBatch
+            where InventBatch.itemId                    == inventTransferLine.ItemId
+            && InventDim.inventBatchId                  == InventBatch.inventBatchId
+            join inventLocationFrom
+            where inventLocationFrom.InventLocationId   == inventTransferTable.InventLocationIdFrom
+            join inventLocationTo
+            where inventLocationTo.InventLocationId     == inventTransferTable.InventLocationIdTo
+            && inventTransferTable.TransferId            == _inventTransferTable.TransferId
+        {
+            isDataExist = true;
+            transferId = inventTransferTable.TransferId;
+            deliveryNoticePackageReceiptTemp.clear();
+
+            // get LocationTo address and Phone
+            select firstonly inventLocationLogisticsLocationTo
+                outer join logisticsPostalAddressTo 
+                    where logisticsPostalAddressTo.Location == inventLocationLogisticsLocationTo.Location
+                outer join logisticsLocationTo
+                    where logisticsLocationTo.RecId == logisticsPostalAddressTo.Location
+                outer join logisticsLocationToPhone
+                    where logisticsLocationToPhone.ParentLocation == logisticsLocationTo.RecId
+                outer join logisticsElectronicAddressTo
+                    where logisticsElectronicAddressTo.Location == logisticsLocationToPhone.RecId
+                    && logisticsElectronicAddressTo.Type == LogisticsElectronicAddressMethodType::Phone
+                    && logisticsElectronicAddressTo.IsPrimary == NoYes::Yes
+                join inventLocationLogisticsLocationRoleTo
+                    where inventLocationLogisticsLocationRoleTo.LocationLogisticsLocation == inventLocationLogisticsLocationTo.RecId
+                join logisticsLocationRoleTo 
+                    where logisticsLocationRoleTo.RecId == inventLocationLogisticsLocationRoleTo.LocationRole
+                    && inventLocationLogisticsLocationTo.InventLocation == inventLocationTo.RecId
+                    && inventLocationLogisticsLocationTo.IsPrimary == NoYes::Yes
+                    && logisticsLocationRoleTo.type == LogisticsLocationRoleType::Business;
+
+            deliveryNoticePackageReceiptTemp.ShippingPostalCode             = logisticsPostalAddressTo.ZipCode;
+            deliveryNoticePackageReceiptTemp.UpperPartOfTheDeliveryAddress  = logisticsPostalAddressTo.State + zenkakuSpace + logisticsPostalAddressTo.City;
+            deliveryNoticePackageReceiptTemp.DeliveryAddressInTheMiddleRow  = subStr(logisticsPostalAddressTo.Street,1,20);
+            deliveryNoticePackageReceiptTemp.BottomOfTheDeliveryAddress     = subStr(logisticsPostalAddressTo.Street,21,40);
+            deliveryNoticePackageReceiptTemp.NameOfDeliveryAddress          = logisticsLocationTo.Description;
+            deliveryNoticePackageReceiptTemp.DeliveryAddressTEL             = logisticsElectronicAddressTo.Locator;
+
+            // get LocationFrom address and Phone
+            select firstonly inventLocationLogisticsLocationFrom
+                outer join logisticsPostalAddressFrom
+                where logisticsPostalAddressFrom.Location == inventLocationLogisticsLocationFrom.Location
+                outer join logisticsLocationFrom
+                where logisticsLocationFrom.RecId == logisticsPostalAddressFrom.Location
+                outer join logisticsLocationFromPhone
+                where logisticsLocationFromPhone.ParentLocation == logisticsLocationFrom.RecId
+                outer join logisticsElectronicAddressFrom
+                where logisticsElectronicAddressFrom.Location == logisticsLocationFromPhone.RecId
+                && logisticsElectronicAddressFrom.Type == LogisticsElectronicAddressMethodType::Phone
+                && logisticsElectronicAddressFrom.IsPrimary == NoYes::Yes
+                join inventLocationLogisticsLocationRoleFrom
+                where inventLocationLogisticsLocationRoleFrom.LocationLogisticsLocation == inventLocationLogisticsLocationFrom.RecId
+                join logisticsLocationRoleFrom
+                where logisticsLocationRoleFrom.RecId == inventLocationLogisticsLocationRoleFrom.LocationRole
+                && inventLocationLogisticsLocationFrom.InventLocation == inventLocationFrom.RecId
+                && inventLocationLogisticsLocationFrom.IsPrimary == NoYes::Yes
+                && logisticsLocationRoleFrom.type == LogisticsLocationRoleType::Business;
+
+            deliveryNoticePackageReceiptTemp.ShipFromAddress        = logisticsPostalAddressFrom.State + zenkakuSpace + logisticsPostalAddressFrom.City + zenkakuSpace + logisticsPostalAddressFrom.Street;
+            deliveryNoticePackageReceiptTemp.ShipperName            = logisticsLocationFrom.Description;
+            deliveryNoticePackageReceiptTemp.ShipperTEL             = logisticsElectronicAddressFrom.Locator;
+
+            deliveryNoticePackageReceiptTemp.ShipDate               = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferTable.ShipDate,DateSeparator::None);
+            deliveryNoticePackageReceiptTemp.DocumentNumber         = inventTransferTable.TransferId;
+            deliveryNoticePackageReceiptTemp.DateOfAcceptance       = KJP_CM_Utils::convertDate2StryyyyMMdd(inventTransferTable.ReceiveDate,DateSeparator::None);
+            deliveryNoticePackageReceiptTemp.MakerCode              = subStr(inventTable.KJPCMCommonItemCode,1,3);
+            deliveryNoticePackageReceiptTemp.DepartmentCode         = inventLocationTo.KJPSMJurisdictionDepartment;
+            deliveryNoticePackageReceiptTemp.DpWhCode               = inventTransferTable.InventLocationIdTo;
+            deliveryNoticePackageReceiptTemp.WarehousingDepartment  = inventLocationFrom.KJPSMJurisdictionDepartment;
+            deliveryNoticePackageReceiptTemp.Warehousing            = inventTransferTable.InventLocationIdFrom;
+            deliveryNoticePackageReceiptTemp.ProductNameAndStandard = inventTable.itemName();
+
+            // get sales units 
+            inventTableModule   = inventTableModule::find(inventTransferLine.ItemId,ModuleInventPurchSales::Sales);
+            unitRecIdFrom       = EcoResReleasedProductUnitConverter::findUnitRecIdBySymbol(InventTransferLine.UnitId);
+            ecoResProduct       = EcoResProduct::findByDisplayProductNumber(InventTransferLine.ItemId);
+
+            // set QtyTransfer
+            if(inventTableModule.UnitId == inventTransferLine.UnitId)
+            {
+                deliveryNoticePackageReceiptTemp.TradingVolume = inventTransferLine.QtyTransfer;
+            }
+            else
+            {
+                deliveryNoticePackageReceiptTemp.TradingVolume = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                                       InventTransferLine.ItemId,
+                                                       InventTransferLine.InventDimId,
+                                                       InventTransferLine.QtyTransfer,
+                                                       InventTransferLine.UnitId,
+                                                       inventTableModule.UnitId);
+            }
+
+            // set BlgTyp
+            If(inventTable.KJPCMBlgTyp == '1')
+            {
+                deliveryNoticePackageReceiptTemp.BlgTyp = '#';
+            }
+            else
+            {
+                deliveryNoticePackageReceiptTemp.BlgTyp = nullSpace;
+            }
+
+            // set InventBatchId
+            deliveryNoticePackageReceiptTemp.SerialNumber   = InventBatch.inventBatchId;
+            deliveryNoticePackageReceiptTemp.ExpirationDate = subStr(KJP_CM_Utils::convertDate2StryyyyMMdd(InventBatch.expDate),1,7);
+
+            // set OriginalPackageQuantity
+            if(inventTable.KJPCMPackingUnit == nullSpace || inventTable.KJPCMPackingUnit == inventTransferLine.UnitId)
+            {
+                deliveryNoticePackageReceiptTemp.OriginalPackageQuantity = inventTransferLine.QtyTransfer;
+            }
+            else
+            {
+                deliveryNoticePackageReceiptTemp.OriginalPackageQuantity = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                                    InventTransferLine.ItemId,
+                                                    InventTransferLine.InventDimId,
+                                                    InventTransferLine.QtyTransfer,
+                                                    InventTransferLine.UnitId,
+                                                    InventTable.KJPCMPackingUnit);
+
+                unitRecIdToPackage  = EcoResReleasedProductUnitConverter::findUnitRecIdBySymbol(InventTable.KJPCMPackingUnit);
+
+                // get package conversion factor
+                unitOfMeasureConversionPackage = UnitOfMeasureConversion::findByConversion(unitRecIdToPackage,unitRecIdFrom,ecoResProduct.RecId);
+
+                if(!unitOfMeasureConversionPackage)
+                {
+                    unitOfMeasureConversionPackage = UnitOfMeasureConversion::findByConversion(unitRecIdToPackage,unitRecIdFrom);
+                }
+
+                if(unitOfMeasureConversionPackage && unitOfMeasureConversionPackage.Factor != 0)
+                {
+                    fraction = InventTransferLine.QtyTransfer - deliveryNoticePackageReceiptTemp.OriginalPackageQuantity * unitOfMeasureConversionPackage.Factor;
+                }
+                
+                // set AssortmentQuantity
+                if(fraction > 0)
+                {
+                    deliveryNoticePackageReceiptTemp.AssortmentQuantity = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(
+                                                       InventTransferLine.ItemId,
+                                                       InventTransferLine.InventDimId,
+                                                       fraction,
+                                                       InventTransferLine.UnitId,
+                                                       inventTableModule.UnitId);
+                }
+            }
+
+            deliveryNoticePackageReceiptTemp.SourceDocumentNumber   = InventTransferTable.KJPSMOriginalTransferNumber;
+            deliveryNoticePackageReceiptTemp.ProductNameCode        = KJP_CM_Utils::convertFullWidth(subStr(inventTable.KJPCMCommonItemCode,4,6));
+            
+            // set PageNo
+            if(pageNo < 10)
+            {
+                deliveryNoticePackageReceiptTemp.PageNo = zero2Space + int2Str(pageNo);
+            }
+            else if (pageNo < 100)
+            {
+                deliveryNoticePackageReceiptTemp.PageNo = zeroSpace + int2Str(pageNo);
+            }
+            else
+            {
+                deliveryNoticePackageReceiptTemp.PageNo = int2Str(pageNo);
+            }
+
+            remarks = strReplace(inventTransferTable.KJPSMRemarks, cr, KJP_CM_ConstantHelper::singleSpace);
+            remarks = strReplace(remarks, lf, KJP_CM_ConstantHelper::blankValue);
+            remarks = this.changeMaxCountByte(remarks, maxLen);
+
+            deliveryNoticePackageReceiptTemp.Remarks = remarks;
+            // insert deliveryNotice data
+            deliveryNoticePackageReceiptTemp.PrintClassification = deliveryNotice;
+            deliveryNoticePackageReceiptTemp.insert();
+
+            // insert packageReceipt data
+            deliveryNoticePackageReceiptTemp.PrintClassification = packageReceipt;
+            deliveryNoticePackageReceiptTemp.insert();
+        }
+
+        if(!isDataExist)
+        {
+            return;
+        }
+
+        if (transferId)
+        {
+            pageNo++;
+            // check if linedata count is 5.if not,insert to 5
+            while select count(RecId) from inventTransferLine
+            where inventTransferLine.TransferId == _inventTransferTable.TransferId
+            {
+                if(inventTransferLine.RecId < lineDataFive)
+                {
+                    insertNullData = inventTransferLine.RecId;
+
+                    for(int i = insertNullData;i < lineDataFive;i++)
+                    {
+                        deliveryNoticePackageReceiptTemp.clear();
+                        deliveryNoticePackageReceiptTemp.DocumentNumber = _inventTransferTable.TransferId;
+                        deliveryNoticePackageReceiptTemp.PrintClassification = deliveryNotice;
+                        deliveryNoticePackageReceiptTemp.insert();
+
+                        deliveryNoticePackageReceiptTemp.PrintClassification = packageReceipt;
+                        deliveryNoticePackageReceiptTemp.insert();
+                    }
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>changeMaxCountByte</Name>
+				<Source><![CDATA[
+   /// <summary>
+   /// Change max count byte
+   /// </summary>
+   /// <param name = "_value">Value</param>
+   /// <param name = "_maxLen">max len</param>
+   /// <returns>Value</returns>
+    public str changeMaxCountByte(str _value, int _maxLen)
+    {
+        System.Text.Encoding sjisEnc = System.Text.Encoding::GetEncoding(#SjisEnc);
+        System.Byte[]        myByte;
+        System.String        oriString, newString;
+        System.Char[]        oriCharArr,newCharArr;
+        str                  returnStr;
+        anytype              checkOriString, checkNewString;
+        int                  stringLen;
+        int                  textByteCount;
+
+        textByteCount      = sjisEnc.GetByteCount(_value);
+
+        if(textByteCount > _maxLen)
+        {
+            myByte         = sjisEnc.GetBytes(_value);
+
+            oriString      = _value;
+            newString      = sjisEnc.GetString(myByte, #NumberZero, _maxLen);
+
+            oriCharArr     = oriString.ToCharArray();
+            newCharArr     = newString.ToCharArray();
+
+            stringLen      = newCharArr.Length - 1;
+            checkOriString = oriCharArr.GetValue(stringLen);
+            checkNewString = newCharArr.GetValue(stringLen);
+
+            if(checkOriString != checkNewString)
+            {
+                returnStr = newString.Substring(#NumberZero, stringLen);
+            }
+            else
+            {
+                returnStr = newString;
+            }
+        }
+        else
+        {
+            returnStr = _value;
+        }
+
+        return returnStr;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertWPickingRouteData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Picking route data
+    /// </summary>
+    /// <param name = "_query">Query</param>
+    public void insertWPickingRouteData(Query _query)
+    {
+        
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressViewWarehose;
+        InventLocation                      inventLocation;
+        InventTable                         inventTable;
+        InventBatch                         inventBatch;
+        
+        InventTableModule                   inventTableModuleLoc;
+        LogisticsElectronicAddress          logisticsElectronicAddressDelivery;
+        LogisticsContactInfoView            logisticsContactInfoViewWarehouse;
+        LogisticsPostalAddress              logisticsEntityPostalAddressViewDelivery;
+        WMSOrderTrans                       wMSOrderTrans;
+       
+        SalesTable                          salesTable;
+
+        
+      
+        KJP_FI_DepartmentMaster             departmentMaster;
+        KJP_CM_GeneralPurposeMaster         generalPurposeMaster;
+        
+        LogisticsElectronicAddress          logisticsElectronicAddressCustomer;
+        LogisticsEntityPostalAddressView    logisticsEntityPostalAddressViewCustomer,logisticsEntityPostalAddressViewForwarder;
+
+        LogisticsContactInfoView            logisticsContactInfoViewForwarder;
+        QueryRun                            qr;
+        QueryBuildDataSource                qbdswmsPickingRoute,
+                                            qbdsInventTableModule,
+                                            qbdsEcorResProductTranslation;
+        WMSPickingRouteId                   pickingRouteId;
+
+       
+        int i = 1;
+        boolean dataExist;
+        pickingRouteMap = new Map(Types::String, Types::Integer);
+        qr = new QueryRun(_query);
+
+
+        qbdswmsPickingRoute = SysQuery::findOrCreateDataSource(qr.query(), tableNum(WMSPickingRoute));
+        qbdswmsPickingRoute.addRange(fieldNum(WMSPickingRoute, KJPSMShipInstrSendClassificationForFactory)).value(SysQuery::value(KJP_SM_ShipInstrSendClassificationForFactory::NotSend));
+        qbdswmsPickingRoute.addRange(fieldNum(WMSPickingRoute, KJPSMShipInstrSendClassificationForFactory)).value(SysQuery::value(KJP_SM_ShipInstrSendClassificationForFactory::Sent));
+        qbdsInventTableModule = SysQuery::findOrCreateDataSource(qr.query(), tableNum(InventTableModule));
+        qbdsInventTableModule.addRange(fieldNum(InventTableModule, ModuleType)).value(SysQuery::value(ModuleInventPurchSales::Invent));
+
+        qbdsEcorResProductTranslation = SysQuery::findOrCreateDataSource(qr.query(), tableNum(EcoResProductTranslation));
+        qbdsEcorResProductTranslation.addRange(fieldNum(EcoResProductTranslation, LanguageId)).value(SysQuery::value(new xInfo().language()));
+        
+        while(qr.next())
+        {
+            dataExist = true;
+            logisticsEntityPostalAddressViewForwarder   = qr.get(tableNum(LogisticsEntityPostalAddressView), 3) as LogisticsEntityPostalAddressView;
+            //logisticsEntityPostalAddressViewDelivery    = qr.get(tableNum(LogisticsPostalAddress));
+            logisticsEntityPostalAddressViewWarehose    = qr.get(tableNum(LogisticsEntityPostalAddressView), 1) as LogisticsEntityPostalAddressView;
+            logisticsEntityPostalAddressViewCustomer    = qr.get(tableNum(LogisticsEntityPostalAddressView), 2) as LogisticsEntityPostalAddressView;
+            logisticsContactInfoViewForwarder = qr.get(tableNum(LogisticsContactInfoView), 2) as LogisticsContactInfoView;
+            logisticsContactInfoViewWarehouse = qr.get(tableNum(LogisticsContactInfoView), 1) as LogisticsContactInfoView;
+
+            logisticsElectronicAddressDelivery = qr.get(tableNum(LogisticsElectronicAddress), 1) as logisticsElectronicAddress;
+            logisticsElectronicAddressCustomer  = qr.get(tableNum(LogisticsElectronicAddress), 2) as logisticsElectronicAddress;
+
+            wMSPickingRoute         = qr.get(tableNum(WMSPickingRoute));
+            inventLocation          = qr.get(tableNum(InventLocation));
+            wMSOrderTrans           = qr.get(tableNum(WMSOrderTrans));
+            departmentMaster        = qr.get(tableNum(KJP_FI_DepartmentMaster));
+            inventTable             = qr.get(tableNum(InventTable));
+            inventBatch             = qr.get(tableNum(InventBatch));
+            salesTable              = qr.get(tableNum(SalesTable));
+
+
+            isDataExist = true;
+            select firstonly logisticsEntityPostalAddressViewDelivery
+                where logisticsEntityPostalAddressViewDelivery.Location == LogisticsPostalAddress::findRecIdNoCache(wMSPickingRoute.DeliveryPostalAddress).Location
+                && logisticsEntityPostalAddressViewDelivery.ValidFrom <= DateTimeUtil::getSystemDateTime()
+                && logisticsEntityPostalAddressViewDelivery.ValidTo >= DateTimeUtil::getSystemDateTime();
+
+            deliveryNoticePackageReceiptTemp.clear();
+            pickingRouteMap.insert(wMSPickingRoute.pickingRouteID, i);
+            if(pickingRouteId != wMSPickingRoute.pickingRouteID)
+            {
+                i = 1;
+                pageNo = 1;
+                pickingRouteId = wMSPickingRoute.pickingRouteID;
+            }
+            else
+            {
+                i++;
+                pickingRouteMap.insert(wMSPickingRoute.pickingRouteID, i);
+            }
+
+            if (wMSPickingRoute.KJPSMForwarder)
+            {
+                //LogisticsEntityPostalAddressView Data as Forwarder
+                deliveryNoticePackageReceiptTemp.ShippingPostalCode             = logisticsEntityPostalAddressViewForwarder.ZipCode;
+                deliveryNoticePackageReceiptTemp.UpperPartOfTheDeliveryAddress  = logisticsEntityPostalAddressViewForwarder.State + zenkakuSpace + logisticsEntityPostalAddressViewForwarder.City;
+                deliveryNoticePackageReceiptTemp.DeliveryAddressInTheMiddleRow  = subStr(logisticsEntityPostalAddressViewForwarder.Street,1,20);
+                deliveryNoticePackageReceiptTemp.BottomOfTheDeliveryAddress     = subStr(logisticsEntityPostalAddressViewForwarder.Street,21,40);
+                deliveryNoticePackageReceiptTemp.NameOfDeliveryAddress          = logisticsEntityPostalAddressViewForwarder.LocationName;
+                deliveryNoticePackageReceiptTemp.DeliveryAddressTEL             = logisticsContactInfoViewForwarder.Locator;
+            }
+            else
+            {
+                //LogisticsEntityPostalAddressView Data as Delivery
+                deliveryNoticePackageReceiptTemp.ShippingPostalCode             = logisticsEntityPostalAddressViewDelivery.ZipCode;
+                deliveryNoticePackageReceiptTemp.UpperPartOfTheDeliveryAddress  = logisticsEntityPostalAddressViewDelivery.State + zenkakuSpace + logisticsEntityPostalAddressViewDelivery.City;
+                deliveryNoticePackageReceiptTemp.DeliveryAddressInTheMiddleRow  = subStr(logisticsEntityPostalAddressViewDelivery.Street,1,20);
+                deliveryNoticePackageReceiptTemp.BottomOfTheDeliveryAddress     = subStr(logisticsEntityPostalAddressViewDelivery.Street,21,40);
+                deliveryNoticePackageReceiptTemp.NameOfDeliveryAddress          = LogisticsLocation::find(logisticsEntityPostalAddressViewDelivery.Location).Description;
+                deliveryNoticePackageReceiptTemp.DeliveryAddressTEL             = logisticsElectronicAddressDelivery.Locator;
+            }
+
+            //LogisticsEntityPostalAddressView Data as Warehouse
+            deliveryNoticePackageReceiptTemp.ShipperName                        = logisticsEntityPostalAddressViewWarehose.LocationName;
+            deliveryNoticePackageReceiptTemp.ShipFromAddress                    = logisticsEntityPostalAddressViewWarehose.State + zenkakuSpace + logisticsEntityPostalAddressViewWarehose.City + zenkakuSpace + logisticsEntityPostalAddressViewWarehose.Street;
+
+            //WMSPickingRoute Data
+            deliveryNoticePackageReceiptTemp.ShipDate                           = KJP_CM_Utils::convertDate2StryyyyMMdd(wMSPickingRoute.DlvDate,DateSeparator::None);
+            deliveryNoticePackageReceiptTemp.ShipperTEL                         = logisticsContactInfoViewWarehouse.Locator;
+            deliveryNoticePackageReceiptTemp.DocumentNumber                     = wMSPickingRoute.pickingRouteID;
+            deliveryNoticePackageReceiptTemp.MakerCode                          = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_UnifiedEnterpriseCodeKey,KJP_CM_ConstantHelper::origCode_UnifiedEnterpriseCode).DestinationCode;
+            deliveryNoticePackageReceiptTemp.DateOfAcceptance                   = KJP_CM_Utils::convertDate2StryyyyMMdd(wMSPickingRoute.KJPSMConfirmedReceiptDate,DateSeparator::None);
+            deliveryNoticePackageReceiptTemp.Warehousing                        = wMSPickingRoute.inventLocationId;
+            deliveryNoticePackageReceiptTemp.Notes                              = wMSPickingRoute.KJPSMSlipRemarks; //added
+
+            //InventLocation
+            deliveryNoticePackageReceiptTemp.WarehousingDepartment              = inventLocation.KJPSMJurisdictionDepartment;
+
+            //LogisticsEntityPostalAddressView Data as Customer
+            deliveryNoticePackageReceiptTemp.CustomerPostal                     = logisticsEntityPostalAddressViewCustomer.ZipCode;
+            deliveryNoticePackageReceiptTemp.CustomerAddressUpper               = logisticsEntityPostalAddressViewCustomer.State + zenkakuSpace + logisticsEntityPostalAddressViewCustomer.City;
+            deliveryNoticePackageReceiptTemp.CustomerAddressMiddle              = subStr(logisticsEntityPostalAddressViewCustomer.Street,1,20);
+            deliveryNoticePackageReceiptTemp.CustomerAddressBottom              = subStr(logisticsEntityPostalAddressViewCustomer.Street,21,40);
+            deliveryNoticePackageReceiptTemp.CustomerName                       = logisticsEntityPostalAddressViewCustomer.LocationName;
+            deliveryNoticePackageReceiptTemp.CustomerTel                        = logisticsElectronicAddressCustomer.Locator;
+            
+            //WMSOrderTrans Data
+            deliveryNoticePackageReceiptTemp.ProductNameCode                    = KJP_CM_Utils::convertFullWidth(this.getProduct(wMSOrderTrans.itemId));
+            deliveryNoticePackageReceiptTemp.TradingVolume                      = wMSOrderTrans.qty;
+            
+            //KJP_FI_DepartmentMaster Data
+            deliveryNoticePackageReceiptTemp.DpWhCode                           = departmentMaster.DepartmentCode;
+            deliveryNoticePackageReceiptTemp.DepartmentCode                     = departmentMaster.IndustryUnitCode;
+            
+            //InventTable Data
+            deliveryNoticePackageReceiptTemp.ProductNameAndStandard             = InventTable::find(inventTable.ItemId).itemName();
+
+            select firstonly generalPurposeMaster where
+                generalPurposeMaster.Key == KJP_CM_ConstantHelper::Biological_BlgTypeKey
+                && generalPurposeMaster.DestinationCode == inventTable.KJPCMBlgTyp;
+            if(generalPurposeMaster)
+            {
+                deliveryNoticePackageReceiptTemp.BlgTyp                         = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::InvoiceConstantKey,KJP_CM_ConstantHelper::origCodeInvoiceConstantKey_BlgTypMark).DestinationCode;
+            }
+
+            //InventBatch Data
+            deliveryNoticePackageReceiptTemp.ExpirationDate                     = KJP_CM_Utils::convertDate2StryyyyMMdd(inventBatch.expDate,DateSeparator::Slash);
+            deliveryNoticePackageReceiptTemp.SerialNumber                       = inventBatch.inventBatchId;
+
+
+            
+            //get TransCategoryName Data
+            deliveryNoticePackageReceiptTemp.TransCategory                      = salesTable.SalesPoolId;
+            
+
+            //get sales units
+            inventTableModuleLoc   = inventTableModule::find(wMSOrderTrans.ItemId,ModuleInventPurchSales::Invent);
+            container packageAssortedQty = this.getPackageAssortedQty(wMSOrderTrans.qty,
+                                                inventTableModuleLoc.UnitId,
+                                                wMSOrderTrans.itemId,
+                                                wMSOrderTrans.inventDimId,
+                                                inventTable.KJPCMPackingUnit);
+            // set OriginalPackageQuantity
+            deliveryNoticePackageReceiptTemp.OriginalPackageQuantity =  conPeek(packageAssortedQty, 1);//this.getOriginalPackageQuantity(inventTable, inventTableModuleLoc, wmsOrderTrans);
+            
+            // set AssortmentQuantity
+            deliveryNoticePackageReceiptTemp.AssortmentQuantity      =  conPeek(packageAssortedQty, 2);//this.getAssortedQuantity(inventTable, inventTableModuleLoc, wmsOrderTrans, deliveryNoticePackageReceiptTemp.OriginalPackageQuantity);
+            
+
+            // insert deliveryNotice data
+            deliveryNoticePackageReceiptTemp.PageNo = zero2Space + int2Str(pageNo);
+            deliveryNoticePackageReceiptTemp.PrintClassification = deliveryNotice;
+            deliveryNoticePackageReceiptTemp.insert();
+            pageNo++;
+            // insert packageReceipt data
+
+          
+            deliveryNoticePackageReceiptTemp.PageNo = zero2Space + int2Str(pageNo);
+            deliveryNoticePackageReceiptTemp.PrintClassification = packageReceipt;
+            deliveryNoticePackageReceiptTemp.insert();
+        }
+        if(dataExist)
+        {
+            pickingRoutemapEnum = pickingRouteMap.getEnumerator();
+            while(pickingRoutemapEnum.moveNext())
+            {
+                int gridLines = pickingRoutemapEnum.currentValue();
+                if (gridLines >= 1)
+                {
+                    this.insertNullData(gridLines,pickingRoutemapEnum.currentKey());
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getProduct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Product
+    /// </summary>
+    /// <param name = "_ItemId">Item</param>
+    /// <returns>product</returns>
+    public str getProduct(str _ItemId)
+    {
+        str         itemfive, item, makerCode;
+        int         i,modValue,checkDigit;
+        int         total = 0;
+        container   contA;
+        container   contB;
+
+        makerCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_UnifiedEnterpriseCodeKey,KJP_CM_ConstantHelper::origCode_UnifiedEnterpriseCode).DestinationCode;
+
+        
+        itemfive = substr(_ItemId, strLen(_ItemId) - 4, 5); // last 5 characters
+        item     = makerCode + itemfive;            // Concatenate with maker code
+
+        //Create containers from characters in item string
+        for (int j = 1; j <= strLen(item); j++)
+        {
+            contA += [str2Int(substr(item, j, 1))]; // convert each char to int
+        }
+        
+        contB = [1, 3, 1, 3, 1,3,1,3];
+
+        // Multiply values from contA and contB
+        for (i = 1; i <= conLen(contB); i++)
+        {
+            total += str2Int(conPeek(contA, i)) * conPeek(contB, i);
+        }
+
+        modValue   = total mod 10;
+        checkDigit = 10 - modValue;
+
+        str finalValue = itemfive + int2Str(checkDigit);
+
+        return finalValue;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertNullData</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert null values
+    /// </summary>
+    /// <param name = "_insertNullData">NullData</param>
+    /// <param name = "_pickingRouteId">Picking route</param>
+    public void insertNullData(int _insertNullData, WMSPickingRouteID _pickingRouteId)
+
+    {
+ 
+        for(int i = _insertNullData;i < lineDataFive;i++)
+
+        {
+
+            deliveryNoticePackageReceiptTemp.clear();
+
+            deliveryNoticePackageReceiptTemp.DocumentNumber = _pickingRouteId;//_inventTransferTable.TransferId;
+
+            deliveryNoticePackageReceiptTemp.PrintClassification = deliveryNotice;
+
+            deliveryNoticePackageReceiptTemp.insert();
+ 
+            deliveryNoticePackageReceiptTemp.PrintClassification = packageReceipt;
+
+            deliveryNoticePackageReceiptTemp.insert();
+
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getPackageAssortedQty</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Get packing and assorted qty
+    /// </summary>
+    /// <param name = "_qty">Qty</param>
+    /// <param name = "_salesUnit">Sales unit</param>
+    /// <param name = "_itemId">Item Id</param>
+    /// <param name = "_inventDimId">InventDimid</param>
+    /// <param name = "_packingUnit">packing Unit</param>
+    /// <returns>packing and assorted qty</returns>
+    public container getPackageAssortedQty(Qty _qty, UnitOfMeasureSymbol _salesUnit, ItemId _itemId, InventDimId _inventDimId, UnitOfMeasureSymbol _packingUnit = '')
+    {
+        real packQty, assortmentQty;
+
+        if(_itemId == nullValueBaseType(Types::String)
+            ||_salesUnit == nullValueBaseType(Types::String)
+            || _inventDimId == nullValueBaseType(Types::String))
+        {
+            throw Error(strFmt("@SYS118114", "@KJP:KJP104077"));
+        }
+        if (EcoResProductUnitConverter::canBeConvertedGivenUnitSymbolsForReleasedProduct(_itemId, _inventDimId,_salesUnit,_packingUnit)
+            && _packingUnit != nullValueBaseType(Types::String))
+        {
+            packQty     = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(_itemId, _inventDimId, _qty,_salesUnit,_packingUnit,NoYes::No,NoYes::No); // Convert Invent to Packing
+            packQty     = roundDownDec(packQty,UnitOfMeasure::findBySymbol(_packingUnit).DecimalPrecision);
+            assortmentQty = EcoResProductUnitConverter::convertGivenUnitSymbolsForReleasedProduct(_itemId,_inventDimId,packQty,_packingUnit,_salesUnit,NoYes::No,NoYes::Yes); // convert Packing to invent
+            assortmentQty = _qty - assortmentQty;
+        }
+        else
+        {
+            assortmentQty = _qty;
+        }
+
+        return [trunc(packQty), assortmentQty];
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

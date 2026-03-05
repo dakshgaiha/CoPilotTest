@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_IFShippedInventoryInfoToTakasakiWMS</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFI-MFG-0163
+/// </summary>
+class KJP_SM_IFShippedInventoryInfoToTakasakiWMS extends KJP_CM_IFBatchBase
+{
+    #define.EmptyString('')
+    #define.NumberZero(0)
+    #define.SjisEnc('shift_jis')
+
+    // 汎用マスタ用キー、変換元コード定義
+    
+    // 汎用マスタからKKC稼働日カレンダー取得用
+    protected static const str KKCBusinessCalendarIdKeyString  = KJP_CM_ConstantHelper::businessCalendarIdKKCKey;
+    protected static const str CalendarIdOrgCodeString         = KJP_CM_ConstantHelper::origCodeBusinessCalendarCategory;
+    KJP_CM_GeneralPurposeMaster generalPurposeMasterCal;       // KKC稼働日カレンダーのID、前営業日取得用
+
+    // 汎用マスタから高崎WMS在庫情報送信対象倉庫取得用
+    protected static const str TakasakiWMSTargetKeyString      = KJP_CM_ConstantHelper::keyTakasakiWMSTarget;
+    protected static const str TakasakiOrgCodeString           = KJP_CM_ConstantHelper::origcodeTakasakiWMSTarget;
+    KJP_CM_GeneralPurposeMaster generalPurposeMasterLoc;       // 高崎倉庫コード、抽出条件用
+
+    date                        businessDate;
+    utcdatetime                 jpDateTime;
+    static const int            maxItemIdLen        = 6;
+    static const int            maxInventBatchIdLen = 15;
+    static const int            maxQtyLen           = 12;
+
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processrun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Batch main processing
+    /// </summary>
+    public void processrun()
+    {
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            generalPurposeMasterCal  = KJP_CM_GeneralPurposeMaster::find(KKCBusinessCalendarIdKeyString , CalendarIdOrgCodeString);
+            generalPurposeMasterLoc  = KJP_CM_GeneralPurposeMaster::find(TakasakiWMSTargetKeyString     , TakasakiOrgCodeString);
+
+            if(generalPurposeMasterCal && generalPurposeMasterLoc)
+            {
+                jpDateTime = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMTPLUS0900OSAKA_SAPPORO_TOKYO);
+                //	前営業日取得
+                businessDate = KJP_CM_Utils::getPreviousWorkingDay(DateTimeUtil::date(jpDateTime), generalPurposeMasterCal.DestinationCode, 1);
+
+                ttsbegin;
+
+                this.clearIFTable();
+            
+                numberOfSuccess = this.writeIFTable();
+
+                ttscommit;
+            }
+        }
+        else
+        {
+            str message = strFmt("@KJP:KJP500527", curExt());
+            this.setMessage(message, KJP_CM_LogType::Warning);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>clearIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// IFテーブルクリア
+    /// </summary>
+    public void clearIFTable()
+    {
+        KJP_SM_InvInfoToTakasakiWMSIfTable         invInfoDataIFTable;
+        ;
+        delete_from invInfoDataIFTable;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>writeIFTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// IF Tableへ書き込み
+    /// </summary>
+    /// <returns>int</returns>
+    public int64 writeIFTable()
+    {
+        KJP_SM_InvInfoToTakasakiWMSIfTable    invInfoDataIFTable;
+        InventTrans                           inventTrans;
+        InventDim                             inventDim;
+        InventBatch                           inventBatch;
+
+        KJP_CM_SEQNo                          sqNo = 1;
+        
+
+        RecordInsertList recordInsertList = new RecordInsertList(tableNum(KJP_SM_InvInfoToTakasakiWMSIfTable));
+        ;
+        while select ItemId, sum(Qty) from inventTrans
+                where inventTrans.DatePhysical      <= businessDate 
+                      && inventTrans.DatePhysical   != dateNull()
+            join inventBatchId, InventLocationId from inventDim
+                group by inventTrans.ItemId, inventDim.inventBatchId
+                order by inventTrans.ItemId, inventDim.inventBatchId
+                where inventTrans.InventDimId       == inventDim.InventDimId
+                      && inventDim.InventLocationId == generalPurposeMasterLoc.DestinationCode
+            join inventBatchId from inventBatch
+                where inventTrans.ItemId            == inventBatch.itemId
+                      && inventDim.inventBatchId    == inventBatch.inventBatchId
+        {
+            // 総計在庫数が0以上以外の場合は、スキップ
+            if(inventTrans.Qty <= 0)
+            {
+                continue;
+            }
+
+            /* IF Table各項目設定 */
+
+            invInfoDataIFTable.clear();
+            //倉庫
+            invInfoDataIFTable.InventLocationId          = subStr(generalPurposeMasterLoc.DestinationCode, 1, 3);
+            //SP                                         
+            invInfoDataIFTable.SP                        = subStr(generalPurposeMasterLoc.DestinationCode, 4, 2);
+            //品目番号    
+            invInfoDataIFTable.ItemId                    = this.changeMaxCountByte(inventTrans.ItemId, maxItemIdLen);
+            //品目名                                     
+            invInfoDataIFTable.ItemName                  = #EmptyString;
+            //単位ＣＤ                                    
+            invInfoDataIFTable.UnitCode                  = #EmptyString;
+            //積送品区分
+            invInfoDataIFTable.ConsignmentClassification = #EmptyString;
+            //バッチ番号
+            invInfoDataIFTable.LotNo                     = this.changeMaxCountByte(inventDim.inventBatchId, maxInventBatchIdLen);
+            //現時点在庫数
+            invInfoDataIFTable.PhysicalInventory         = this.changeMaxCountByte(any2Str(inventTrans.Qty), maxQtyLen);
+            //引当可能数                                  
+            invInfoDataIFTable.ReservesNumber            = #EmptyString;
+            //当月末在庫数                                
+            invInfoDataIFTable.MonthEndInventory         = #EmptyString;
+            //個数                                       
+            invInfoDataIFTable.Quantity                  = #EmptyString;
+            //個数単位ＣＤ                                
+            invInfoDataIFTable.QuantityUnitCode          = #EmptyString;
+            //端数                                       
+            invInfoDataIFTable.Fraction                  = #EmptyString;
+            //端数単位ＣＤ                                
+            invInfoDataIFTable.FractionUnitCode          = #EmptyString;
+            //在庫チェックＦＬＧ                          
+            invInfoDataIFTable.InventoryCheckFLG         = #EmptyString;
+            //引当制御                                    
+            invInfoDataIFTable.ReservationControl        = #EmptyString;
+            //有効期限                                    
+            invInfoDataIFTable.ExpDate                   = #EmptyString;
+            //製造日                                     
+            invInfoDataIFTable.ManufactureDate           = #EmptyString;
+            //最古入庫日                                  
+            invInfoDataIFTable.EarliestArrivalDate       = #EmptyString;
+
+            // IF Table必須項目設定
+            //ジョブID
+            invInfoDataIFTable.JobId = jobId;
+            //実行日時
+            invInfoDataIFTable.ExecutionDateTime = executionDateTime;
+            //No.
+            invInfoDataIFTable.SEQNo = sqNo;
+
+            recordInsertList.add(invInfoDataIFTable);
+
+            sqNo++;
+        }
+        return recordInsertList.insertDatabase();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>changeMaxCountByte</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// 最大バイトを超えた部分カット処理
+    /// </summary>
+    public str changeMaxCountByte(str _value, int _maxLen)
+    {
+        System.Text.Encoding sjisEnc = System.Text.Encoding::GetEncoding(#SjisEnc);
+        System.Byte[]        myByte;
+        System.String        oriString, newString;
+        System.Char[]        oriCharArr,newCharArr;
+        str                  returnStr;
+        anytype              checkOriString, checkNewString;
+        int                  stringLen;
+        int                  textByteCount;
+
+        textByteCount      = sjisEnc.GetByteCount(_value);
+
+        if(textByteCount > _maxLen)
+        {
+            myByte         = sjisEnc.GetBytes(_value);
+
+            oriString      = _value;
+            newString      = sjisEnc.GetString(myByte, #NumberZero, _maxLen);
+
+            oriCharArr     = oriString.ToCharArray();
+            newCharArr     = newString.ToCharArray();
+
+            stringLen      = newCharArr.Length - 1;
+            checkOriString = oriCharArr.GetValue(stringLen);
+            checkNewString = newCharArr.GetValue(stringLen);
+
+            if(checkOriString != checkNewString)
+            {
+                returnStr = newString.Substring(#NumberZero, stringLen);
+            }
+            else
+            {
+                returnStr = newString;
+            }
+        }
+        else
+        {
+            returnStr = _value;
+        }
+
+        return returnStr;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

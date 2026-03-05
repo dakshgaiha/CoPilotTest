@@ -1,0 +1,1000 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InputResultCommonClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Utility class for validate check and Prod Journal Table Post functions
+/// </summary>
+public class KJP_SM_InputResultCommonClass
+{
+    const str updateCategory_1 = '1';
+    const str updateCategory_2 = '2';
+    const str updateCategory_3 = '3';
+    const str Key_AcceptanceInspectionResults = 'InputResults';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>inputResultRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// inputResult Run
+    /// </summary>
+    /// <param name = "_jobid">_jobid</param>
+    /// <param name = "_isUbe">_isUbe</param>
+    /// <returns>numberOfSuccess</returns>
+    public static int64 inputResultRun(KJP_CM_JobId _jobid,boolean _isUbe)
+    {
+        KJP_SM_ReceiptAndPaymentResultIfTable receiptAndPaymentResultIfTable;
+        ProdJournalId ProdJournalId;
+        boolean validateRecordFlg = true;
+        boolean isCreateProdJournalTable = true;
+        boolean isCreateInventJournalTable = true;
+        InventJournalId preInventJournalId;
+
+        //KJP_SM_InstructionNo instructionNoGlobal;
+        ProdId preProdId;
+        int lineNum = 1;
+        int64 countLineNum;
+        KJP_CM_JobId jobIdLocal;
+        int64 numberOfSuccess;
+        str errorMessage = null;
+        boolean checkJournalNameFlg = true;
+        System.Exception exception;
+
+        PdsDispositionCode destinationCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::keyReceiptPaymentClassification,
+            Key_AcceptanceInspectionResults).DestinationCode;
+
+        jobIdLocal = subStr(_jobid,1,9);
+
+        // get journalNameId for [nonCommcialFlg : Yes]
+        JournalNameId inventJournalNameId = KJP_SM_InputResultCommonClass::getInventJournalNameIdFromPurpose();
+        // get journalNameRecord for [nonCommcialFlg : Yes]
+        InventJournalName inventJournalNameRecord  = InventJournalName::find(inventJournalNameId);
+
+        // previous nonCommcial flg
+        NoYes preNonCommcialFlg = NoYes::Yes;
+
+        while select receiptAndPaymentResultIfTable
+            order by InstructionNo asc,
+            ActualDateAndTimeStr asc,
+            UpdateCategory desc
+            where receiptAndPaymentResultIfTable.JobId == jobIdLocal
+            && receiptAndPaymentResultIfTable.ReceiptPaymentClassification == destinationCode
+        {
+            ProdJournalId prodJournalIdLocal;
+            InventJournalId inventJournalIdLocal;
+
+            // get prodid
+            ProdId currentGetProdId =
+                    KJP_SM_InputResultCommonClass::getProdidFromInstructionNoConversionTable(receiptAndPaymentResultIfTable.InstructionNo);
+            // get nonCommcial flg
+            NoYes getNonCommcialFlg = ProdTable::find(currentGetProdId).KJPSMNonCommercialFlg;
+
+            // validate of records
+            validateRecordFlg = KJP_SM_InputResultCommonClass::validateRecord(receiptAndPaymentResultIfTable);
+
+            if(validateRecordFlg)
+            {
+
+                if(getNonCommcialFlg == NoYes::No)
+                {
+                    try
+                    {
+                        if(preInventJournalId && preNonCommcialFlg != getNonCommcialFlg)
+                        {
+                            // update NumOfLines for inventJournalTable
+                            countLineNum = KJP_SM_InputResultCommonClass::updateNumOfLines(preInventJournalId);
+                            // post for inventJournalTable
+                            JournalCheckPost journalCheckPost = InventJournalCheckPost::newPostJournal(InventJournalTable::find(preInventJournalId));
+                            journalCheckPost.parmTransferErrors(true);
+                            journalCheckPost.parmThrowCheckFailed(true);
+                            journalCheckPost.runOperation();
+
+                            numberOfSuccess += countLineNum ;
+
+                            lineNum = 1;
+                            preInventJournalId = null;
+                        }
+                        preNonCommcialFlg = getNonCommcialFlg;
+                    }
+                    catch
+                    {
+                        lineNum = 1;
+                        preInventJournalId = null;
+                        preNonCommcialFlg = getNonCommcialFlg;
+                    }
+                    try
+                    {
+                        ttsbegin;
+
+                        // The ProdJournalTable is created as a single entry per IF record and per the same ProdId.
+                        //if(instructionNoGlobal && instructionNoGlobal == receiptAndPaymentResultIfTable.InstructionNo)
+                        if(preProdId && preProdId == currentGetProdId)
+                        {
+                            isCreateProdJournalTable = false;
+                        }
+                        else
+                        {
+                            //instructionNoGlobal = receiptAndPaymentResultIfTable.InstructionNo;
+                            preProdId = currentGetProdId;
+                            isCreateProdJournalTable = true;
+                        }
+
+                        // insert ProdJournalTable and ProdJournalBOM
+                        prodJournalIdLocal = KJP_SM_InputResultCommonClass::insertProdJournal(receiptAndPaymentResultIfTable,isCreateProdJournalTable,prodJournalId, _isUbe, currentGetProdId);
+
+                        ttscommit;
+
+                        // Post
+                        if(prodJournalId && prodJournalIdLocal != prodJournalId)
+                        {
+                            if(KJP_SM_InputResultCommonClass::postProdJournal(prodJournalId))
+                            {
+                                countLineNum = ProdJournalBOM::journalLineCount(prodJournalId);
+                                numberOfSuccess += countLineNum;
+                            }
+
+                            lineNum = 2;
+                        }
+                        else
+                        {
+
+                            lineNum++;
+                        }
+
+                        prodJournalId = prodJournalIdLocal;
+                    }
+                    catch
+                    {
+                        lineNum = 2;
+                        prodJournalId = prodJournalIdLocal;
+                        continue;
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        if(prodJournalId && preNonCommcialFlg != getNonCommcialFlg)
+                        {
+                            if(KJP_SM_InputResultCommonClass::postProdJournal(prodJournalId))
+                            {
+                                countLineNum = ProdJournalBOM::journalLineCount(prodJournalId);
+                                numberOfSuccess += countLineNum;
+                            }
+                            lineNum = 1;
+                            prodJournalId = null;
+                        }
+                        preNonCommcialFlg = getNonCommcialFlg;
+                    }
+                    catch
+                    {
+                        lineNum = 1;
+                        prodJournalId = null;
+                        preNonCommcialFlg = getNonCommcialFlg;
+                    }
+                    try
+                    {
+                        // JournalNameId not in the KJP_CM_GeneralPurposeMaster
+                        if(!inventJournalNameId || inventJournalNameId == KJP_CM_ConstantHelper::blankValue)
+                        {
+                            // if it is the first error record of [nonCommcialFlg : Yes], write Error Log tables
+                            if(checkJournalNameFlg)
+                            {
+                                // donot get JournalNameId
+                                errorMessage = strFmt("@KJP:KJP500107",
+                                    KJP_CM_ConstantHelper::journalName,
+                                    KJP_CM_ConstantHelper::origCodeJournalNameKey_KJP_SM_NonCommercial);
+                                // Write Error Log tables
+                                Error(errorMessage);
+
+                                checkJournalNameFlg = false;
+                            }
+                        }
+                        else
+                        {
+                            // JournalNameId not in the InventJournalName
+                            if(!InventJournalName::exist(inventJournalNameId))
+                            {
+                                // if it is the first error record of [nonCommcialFlg : Yes], write Error Log tables
+                                if(checkJournalNameFlg)
+                                {
+                                    errorMessage = strFmt("@KJP:KJP500495",
+                                        KJP_CM_ConstantHelper::journalName,
+                                        KJP_CM_ConstantHelper::origCodeJournalNameKey_KJP_SM_NonCommercial, inventJournalNameId);
+                                    // Write Error Log tables
+                                    Error(errorMessage);
+
+                                    checkJournalNameFlg = false;
+                                }
+                            }
+                        }
+
+                        if(checkJournalNameFlg)
+                        {
+                            // Insert InventJournal data(Table and Trans) and post
+                            // The InventJournalTable is created as a single entry per IF record and per the same ProdId.
+                            //if(instructionNoGlobal && instructionNoGlobal == receiptAndPaymentResultIfTable.InstructionNo)
+                            if(preProdId && preProdId == currentGetProdId)
+                            {
+                                isCreateInventJournalTable = false;
+                            }
+                            else
+                            {
+                                //instructionNoGlobal = receiptAndPaymentResultIfTable.InstructionNo;
+                                preProdId = currentGetProdId;
+                                isCreateInventJournalTable = true;
+                            }
+
+                            // If the UpdateCategory is '2', when the total Qty for the ProdId is greater than or equal to 0, it will be skipped.
+                            if (receiptAndPaymentResultIfTable.UpdateCategory == updateCategory_2 && KJP_SM_InputResultCommonClass::getSumInventJournalQtyByProdId(currentGetProdId, receiptAndPaymentResultIfTable.ItemCD, receiptAndPaymentResultIfTable.LotNo) >= 0)
+                            {
+                                errorMessage = strFmt("@KJP:KJP500362",
+                                    receiptAndPaymentResultIfTable.InstructionNo,
+                                    receiptAndPaymentResultIfTable.ItemCD,
+                                    receiptAndPaymentResultIfTable.Quantity,
+                                    receiptAndPaymentResultIfTable.RecordID);
+                                // Write Error Log tables
+                                Error(errorMessage);
+
+                                continue;
+                            }
+
+                            inventJournalIdLocal = KJP_SM_InputResultCommonClass::insertInventJournal(
+                            receiptAndPaymentResultIfTable, inventJournalNameId, inventJournalNameRecord,isCreateInventJournalTable, preInventJournalId, currentGetProdId);
+
+                            // If the UpdateCategory is '2', The processing after correction is the same as for UpdateCategory = 1
+                            if (receiptAndPaymentResultIfTable.UpdateCategory == updateCategory_2)
+                            {
+                                // 
+                                receiptAndPaymentResultIfTable.UpdateCategory = updateCategory_1;
+                                lineNum ++;
+
+                                inventJournalIdLocal = KJP_SM_InputResultCommonClass::insertInventJournal(
+                                    receiptAndPaymentResultIfTable, inventJournalNameId, inventJournalNameRecord, false, inventJournalIdLocal, currentGetProdId);
+                            }
+
+                            if(preInventJournalId && inventJournalIdLocal != preInventJournalId)
+                            {
+                                // update NumOfLines for inventJournalTable
+                                countLineNum = KJP_SM_InputResultCommonClass::updateNumOfLines(preInventJournalId);
+                                // post for inventJournalTable
+                                JournalCheckPost journalCheckPost = InventJournalCheckPost::newPostJournal(InventJournalTable::find(preInventJournalId));
+                                journalCheckPost.parmTransferErrors(true);
+                                journalCheckPost.parmThrowCheckFailed(true);
+                                journalCheckPost.runOperation();
+
+                                numberOfSuccess += countLineNum ;
+
+                                lineNum = 2;
+                            }
+                            else
+                            {
+                                lineNum++;
+                            }
+
+                            preInventJournalId = inventJournalIdLocal;
+                        }
+                        else
+                        {
+                            continue;
+                        }
+                    }
+                    catch
+                    {
+                        lineNum = 2;
+                        preInventJournalId = inventJournalIdLocal;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        try
+        {
+            // the lastest record is [NonCommcialFlg:No]
+            if(prodJournalId && preNonCommcialFlg == NoYes::No)
+            {
+                KJP_SM_InputResultCommonClass::postProdJournal(prodJournalId);
+
+                countLineNum = ProdJournalBOM::journalLineCount(prodJournalId);
+                numberOfSuccess += countLineNum;
+            }
+
+            // the lastest record is [NonCommcialFlg:Yes]
+            if(preInventJournalId && preNonCommcialFlg == NoYes::Yes)
+            {
+                // update NumOfLines for inventJournalTable
+                countLineNum = KJP_SM_InputResultCommonClass::updateNumOfLines(preInventJournalId);
+
+                // inventJournal post for last record
+                JournalCheckPost journalCheckPost = InventJournalCheckPost::newPostJournal(InventJournalTable::find(preInventJournalId));
+                journalCheckPost.parmTransferErrors(true);
+                journalCheckPost.parmThrowCheckFailed(true);
+                journalCheckPost.runOperation();
+
+                numberOfSuccess += countLineNum;
+            }
+        }
+        catch(Exception)
+        {
+            // Write Error Log tables
+            Error(exception.Message);
+        }
+        return numberOfSuccess;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateNumOfLines</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// update NumOfLines for InventJournalTable
+    /// </summary>
+    /// <param name = "_preInventJournalId">_preInventJournalId</param>
+    /// <returns>int64</returns>
+    public static int64 updateNumOfLines(InventJournalId _preInventJournalId)
+    {
+        InventJournalTable updateInventJournalTable;
+
+        select firstonly forupdate updateInventJournalTable
+                    where updateInventJournalTable.JournalId == _preInventJournalId;
+
+        ttsbegin;
+        updateInventJournalTable.NumOfLines
+            = any2Int((select count(RecId) from InventJournalTrans where InventJournalTrans.JournalId == _preInventJournalId).RecId);
+        updateInventJournalTable.doUpdate();
+        ttscommit;
+
+        return updateInventJournalTable.NumOfLines;
+    
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateRecord</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate of records
+    /// </summary>
+    /// <param name = "_receiptAndPaymentResultIfTableValidate">receiptAndPaymentResultIfTableValidate</param>
+    /// <returns>boolean</returns>
+    public static boolean validateRecord(KJP_SM_ReceiptAndPaymentResultIfTable _receiptAndPaymentResultIfTableValidate)
+    {
+        boolean ret = true;
+        str errorMessage = null;
+        boolean isExistItemCD = true;
+        
+
+        if (_receiptAndPaymentResultIfTableValidate.UpdateCategory != updateCategory_1 && _receiptAndPaymentResultIfTableValidate.UpdateCategory != updateCategory_2 && _receiptAndPaymentResultIfTableValidate.UpdateCategory != updateCategory_3)
+        {
+            errorMessage = strFmt("@KJP:KJP500259",
+                _receiptAndPaymentResultIfTableValidate.UpdateCategory,
+                _receiptAndPaymentResultIfTableValidate.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+            ret = false;
+        }
+
+        if (!InventTable::exist(_receiptAndPaymentResultIfTableValidate.ItemCD))
+        {
+            isExistItemCD = false;
+
+            errorMessage = strFmt("@KJP:KJP500261",
+                _receiptAndPaymentResultIfTableValidate.ItemCD,
+                _receiptAndPaymentResultIfTableValidate.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+            ret = false;
+        }
+
+        if (isExistItemCD
+            && !InventBatch::exist(_receiptAndPaymentResultIfTableValidate.LotNo,
+            _receiptAndPaymentResultIfTableValidate.ItemCD))
+        {
+            errorMessage = strFmt("@KJP:KJP500262",
+                _receiptAndPaymentResultIfTableValidate.LotNo,
+                _receiptAndPaymentResultIfTableValidate.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+            ret = false;
+        }
+
+        if (isExistItemCD
+            && InventTable::find(_receiptAndPaymentResultIfTableValidate.ItemCD).BOMUnitId
+            != _receiptAndPaymentResultIfTableValidate.UnitCD)
+        {
+            errorMessage = strFmt("@KJP:KJP500263",
+                _receiptAndPaymentResultIfTableValidate.UnitCD,
+                _receiptAndPaymentResultIfTableValidate.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+            ret = false;
+        }
+
+        if (!InventLocation::exist(_receiptAndPaymentResultIfTableValidate.DeliveryLocationCD))
+        {
+            errorMessage = strFmt("@KJP:KJP500264",
+                _receiptAndPaymentResultIfTableValidate.DeliveryLocationCD,
+                _receiptAndPaymentResultIfTableValidate.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+            ret = false;
+        }
+
+        KJP_SM_InstructionNoConversionTable KJP_SM_InstructionNoConversionTable;
+
+        select firstonly KJP_SM_InstructionNoConversionTable
+            where KJP_SM_InstructionNoConversionTable.InstructionNo == _receiptAndPaymentResultIfTableValidate.InstructionNo;
+
+        if (!KJP_SM_InstructionNoConversionTable)
+        {
+            errorMessage = strFmt("@KJP:KJP500368",
+                _receiptAndPaymentResultIfTableValidate.InstructionNo,
+                _receiptAndPaymentResultIfTableValidate.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+            ret = false;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertProdJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert ProdJournal data(Table and Trans) and post
+    /// </summary>
+    /// <param name = "_receiptAndPaymentResultIfTableRecord">receiptAndPaymentResultIfTable</param>
+    /// <param name = "_isCreateProdJournalTable">is Create ProdJournalTable</param>
+    /// <param name = "_prodJournalId">prodJournalId</param>
+    /// <param name = "_isUbe">is Ube</param>
+    /// <param name = "_prodId">prodId</param>
+    /// <returns>ProdJournalId</returns>
+    public static ProdJournalId insertProdJournal(KJP_SM_ReceiptAndPaymentResultIfTable _receiptAndPaymentResultIfTableRecord,boolean _isCreateProdJournalTable,ProdJournalId _prodJournalId, boolean _isUbe, ProdId _prodId)
+    {
+        ProdJournalTable        insertProdJournalTableRecord;
+        ProdJournalBOM          insertProdJournalBOMRecord,prodJournalBOMRecordPlus;
+        InventDim               inventDimNew,inventDimPlus;
+        ProdParametersDim       prodParametersDim;
+        str                     errorMessage = null;
+        
+        prodParametersDim = ProdParametersDim::findDefault();
+
+        ProdJournalName prodJournalNameRecord  = ProdJournalName::find(prodParametersDim.BOMJournalNameId);
+
+        if(_isCreateProdJournalTable)
+        {
+            // insert ProdJournalTable
+            insertProdJournalTableRecord.clear();
+            insertProdJournalTableRecord.initValue();
+            insertProdJournalTableRecord.JournalNameId = prodParametersDim.BOMJournalNameId;
+            insertProdJournalTableRecord.JournalId = JournalTableData::newTable(insertProdJournalTableRecord).nextJournalId();
+            insertProdJournalTableRecord.JournalType = ProdJournalType::Picklist;
+            insertProdJournalTableRecord.ProdId = _prodId;
+            insertProdJournalTableRecord.Description = prodJournalNameRecord.Description;
+            insertProdJournalTableRecord.VoucherSeqRecId  = prodJournalNameRecord.VoucherSeqRecId;
+            insertProdJournalTableRecord.VoucherDraw = prodJournalNameRecord.VoucherDraw;
+            insertProdJournalTableRecord.VoucherChange = prodJournalNameRecord.VoucherChange;
+            insertProdJournalTableRecord.DetailSummary = prodJournalNameRecord.DetailSummary;
+            insertProdJournalTableRecord.DeletePostedLines = prodJournalNameRecord.DeletePostedLines;
+
+            insertProdJournalTableRecord.insert();
+        }
+        else
+        {
+            insertProdJournalTableRecord = ProdJournalTable::find(_prodJournalId);
+        }
+
+        // insert ProdJournalBOM
+        insertProdJournalBOMRecord.clear();
+        insertProdJournalBOMRecord.initValue();
+        insertProdJournalBOMRecord.JournalId = insertProdJournalTableRecord.JournalId;
+        insertProdJournalBOMRecord.ItemId = _receiptAndPaymentResultIfTableRecord.ItemCD;
+        //if(_isCreateProdJournalTable)
+        //{
+        //    insertProdJournalBOMRecord.LineNum = KJP_CM_ConstantHelper::numberOne;
+        //}
+        //else
+        //{
+        //    insertProdJournalBOMRecord.LineNum = _lineNum;
+        //}
+        insertProdJournalBOMRecord.ProdId = insertProdJournalTableRecord.ProdId;
+        insertProdJournalBOMRecord.BOMUnitId = _receiptAndPaymentResultIfTableRecord.UnitCD;
+        insertProdJournalBOMRecord.TransDate = str2Date(subStr(_receiptAndPaymentResultIfTableRecord.ActualDateAndTimeStr,1,8), 321);
+        
+
+        inventDimNew.InventSiteId = InventLocation::find(_receiptAndPaymentResultIfTableRecord.DeliveryLocationCD).InventSiteId;
+        inventDimNew.InventLocationId = _receiptAndPaymentResultIfTableRecord.DeliveryLocationCD;
+        inventDimNew.inventBatchId = _receiptAndPaymentResultIfTableRecord.LotNo;
+        
+
+        if (_receiptAndPaymentResultIfTableRecord.UpdateCategory == updateCategory_1)
+        {
+            real availPhysicalUnit;
+
+            insertProdJournalBOMRecord.InventDimId = InventDim::findOrCreate(inventDimNew).inventDimId;
+
+            availPhysicalUnit = inventSum::find(_receiptAndPaymentResultIfTableRecord.ItemCD,insertProdJournalBOMRecord.InventDimId).availPhysicalCalculated();
+
+            if(availPhysicalUnit < _receiptAndPaymentResultIfTableRecord.Quantity)
+            {
+                errorMessage = strFmt("@KJP:KJP500361",
+                _receiptAndPaymentResultIfTableRecord.InstructionNo,
+                _receiptAndPaymentResultIfTableRecord.ItemCD,
+                _receiptAndPaymentResultIfTableRecord.RecordID);
+                // Write Warning Log tables
+                checkFailed(errorMessage);
+            }
+
+            insertProdJournalBOMRecord.BOMConsump = any2Real(_receiptAndPaymentResultIfTableRecord.Quantity);
+            insertProdJournalBOMRecord.InventConsump = any2Real(_receiptAndPaymentResultIfTableRecord.Quantity);
+        }
+        else if (_receiptAndPaymentResultIfTableRecord.UpdateCategory == updateCategory_3)
+        {
+            while select prodJournalBOMRecordPlus
+                join inventDimPlus
+                where inventDimPlus.inventDimId == prodJournalBOMRecordPlus.InventDimId
+                && prodJournalBOMRecordPlus.ProdId == insertProdJournalTableRecord.ProdId
+                && prodJournalBOMRecordPlus.ItemId == _receiptAndPaymentResultIfTableRecord.ItemCD
+                && prodJournalBOMRecordPlus.BOMConsump == _receiptAndPaymentResultIfTableRecord.Quantity
+                && inventDimPlus.inventBatchId == _receiptAndPaymentResultIfTableRecord.LotNo
+            {
+                ProdJournalBOM ProdJournalBOMExist;
+                ProdJournalTable ProdJournalTableExist;
+
+                select count(recid) from ProdJournalBOMExist
+                    join ProdJournalTableExist
+                    where ProdJournalTableExist.JournalId == ProdJournalBOMExist.JournalId
+                    && ProdJournalBOMExist.InventTransId == prodJournalBOMRecordPlus.InventTransId
+                    && (ProdJournalTableExist.Posted == NoYes::Yes
+                    || ProdJournalTableExist.JournalId == insertProdJournalBOMRecord.JournalId);
+
+                if(ProdJournalBOMExist.RecId == 1)
+                {
+                    break;
+                }
+            }
+
+            // no prodJournalBOMRecordPlus data
+            if(!prodJournalBOMRecordPlus)
+            {
+                insertProdJournalBOMRecord.delete();
+
+                errorMessage = strFmt("@KJP:KJP500362",
+                _receiptAndPaymentResultIfTableRecord.InstructionNo,
+                _receiptAndPaymentResultIfTableRecord.ItemCD,
+                _receiptAndPaymentResultIfTableRecord.Quantity,
+                _receiptAndPaymentResultIfTableRecord.RecordID);
+                // Write Error Log tables
+                Error(errorMessage);
+
+                return insertProdJournalTableRecord.JournalId;
+            }
+
+            insertProdJournalBOMRecord.InventDimId = InventDim::findOrCreate(inventDimNew).inventDimId;
+            insertProdJournalBOMRecord.InventTransId = prodJournalBOMRecordPlus.InventTransId;
+            insertProdJournalBOMRecord.BOMConsump = any2Real(_receiptAndPaymentResultIfTableRecord.Quantity) * -1;
+            insertProdJournalBOMRecord.InventConsump = any2Real(_receiptAndPaymentResultIfTableRecord.Quantity) * -1;
+
+            if(_isUbe)
+            {
+                insertProdJournalBOMRecord.TransDate = str2Date(subStr(_receiptAndPaymentResultIfTableRecord.Remarks,1,8), 321);
+            }
+        }
+        else if (_receiptAndPaymentResultIfTableRecord.UpdateCategory == updateCategory_2)
+        {
+            boolean retCancel;
+
+            // Register the ProdJournalBOM table: the quantity before correction as a negative(-) quantity.
+            retCancel = KJP_SM_InputResultCommonClass::cancelProdJournal(insertProdJournalTableRecord, _receiptAndPaymentResultIfTableRecord, _isUbe);
+
+            if (!retCancel)
+            {
+                return insertProdJournalTableRecord.JournalId;
+            }
+
+            // Register two ProdJournalBOM table: the quantity after correction as a positive(+) quantity.
+            insertProdJournalBOMRecord = KJP_SM_InputResultCommonClass::newProdJournal(insertProdJournalTableRecord, _receiptAndPaymentResultIfTableRecord);
+        }
+
+        insertProdJournalBOMRecord.modifiedField(fieldNum(ProdJournalBOM,ItemId));
+
+        insertProdJournalBOMRecord.insert();
+
+        return insertProdJournalTableRecord.JournalId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initProdJournalBOM</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Init ProdJournalBOM data from ProdJournalTable and KJP_SM_ReceiptAndPaymentResultIfTable
+    /// </summary>
+    /// <param name = "_insertProdJournalTableRecord">ProdJournalTable</param>
+    /// <param name = "_receiptAndPaymentResultIfTableRecord">KJP_SM_ReceiptAndPaymentResultIfTable</param>
+    /// <returns>ProdJournalBOM</returns>
+    public static ProdJournalBOM initProdJournalBOM(ProdJournalTable _insertProdJournalTableRecord, KJP_SM_ReceiptAndPaymentResultIfTable _receiptAndPaymentResultIfTableRecord)
+    {
+        ProdJournalBOM      insertProdJournalBOMRecord;
+        InventDim           inventDimNew;
+
+        // insert ProdJournalBOM
+        insertProdJournalBOMRecord.clear();
+        insertProdJournalBOMRecord.initValue();
+        insertProdJournalBOMRecord.JournalId = _insertProdJournalTableRecord.JournalId;
+        insertProdJournalBOMRecord.ItemId = _receiptAndPaymentResultIfTableRecord.ItemCD;
+
+        insertProdJournalBOMRecord.ProdId = _insertProdJournalTableRecord.ProdId;
+        insertProdJournalBOMRecord.BOMUnitId = _receiptAndPaymentResultIfTableRecord.UnitCD;
+        insertProdJournalBOMRecord.TransDate = str2Date(subStr(_receiptAndPaymentResultIfTableRecord.ActualDateAndTimeStr, 1, 8), 321);
+
+        inventDimNew.InventSiteId = InventLocation::find(_receiptAndPaymentResultIfTableRecord.DeliveryLocationCD).InventSiteId;
+        inventDimNew.InventLocationId = _receiptAndPaymentResultIfTableRecord.DeliveryLocationCD;
+        inventDimNew.inventBatchId = _receiptAndPaymentResultIfTableRecord.LotNo;
+
+        insertProdJournalBOMRecord.InventDimId = InventDim::findOrCreate(inventDimNew).inventDimId;
+
+        return insertProdJournalBOMRecord;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>newProdJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Create a new ProdJournalBOM data for after correction from ProdJournalTable and KJP_SM_ReceiptAndPaymentResultIfTable
+    /// </summary>
+    /// <param name = "_insertProdJournalTableRecord">ProdJournalTable</param>
+    /// <param name = "_receiptAndPaymentResultIfTableRecord">KJP_SM_ReceiptAndPaymentResultIfTable</param>
+    /// <returns>ProdJournalBOM</returns>
+    public static ProdJournalBOM newProdJournal(ProdJournalTable _insertProdJournalTableRecord, KJP_SM_ReceiptAndPaymentResultIfTable _receiptAndPaymentResultIfTableRecord)
+    {
+        ProdJournalBOM  insertProdJournalBOMRecord;
+        str             errorMessage = KJP_CM_ConstantHelper::blankValue;
+        real            availPhysicalUnit;
+
+        insertProdJournalBOMRecord = KJP_SM_InputResultCommonClass::initProdJournalBOM(_insertProdJournalTableRecord, _receiptAndPaymentResultIfTableRecord);
+        //_insertProdJournalBOMRecord.InventDimId = InventDim::findOrCreate(_inventDimNew).inventDimId;
+
+        availPhysicalUnit = inventSum::find(_receiptAndPaymentResultIfTableRecord.ItemCD, insertProdJournalBOMRecord.InventDimId).availPhysicalCalculated();
+
+        if(availPhysicalUnit < _receiptAndPaymentResultIfTableRecord.Quantity)
+        {
+            errorMessage = strFmt("@KJP:KJP500361",
+                _receiptAndPaymentResultIfTableRecord.InstructionNo,
+                _receiptAndPaymentResultIfTableRecord.ItemCD,
+                _receiptAndPaymentResultIfTableRecord.RecordID);
+            // Write Warning Log tables
+            checkFailed(errorMessage);
+        }
+
+        insertProdJournalBOMRecord.BOMConsump = any2Real(_receiptAndPaymentResultIfTableRecord.Quantity);
+        insertProdJournalBOMRecord.InventConsump = any2Real(_receiptAndPaymentResultIfTableRecord.Quantity);
+
+        return insertProdJournalBOMRecord;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>cancelProdJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Create a new ProdJournalBOM data for before correction from ProdJournalTable and KJP_SM_ReceiptAndPaymentResultIfTable
+    /// </summary>
+    /// <param name = "_insertProdJournalTableRecord">ProdJournalTable</param>
+    /// <param name = "_receiptAndPaymentResultIfTableRecord">KJP_SM_ReceiptAndPaymentResultIfTable</param>
+    /// <param name = "_isUbe">boolean</param>
+    /// <returns>boolean</returns>
+    public static boolean cancelProdJournal(ProdJournalTable _insertProdJournalTableRecord, KJP_SM_ReceiptAndPaymentResultIfTable _receiptAndPaymentResultIfTableRecord, boolean _isUbe)
+    {
+        boolean                 ret = false;
+        ProdJournalBOM          prodJournalBOMRecordPlus;
+        ProdJournalBOM          insertProdJournalBOMRecord;
+        InventDim               inventDimPlus;
+        str                     errorMessage = KJP_CM_ConstantHelper::blankValue;
+
+        while select prodJournalBOMRecordPlus
+            join inventDimPlus
+            where inventDimPlus.inventDimId == prodJournalBOMRecordPlus.InventDimId
+            && prodJournalBOMRecordPlus.ProdId == _insertProdJournalTableRecord.ProdId
+            && prodJournalBOMRecordPlus.ItemId == _receiptAndPaymentResultIfTableRecord.ItemCD
+            //&& prodJournalBOMRecordPlus.BOMConsump == _receiptAndPaymentResultIfTableRecord.Quantity
+            && inventDimPlus.inventBatchId == _receiptAndPaymentResultIfTableRecord.LotNo
+        {
+            ProdJournalBOM ProdJournalBOMExist;
+            ProdJournalTable ProdJournalTableExist;
+
+            select count(recid) from ProdJournalBOMExist
+                join ProdJournalTableExist
+                where ProdJournalTableExist.JournalId == ProdJournalBOMExist.JournalId
+                && ProdJournalBOMExist.InventTransId == prodJournalBOMRecordPlus.InventTransId
+                && (ProdJournalTableExist.Posted == NoYes::Yes
+                || ProdJournalTableExist.JournalId == _insertProdJournalTableRecord.JournalId);
+
+            if(ProdJournalBOMExist.RecId == 1)
+            {
+                ret = true;
+
+                insertProdJournalBOMRecord = KJP_SM_InputResultCommonClass::initProdJournalBOM(_insertProdJournalTableRecord, _receiptAndPaymentResultIfTableRecord);
+
+                //insertProdJournalBOMRecord.InventDimId = InventDim::findOrCreate(_inventDimNew).inventDimId;
+                insertProdJournalBOMRecord.InventTransId = prodJournalBOMRecordPlus.InventTransId;
+                insertProdJournalBOMRecord.BOMConsump = any2Real(prodJournalBOMRecordPlus.BOMConsump) * -1;
+                insertProdJournalBOMRecord.InventConsump = any2Real(prodJournalBOMRecordPlus.InventConsump) * -1;
+
+                if(_isUbe)
+                {
+                    insertProdJournalBOMRecord.TransDate = str2Date(subStr(_receiptAndPaymentResultIfTableRecord.Remarks, 1, 8), 321);
+                }
+
+                insertProdJournalBOMRecord.modifiedField(fieldNum(ProdJournalBOM,ItemId));
+
+                insertProdJournalBOMRecord.insert();
+            }
+        }
+
+        // no prodJournalBOM data
+        if (!ret)
+        {
+            errorMessage = strFmt("@KJP:KJP500362",
+                _receiptAndPaymentResultIfTableRecord.InstructionNo,
+                _receiptAndPaymentResultIfTableRecord.ItemCD,
+                _receiptAndPaymentResultIfTableRecord.Quantity,
+                _receiptAndPaymentResultIfTableRecord.RecordID);
+            // Write Error Log tables
+            Error(errorMessage);
+
+            //return _insertProdJournalTableRecord.JournalId;
+            return ret;
+        }
+
+        //return _insertProdJournalTableRecord.JournalId;
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postProdJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// post ProdJournal
+    /// </summary>
+    /// <param name = "_prodJournalId">_prodJournalId</param>
+    /// <returns>results</returns>
+    public static boolean postProdJournal(ProdJournalId _prodJournalId)
+    {
+        ProdJournalTable        prodJournalTableRecord;
+        ProdJournalCheckPostBOM prodJournalCheckPostBOM;
+
+        if(ProdJournalBOM::journalLineCount(_prodJournalId) == 0)
+        {
+            select firstonly forupdate prodJournalTableRecord
+                where prodJournalTableRecord.JournalId == _prodJournalId;
+
+            prodJournalTableRecord.delete();
+
+            return false;
+        }
+
+        select firstonly forupdate prodJournalTableRecord
+                where prodJournalTableRecord.JournalId == _prodJournalId;
+
+        prodJournalTableRecord.NumOfLines = ProdJournalBOM::journalLineCount(_prodJournalId);
+        prodJournalTableRecord.update();
+
+        prodJournalCheckPostBOM = ProdJournalCheckPostBOM::newPostJournal(_prodJournalId,true);
+
+        prodJournalCheckPostBOM.parmThrowCheckFailed(false);
+
+        prodJournalCheckPostBOM.runOperation();
+
+        return true;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getProdidFromInstructionNoConversionTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get Prodid From InstructionNoConversionTable
+    /// </summary>
+    /// <param name = "_instructionNo">_instructionNo</param>
+    /// <returns>ProdId</returns>
+    public static ProdId getProdidFromInstructionNoConversionTable(KJP_SM_InstructionNo _instructionNo)
+    {
+        KJP_SM_InstructionNoConversionTable getInstructionNoConversionTable;
+
+        select firstonly getInstructionNoConversionTable
+            where getInstructionNoConversionTable.InstructionNo == _instructionNo;
+
+        return getInstructionNoConversionTable.ProdId;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getInventJournalNameIdFromPurpose</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get InventJournalNameId from KJP_CM_GeneralPurposeMaster
+    /// </summary>
+    /// <returns>JournalNameId</returns>
+    public static JournalNameId getInventJournalNameIdFromPurpose()
+    {
+        return KJP_CM_GeneralPurposeMaster::find(
+            KJP_CM_ConstantHelper::journalName,
+            KJP_CM_ConstantHelper::origCodeJournalNameKey_KJP_SM_NonCommercial).DestinationCode;
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertInventJournal</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert InventJournal data(Table and Trans)
+    /// </summary>
+    /// <param name = "_receiptAndPaymentResultIfTableRecord">KJP_SM_ReceiptAndPaymentResultIfTable</param>
+    /// <param name = "_inventJournalNameId">inventJournalNameId</param>
+    /// <param name = "_inventJournalNameRecord">inventJournalNameRecord</param>
+    /// <param name = "_isCreatInventJournalTable">_isCreatInventJournalTable</param>
+    /// <param name = "_inventJournalId">_inventJournalId</param>
+    /// <param name = "_prodId">ProdId</param>
+    /// <returns>ProdJournalId</returns>
+    public static InventJournalId insertInventJournal(
+        KJP_SM_ReceiptAndPaymentResultIfTable _receiptAndPaymentResultIfTableRecord,
+        JournalNameId _inventJournalNameId,
+        InventJournalName _inventJournalNameRecord,
+        boolean _isCreatInventJournalTable,
+        InventJournalId _inventJournalId,
+        ProdId _prodId)
+    {
+        InventJournalTable insertInventJournalTableRecord;
+        InventJournalTrans insertInventJournalTransRecord;
+        InventDim inventDimNew;
+        voucher voucherNum;
+
+        InventLocation inventLocationRecord  = InventLocation::find(_receiptAndPaymentResultIfTableRecord.DeliveryLocationCD);
+
+        ttsbegin;
+
+        if(_isCreatInventJournalTable)
+        {
+            // insert InventJournalTable data
+            insertInventJournalTableRecord.clear();
+            insertInventJournalTableRecord.initValue();
+            insertInventJournalTableRecord.JournalId = JournalTableData::newTable(insertInventJournalTableRecord).nextJournalId();
+            insertInventJournalTableRecord.JournalType = InventJournalType::Movement;
+            insertInventJournalTableRecord.InventSiteId = inventLocationRecord.InventSiteId;
+            insertInventJournalTableRecord.Description = _inventJournalNameRecord.Description;
+            insertInventJournalTableRecord.VoucherNumberSequenceTable  = _inventJournalNameRecord.VoucherNumberSequenceTable;
+            insertInventJournalTableRecord.VoucherDraw = _inventJournalNameRecord.VoucherDraw;
+            insertInventJournalTableRecord.VoucherChange = _inventJournalNameRecord.VoucherChange;
+            insertInventJournalTableRecord.DetailSummary = _inventJournalNameRecord.DetailSummary;
+            insertInventJournalTableRecord.DeletePostedLines = _inventJournalNameRecord.DeletePostedLines;
+            insertInventJournalTableRecord.LedgerDimension = _inventJournalNameRecord.LedgerDimension;
+            insertInventJournalTableRecord.Reservation = _inventJournalNameRecord.Reservation;
+            insertInventJournalTableRecord.InventLocationId = _receiptAndPaymentResultIfTableRecord.DeliveryLocationCD;
+            insertInventJournalTableRecord.JournalNameId = _inventJournalNameId;
+            insertInventJournalTableRecord.NumOfLines = KJP_CM_ConstantHelper::numberOne;
+            insertInventJournalTableRecord.KJPSMRemarks = _prodId;
+            insertInventJournalTableRecord.insert();
+        }
+        else
+        {
+            insertInventJournalTableRecord = InventJournalTable::find(_inventJournalId);
+        }
+
+        // insert InventJournalTrans data
+        insertInventJournalTransRecord.clear();
+        insertInventJournalTransRecord.initValue();
+        insertInventJournalTransRecord.initFromInventJournalTable(insertInventJournalTableRecord);
+        insertInventJournalTransRecord.JournalId = insertInventJournalTableRecord.JournalId;
+        insertInventJournalTransRecord.ItemId = _receiptAndPaymentResultIfTableRecord.ItemCD;
+        //if(_isCreatInventJournalTable)
+        //{
+        //    insertInventJournalTransRecord.LineNum = KJP_CM_ConstantHelper::numberOne;
+        //}
+        //else
+        //{
+        //    insertInventJournalTransRecord.LineNum = _lineNum;
+        //}
+        if (_receiptAndPaymentResultIfTableRecord.UpdateCategory == updateCategory_1)
+        {
+            insertInventJournalTransRecord.Qty = _receiptAndPaymentResultIfTableRecord.Quantity * -1;
+        }
+        else if (_receiptAndPaymentResultIfTableRecord.UpdateCategory == updateCategory_3)
+        {
+            insertInventJournalTransRecord.Qty = _receiptAndPaymentResultIfTableRecord.Quantity;
+        }
+        else if (_receiptAndPaymentResultIfTableRecord.UpdateCategory == updateCategory_2)
+        {
+            insertInventJournalTransRecord.Qty = KJP_SM_InputResultCommonClass::getSumInventJournalQtyByProdId(_prodId, _receiptAndPaymentResultIfTableRecord.ItemCD, _receiptAndPaymentResultIfTableRecord.LotNo) * -1;
+        }
+
+        insertInventJournalTransRecord.TransDate =
+            str2Date(subStr(_receiptAndPaymentResultIfTableRecord.ActualDateAndTimeStr,1,8), 321);
+        insertInventJournalTransRecord.LedgerDimension = _inventJournalNameRecord.LedgerDimension;
+        insertInventJournalTransRecord.PriceUnit = KJP_CM_ConstantHelper::numberOne;
+        insertInventJournalTransRecord.Unit = _receiptAndPaymentResultIfTableRecord.UnitCD;
+        insertInventJournalTransRecord.UnitQty = KJP_CM_ConstantHelper::numberOne;
+        inventDimNew.InventSiteId = InventLocation::find(_receiptAndPaymentResultIfTableRecord.DeliveryLocationCD).InventSiteId;
+        inventDimNew.InventLocationId = _receiptAndPaymentResultIfTableRecord.DeliveryLocationCD;
+        inventDimNew.inventBatchId = _receiptAndPaymentResultIfTableRecord.LotNo;
+        insertInventJournalTransRecord.InventDimId = InventDim::findOrCreate(inventDimNew).inventDimId;
+        voucherNum = new JournalVoucherNum(JournalTableData::newTable(InventJournalTable::find(insertInventJournalTableRecord.JournalId))).getNew(false);
+        insertInventJournalTransRecord.Voucher = voucherNum;
+
+        if (_receiptAndPaymentResultIfTableRecord.BurdenDepartmentCD)
+        {
+            insertInventJournalTransRecord.DefaultDimension = KJP_CM_Utils::updateDefaultDimension(
+                InventTable::find(_receiptAndPaymentResultIfTableRecord.ItemCD).DefaultDimension
+                , [KJP_CM_ConstantHelper::jpDepartMent]
+                , [_receiptAndPaymentResultIfTableRecord.BurdenDepartmentCD]);
+        }
+        else
+        {
+            insertInventJournalTransRecord.DefaultDimension = KJP_CM_Utils::updateDefaultDimension(
+                InventTable::find(_receiptAndPaymentResultIfTableRecord.ItemCD).DefaultDimension
+                , [KJP_CM_ConstantHelper::jpDepartMent]
+                , [InventLocation::find(_receiptAndPaymentResultIfTableRecord.DeliveryLocationCD).KJPFIJP_DepartmentStr]);
+        }
+        insertInventJournalTransRecord.insert();
+
+        ttscommit;
+
+        return insertInventJournalTableRecord.JournalId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>getSumInventJournalQtyByProdId</Name>
+				<Source><![CDATA[
+    /// <summary>Gets the sum quantity of Prod Id.</summary>
+    /// <param name = "_prodId">ProdId</param>
+    /// <param name = "_itemId">ItemId</param>
+    /// <param name = "_lotNo">KJP_SM_LotNo</param>
+    /// <returns>The sum quantity</returns>
+    public static InventQtyJournal getSumInventJournalQtyByProdId(ProdId _prodId, ItemId _itemId, KJP_SM_LotNo _lotNo)
+    {
+        InventJournalTable inventJournalTable;
+        InventJournalTrans inventJournalTrans;
+        InventDim inventDim;
+
+        select sum(Qty)
+        from inventJournalTrans
+            join inventDim
+        where inventDim.inventDimId == inventJournalTrans.InventDimId
+            && inventDim.inventBatchId == _lotNo
+            join JournalId from inventJournalTable
+        where inventJournalTrans.JournalId == inventJournalTable.JournalId
+            && inventJournalTrans.ItemId == _itemId
+            && inventJournalTable.Posted == NoYes::Yes
+            && inventJournalTable.KJPSMRemarks == _prodId;
+
+        return inventJournalTrans.Qty;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

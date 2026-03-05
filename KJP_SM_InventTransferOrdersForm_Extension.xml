@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTransferOrdersForm_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension Form class for InventTransferOrders
+/// </summary>
+[ExtensionOf(formStr(InventTransferOrders))]
+final class KJP_SM_InventTransferOrdersForm_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>init</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Init InventTransferOrders Form
+    /// </summary>
+    public void init()
+    {
+        next init();
+        if(KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            // 2.2.1.2.3 Add 1st Line: Line ShipDate and ReceiveDate not editable
+            InventTransferLine_ds.object(fieldNum(InventTransferLine, ShipDate)).allowEdit(False);
+            InventTransferLine_ds.object(fieldNum(InventTransferLine, ReceiveDate)).allowEdit(False); 
+            // 2.2.1.1.3 Field Mapping No13,14
+            InventTransferLine_ds.object(fieldNum(InventTransferLine, KJPSMShippingInstructionSendingFlag)).allowEdit(False);
+            InventTransferLine_ds.object(fieldNum(InventTransferLine, KJPSMStockArrivalScheduleSendingFlag)).allowEdit(False); 
+        }      
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

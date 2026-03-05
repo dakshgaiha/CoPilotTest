@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_BSetInvoiceContract</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Contract class for KJP_SM_BSetInvoice report
+/// </summary>
+[DataContractAttribute]
+public class KJP_SM_BSetInvoiceContract
+{
+    List recId = new List(Types::Int64);
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>parmRecId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Gets or sets the value of the datacontract parameter RecID.
+    /// </summary>
+    /// <param name = "_recId">RecId</param>
+    /// <returns>list of record ids</returns>
+    [
+        DataMemberAttribute(identifierStr(RecId)), 
+        AifCollectionTypeAttribute('_recId', Types::Int64, extendedTypeStr(RecId)),
+        SysOperationControlVisibilityAttribute(False)
+    ]
+    public List parmRecId(List _recId = recId)
+    {
+        recId = _recId;
+        return recId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

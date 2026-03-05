@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_ArrivalResultsPurchReceiptClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Purchase order receipt creation and post process.
+/// </summary>
+class KJP_SM_ArrivalResultsPurchReceiptClass
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>registerProductReceipt</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Purchase order receipt creation process
+    /// </summary>
+    /// <param name = "_purchinfo">Purchase order line information</param>
+    /// <returns>If the process completes successfully, return true; otherwise false</returns>
+    public static boolean registerProductReceipt(KJP_SM_ArrivalResultsPurchInfoClass _purchinfo)
+    {
+        InventTrans             inventTrans;
+        TmpInventTransWMS       tmpInventTransWMS;
+        InventTransWMS_Register inventTransWMS_Register;
+        boolean                 ret;
+
+        inventTransWMS_Register = InventTransWMS_Register::newStandard(tmpInventTransWMS);
+
+        inventTrans     = InventTrans::findTransId(_purchinfo.parmInventTransId());
+
+        tmpInventTransWMS.clear();
+        tmpInventTransWMS.initFromInventTrans(inventTrans);
+        tmpInventTransWMS.InventQty     = _purchinfo.parmPurchQty();
+        tmpInventTransWMS.LineNum       = _purchinfo.parmLineNumber();
+        tmpInventTransWMS.ItemId        = _purchinfo.parmItemId();
+        tmpInventTransWMS.InventDimId   = _purchinfo.parmInventDimId();
+        tmpInventTransWMS.insert();
+
+        ret = inventTransWMS_Register.writeTmpInventTransWMS(tmpInventTransWMS, inventTrans, InventDim::find(tmpInventTransWMS.InventDimId));
+        if (!ret)
+        {
+            return ret;
+        }
+
+        return inventTransWMS_Register.updateInvent(_purchinfo.parmPurchLine());
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>postProductReceipt</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Purchase order receipt post process
+    /// </summary>
+    /// <param name = "_purchId">A purchase order No</param>
+    /// <param name = "_confirmedDlv">Receipt date</param>
+    public static void postProductReceipt(PurchIdBase _purchId, PurchLineConfirmedReceiptDate _confirmedDlv)
+    {
+        PurchFormLetter     purchFormLetter;
+        PurchTable          purchTable;
+        ProductReceiptId    productReceiptId;
+
+        productReceiptId    = KJP_SM_ArrivalResultsPurchReceiptClass::initProductReceiptIdByPurchId(_purchId);
+        purchTable          = PurchTable::find(_purchId, true);
+
+        purchFormLetter = PurchFormLetter::construct(DocumentStatus::PackingSlip);
+        purchFormLetter.update(purchTable, productReceiptId, _confirmedDlv, PurchUpdate::Recorded);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>initProductReceiptIdByPurchId</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Generate product receipt Id base on PurchId
+    /// </summary>
+    /// <param name = "_purchId">A purchase order No</param>
+    /// <returns>Product Receipt Id</returns>
+    public static ProductReceiptId initProductReceiptIdByPurchId(PurchIdBase _purchId)
+    {
+        VendPackingSlipJour     vendPackingSlipJour;
+        ProductReceiptId        productReceiptId;
+        int                     serialNum;
+
+        select maxof(PackingSlipId) from vendPackingSlipJour
+            where vendPackingSlipJour.PurchId == _purchId;
+
+        if (vendPackingSlipJour)
+        {
+            int lenNum = strLen(vendPackingSlipJour.PackingSlipId);
+            serialNum = str2Int(subStr(vendPackingSlipJour.PackingSlipId, lenNum - 1, 2)) + 1;
+        }
+        else
+        {
+            serialNum = 0;
+        }
+
+        productReceiptId = _purchId + strRFix(int2Str(serialNum), 2, '0');
+
+        return productReceiptId;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

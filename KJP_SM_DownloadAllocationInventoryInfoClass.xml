@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DownloadAllocationInventoryInfoClass</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// DFB-MFG-0716 Press button to download allocation inventory information by selected item
+/// </summary>
+public class KJP_SM_DownloadAllocationInventoryInfoClass
+{
+    FormDataSource purchLineBackOrderWorkspaceDS;
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// main
+    /// </summary>
+    /// <param name = "_args">The specified arguments.</param>
+    public static void main(Args _args)
+    {
+        if (!_args.caller() || _args.caller().name() != formStr(PurchLineBackOrderListPage))
+        {
+            return;
+        }
+
+        FormDataSource workspaceDS = FormDataUtil::getFormDataSource(_args.record());
+
+        KJP_SM_DownloadAllocationInventoryInfoClass obj = KJP_SM_DownloadAllocationInventoryInfoClass::construct();
+        obj.parmPurchLineBackOrderWorkspace(workspaceDS);
+
+        if (obj.validate())
+        {
+            obj.run(_args);
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// construct
+    /// </summary>
+    /// <returns>KJP_SM_DownloadAllocationInventoryInfoClass</returns>
+    private static KJP_SM_DownloadAllocationInventoryInfoClass construct()
+    {
+        KJP_SM_DownloadAllocationInventoryInfoClass obj = new KJP_SM_DownloadAllocationInventoryInfoClass();
+        return obj;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>parmPurchLineBackOrderWorkspace</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// pass paramter of data source of screen
+    /// </summary>
+    /// <param name = "_formDataSource">FormDataSource</param>
+    /// <returns>FormDataSource</returns>
+    private FormDataSource parmPurchLineBackOrderWorkspace(FormDataSource _formDataSource)
+    {
+        purchLineBackOrderWorkspaceDS = _formDataSource;
+        return purchLineBackOrderWorkspaceDS;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validate</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate
+    /// </summary>
+    /// <returns>boolean</returns>
+    private boolean validate()
+    {
+        boolean ret = true;
+        container workspaceCon;
+        PurchLineBackOrderWorkspace purchLineBackOrderWorkspace;
+
+        PurchLineBackOrderWorkspace = purchLineBackOrderWorkspaceDS.getFirst(true);
+
+        while (PurchLineBackOrderWorkspace.RecId)
+        {
+            // KJP500215 品目番号が空白のため、配分対象在庫情報のダウンロードはできません。(発注書:%1)
+            // Download of allocation target inventory information is not possible because the Item number is empty. (Purchase order: %1)
+            if (!KJP_CM_Utils::mandatoryInputValidation(PurchLineBackOrderWorkspace.ItemId))
+            {
+                Error(strFmt("@KJP:KJP500215", PurchLineBackOrderWorkspace.PurchId));
+                ret = false;
+            }
+
+            workspaceCon += purchLineBackOrderWorkspace.RecId;
+
+            PurchLineBackOrderWorkspace = purchLineBackOrderWorkspaceDS.getNext();
+        }
+
+        if (ret && conLen(workspaceCon) == 0)
+        {
+            // KJP500214 配分対象を画面上から選択してください。
+            // Please select the allocation target from the screen.
+            Error("@KJP:KJP500214");
+            ret = false;
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>run</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// run process
+    /// </summary>
+    /// <param name = "_args">The specified arguments.</param>
+    private void run(Args _args)
+    {
+        Args args = new Args();
+
+        args.name(formStr(PurchLineBackOrderListPage));
+        args.caller(_args.caller());
+
+        args.menuItemName(_args.menuItemName());
+
+        new MenuFunction(menuItemActionStr(KJP_SM_EastWestAppDataDL), MenuItemType::Action).run(args);
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

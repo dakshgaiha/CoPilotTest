@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_AxPurchLine_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Extension class for AXPurchLine
+/// </summary>
+[ExtensionOf(classStr(AxPurchLine))]
+final class KJP_SM_AxPurchLine_Extension
+{
+    #ISOCountryRegionCodes
+   
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>priceDisc_Price</Name>
+				<Source><![CDATA[
+     ///<summary>
+     ///COC method for PriceDisc_Price to override the value Price Date
+     ///</summary>
+     ///<param name = "_priceDisc_Price">Price Disc</param>
+     ///<returns>Instance of PriceDisc_Price Class</returns>
+    public PriceDisc_Price priceDisc_Price(PriceDisc_Price _priceDisc_Price)
+    {
+        InventTable inventTable;
+        PurchTable purchTable;
+        PriceDisc_Price priceDisc_Price;
+
+        priceDisc_Price = next priceDisc_Price(_priceDisc_Price);
+        if (SysCountryRegionCode::isLegalEntityInCountryRegion([#isoJP]))
+        {
+            if (!priceDisc_Price)
+            {
+                priceDisc_Price = this.initPriceDisc_PriceParamsSet();
+
+                this.classCacheInsert(priceDisc_PriceIdx, priceDisc_Price);
+            }
+            inventTable = InventTable::find(purchLine.ItemId);
+
+            select firstonly KJPSMPlannedOrderDate from purchTable 
+                where purchTable.PurchId == purchLine.PurchId;
+
+            switch (inventTable.KJPCMPurchasePriceDateType)
+            {
+                case KJP_CM_PurchasePriceDateType::PlannedOrderDate:  
+                    priceDisc_Price.parmPriceDate(purchTable.KJPSMPlannedOrderDate);
+                    break;
+                case KJP_CM_PurchasePriceDateType::RequestedReceiptDate:  
+                    priceDisc_Price.parmPriceDate(purchLine.DeliveryDate);
+                    break;
+                default:
+                    priceDisc_Price.parmPriceDate(dateMax());
+            }
+        }
+        return priceDisc_Price;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>setPurchPrice</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// COC for setting Purch Price on basis of Price Date Type
+    /// </summary>
+    /// PurchPrice price
+    protected void setPurchPrice()
+    {
+        PurchPrice  price;
+        next setPurchPrice();
+        if (SysCountryRegionCode::isLegalEntityInCountryRegion([#isoJP]))
+        {
+            AxPurchLine localPurchLine = this.axOrig() as AxPurchLine;
+            InventTable inventTable = InventTable::find(purchLine.ItemId);
+            if(this.axPurchTable().isFieldModified(fieldNum(PurchTable, DeliveryDate)) &&
+                    inventTable.KJPCMPurchasePriceDateType == KJP_CM_PurchasePriceDateType::RequestedReceiptDate)
+            {
+                price = this.priceDisc_Price().price();
+            }
+            else if(this.axPurchTable().isFieldModified(fieldNum(PurchTable, KJPSMPlannedOrderDate)) &&
+                    inventTable.KJPCMPurchasePriceDateType == KJP_CM_PurchasePriceDateType::PlannedOrderDate)
+            {
+                price = this.priceDisc_Price().price();
+            }
+            else
+            {
+                price = localPurchLine.purchLine().PurchPrice;
+            }
+ 
+            if (price || !this.purchLine().purchTable().isInterCompanyOrder())
+            {
+                this.parmPurchPrice(price);
+            }
+            this.setCurrencyCode();
+            if (this.isFieldSet(fieldNum(PurchLine, CurrencyCode)))
+            {
+                if (localPurchLine.parmCurrencyCode())
+                {
+                    this.parmPurchPrice(ExchangeRateHelper::curPrice2CurPrice(this.parmPurchPrice(), localPurchLine.parmCurrencyCode(), this.parmCurrencyCode()));
+                }
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

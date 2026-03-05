@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventDimCtrl_Frm_OnHandClass_Extension</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+[ExtensionOf(classStr(InventDimCtrl_Frm_OnHand))]
+final class KJP_SM_InventDimCtrl_Frm_OnHandClass_Extension
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>modifyQueryBasedOnDatasourceName</Name>
+				<Source><![CDATA[
+     public void modifyQueryBasedOnDatasourceName(
+        Query _inventSum_DS_Query,
+        str _inventSum_DS_Name,
+        FormDataSource _inventDim_DS)
+    {
+        Query                   query;
+        QueryBuildDataSource    qbdsInventTable;
+        QueryBuildDataSource    qbdsInventBatch;
+        InventDimParm           lclDimParmVisibleGrid;
+ 
+        next modifyQueryBasedOnDatasourceName(_inventSum_DS_Query, _inventSum_DS_Name, _inventDim_DS);
+ 
+        if (!KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            return;
+        }
+ 
+        query =   _inventSum_DS_Query;
+ 
+        qbdsInventTable = query.dataSourceTable(tableNum(InventTable));
+        if (qbdsInventTable)
+        {
+            qbdsInventTable.addGroupByField(fieldNum(InventTable, KJPCMSupervisingDepartment));
+            qbdsInventTable.addGroupByField(fieldNum(InventTable, PropertyId));
+        }
+ 
+        lclDimParmVisibleGrid = InventDimParm::orParms(dimParmVisibleGrid, lclDimParmVisibleGrid);
+        qbdsInventBatch = _inventSum_DS_query.dataSourceTable(tableNum(InventBatch));
+        if (lclDimParmVisibleGrid.InventBatchIdFlag == true && qbdsInventBatch)
+        {
+            qbdsInventBatch.addGroupByField(fieldnum(InventBatch, KJPSMReservationControlFlag));
+        }
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,432 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_InventTransferOrders_Utils</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// class for InventTransferOrders Common
+/// </summary>
+class KJP_SM_InventTransferOrders_Utils
+{
+    const str spaceString = '';
+
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>allowEditForKJPSMIsResent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Set allow Edit For KJPSMIsResent
+    /// </summary>
+    /// <param name = "_formDataSource">FormDataSource</param>
+    /// <param name = "_fieldControl">NoYes</param>
+    public static void allowEditForKJPSMIsResent(FormDataSource _formDataSource, NoYes _fieldControl = NoYes::No)
+    {
+        InventTransferTable inventTransferTable = _formDataSource.cursor();
+        boolean allowEditOrNot = inventTransferTable.TransferStatus == InventTransferStatus::Created;
+        if(allowEditOrNot && inventTransferTable.InventLocationIdFrom)
+        {
+            _formDataSource.object(fieldNum(InventTransferTable, KJPSMIsResent)).allowEdit(true);
+        }
+        if(allowEditOrNot && !inventTransferTable.InventLocationIdFrom)
+        {
+            _formDataSource.object(fieldNum(InventTransferTable, KJPSMIsResent)).allowEdit(false);
+            if(_fieldControl)
+            {
+                inventTransferTable.KJPSMIsResent = NoYes::No;
+                inventTransferTable.KJPSMOriginalTransferNumber = spaceString;
+                _formDataSource.object(fieldNum(InventTransferTable, KJPSMOriginalTransferNumber)).allowEdit(false);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateKJPSM5LinesLimitTargetFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking 5 lines limit target flag at create line
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <returns>boolean</returns>
+    public static boolean validateKJPSM5LinesLimitTargetFlag(InventTransferTable _inventTransferTable)
+    {
+        boolean ret = true;
+        if(_inventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::Yes && _inventTransferTable.numOfLines() >= 5)
+        {
+            ret = checkFailed("@KJP:KJP500351");
+        }
+        // No.114378
+        if(KJP_SM_InventTransferOrders_Utils::check99LineFromUbeToCmoDomestic(_inventTransferTable) 
+            &&_inventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::No
+            && _inventTransferTable.numOfLines() >= 99)
+        {
+            // 99 message
+            ret = checkFailed(strFmt("@KJP:KJP500274", _inventTransferTable.TransferId));
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateKJPSM5LinesLimitTargetFlagField</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking 5 lines limit target flag at press save button and change the 5LinesLimitTargetFlagField in Form
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <returns>boolean</returns>
+    public static boolean validateKJPSM5LinesLimitTargetFlagField(InventTransferTable _inventTransferTable)
+    {
+        boolean ret = true;
+        if(_inventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::Yes && _inventTransferTable.numOfLines() > 5)
+        {
+            ret = checkFailed("@KJP:KJP500352");
+        }
+        // No.114378
+        if(KJP_SM_InventTransferOrders_Utils::check99LineFromUbeToCmoDomestic(_inventTransferTable)
+            && _inventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::No 
+            && _inventTransferTable.numOfLines() > 99)
+        {
+            // No 99 message
+            ret = checkFailed(strFmt("@KJP:KJP500274", _inventTransferTable.TransferId));
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateMaxLineNum</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking Max LineNum at create and Save line
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <param name = "_inventTransferLine">InventTransferLine</param>
+    /// <param name = "_createOrSave">NoYes</param>
+    /// <returns>boolean</returns>
+    public static boolean validateMaxLineNum(InventTransferTable _inventTransferTable, InventTransferLine _inventTransferLine, NoYes _createOrSave)
+    {
+        boolean ret = true;
+        boolean maxlineNumRet = true;
+        LineNum maxlineNum;
+        ;
+        // No.114378
+        if(!KJP_SM_InventTransferOrders_Utils::check99LineFromUbeToCmoDomestic(_inventTransferTable))
+        {
+            return true;
+        }
+        // No.114378
+        maxlineNum = InventTransferLine::lastLineNum(_inventTransferTable.TransferId);
+        // create:Yes Save:No
+        maxlineNumRet = _createOrSave ? maxlineNum >= 99 : _inventTransferLine.LineNum > 99;
+        //maxlineNumRet = maxlineNum >= 99;
+        if(maxlineNumRet)
+        {
+            // Message : 移動オーダー：XX最大の行番号が９９行を超えています
+            ret = checkFailed(strFmt("@KJP:KJP500466", _inventTransferTable.TransferId));
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateKJPSMShippingInstructionSendingFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking Shipping instruction sending flag
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <param name = "_showLog">NoYes</param>
+    /// <returns>boolean</returns>
+    public static boolean validateKJPSMShippingInstructionSendingFlag(InventTransferTable _inventTransferTable, NoYes _showLog)
+    {
+        boolean ret = true;
+        InventTransferLine inventTransferLine;
+        ;
+        if(KJP_SM_InventTransferOrders_Utils::isEastSPOrWestSP(_inventTransferTable.InventLocationIdFrom))
+        {
+            select firstonly RecId from inventTransferLine where
+                inventTransferLine.KJPSMShippingInstructionSendingFlag != KJP_SM_ShippingInstructionSendingFlag::WaitingForSent
+                && inventTransferLine.TransferId == _inventTransferTable.TransferId;
+            if(inventTransferLine)
+            {
+                if(_showLog)
+                {
+                    ret = checkFailed("@KJP:KJP500379");
+                }
+                else
+                {
+                    ret = false;
+                }  
+            }
+        }
+        else
+        {
+            select firstonly RecId from inventTransferLine where
+                inventTransferLine.KJPSMShippingInstructionSendingFlag != KJP_SM_ShippingInstructionSendingFlag::NotSentNotTarget
+                && inventTransferLine.TransferId == _inventTransferTable.TransferId;
+            if(inventTransferLine)
+            {
+                if(_showLog)
+                {
+                    ret = checkFailed("@KJP:KJP500379");
+                }
+                else
+                {
+                    ret = false;
+                }  
+            }
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateKJPSMStockArrivalScheduleSendingFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Checking Stock Arrival Schedule Sending Flag.
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <param name = "_showLog">NoYes</param>
+    /// <returns>boolean</returns>
+    public static boolean validateKJPSMStockArrivalScheduleSendingFlag(InventTransferTable _inventTransferTable, NoYes _showLog)
+    {
+        boolean ret = true;
+        InventTransferLine inventTransferLine;
+        ;
+
+        if (KJP_SM_InventTransferOrders_Utils::isEastSPOrWestSP(_inventTransferTable.InventLocationIdTo))
+        {
+            select firstonly RecId from inventTransferLine where
+                inventTransferLine.KJPSMStockArrivalScheduleSendingFlag == KJP_SM_ShippingInstructionSendingFlag::Sent
+                && inventTransferLine.TransferId == _inventTransferTable.TransferId;
+        }
+        else if (KJP_SM_InventTransferOrders_Utils::isTakasakiFactory(_inventTransferTable.InventLocationIdTo))
+        {
+            select firstonly RecId from inventTransferLine where
+                (inventTransferLine.KJPSMStockArrivalScheduleSendingFlag == KJP_SM_ShippingInstructionSendingFlag::Sent ||
+                inventTransferLine.KJPSMStockArrivalScheduleSendingFlag == KJP_SM_ShippingInstructionSendingFlag::WaitingForSent)
+                && inventTransferLine.TransferId == _inventTransferTable.TransferId;
+        }
+
+        if (inventTransferLine)
+        {
+            if (_showLog)
+            {
+                ret = checkFailed("@KJP:KJP500647");
+            }
+            else
+            {
+                ret = false;
+            }
+        }
+
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>fetchPackagingCategory</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// get Infomation about Packaging Category
+    /// </summary>
+    /// <param name = "_packagingCategory">KJP_CM_OriginalCode</param>
+    /// <param name = "_codeOrName">NoYes</param>
+    /// <returns>str</returns>
+    public static str fetchPackagingCategory(KJP_CM_OriginalCode _packagingCategory, NoYes _codeOrName)
+    {
+        KJP_CM_GeneralPurposeMaster generalPurposeMaster = 
+            KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::packagingCategoryCode_SM_Key, _packagingCategory);
+        ;
+        if(generalPurposeMaster)
+        {
+            // Yes:code  No:name
+            if(_codeOrName)
+            {
+                return generalPurposeMaster.DestinationCode;
+            }
+            else
+            {
+                return generalPurposeMaster.Description;
+            }   
+        }
+        return spaceString;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isEastSPOrWestSP</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Is EastSP or WestSP
+    /// </summary>
+    /// <param name = "_inventLocationId">InventLocationId</param>
+    /// <returns>boolean</returns>
+    public static boolean isEastSPOrWestSP(InventLocationId _inventLocationId)
+    {
+        InventLocation fromInventLocation = InventLocation::find(_inventLocationId);
+        ;
+        return (fromInventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::EastSP
+            || fromInventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::WestSP);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isTakasakiFactory</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Is Takasaki Factory
+    /// </summary>
+    /// <param name = "_inventLocationId">InventLocationId</param>
+    /// <returns>boolean</returns>
+    public static boolean isTakasakiFactory(InventLocationId _inventLocationId)
+    {
+        InventLocation inventLocation = InventLocation::find(_inventLocationId);
+        ;
+        return (inventLocation.KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::TakasakiFactory);
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>isSent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Is Sent
+    /// </summary>
+    /// <param name = "_inventTransferId">InventTransferId</param>
+    /// <returns>boolean</returns>
+    public static boolean isSent(InventTransferId _inventTransferId)
+    {    
+        InventTransferLine inventTransferLine;
+        ;
+        select firstonly RecId from inventTransferLine where
+                inventTransferLine.KJPSMShippingInstructionSendingFlag == KJP_SM_ShippingInstructionSendingFlag::Sent
+                && inventTransferLine.TransferId == _inventTransferId;
+        if(inventTransferLine)
+        {
+            return true;
+        }
+        return false;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateKJPSMShippingInstructionSendingFlag</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// update KJPSMShippingInstructionSendingFlag
+    /// </summary>
+    /// <param name = "_inventTransferId">InventTransferId</param>
+    public static void updateKJPSMShippingInstructionSendingFlag(InventTransferId _inventTransferId)
+    {
+        InventTransferLine inventTransferLineShip;
+        ;
+        inventTransferLineShip.skipDataMethods(true);
+        update_recordset inventTransferLineShip
+            setting KJPSMShippingInstructionSendingFlag = KJP_SM_ShippingInstructionSendingFlag::WaitingForSent
+            where inventTransferLineShip.TransferId == _inventTransferId;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>validateBatchStatus</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// validate BatchStatus
+    /// </summary>
+    /// <param name = "_inventLocationFrom">InventLocation</param>
+    /// <param name = "_inventLocationTo">InventLocation</param>
+    /// <param name = "_inventTransferId">InventTransferId</param>
+    /// <returns>boolean</returns>
+    public static boolean validateBatchStatus(InventLocation _inventLocationFrom, InventLocation _inventLocationTo, InventTransferId _inventTransferId)
+    {
+        boolean res = true;
+        InventTransferLine inventTransferLine;
+        InventDim inventDim;
+        str pdsDispositionCode;
+        ;
+        pdsDispositionCode = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::BatchStatusKey,
+            KJP_CM_ConstantHelper::origcodeGQPBatchStatus_GQPRelease).DestinationCode;
+
+        while select ItemId,LineNum from inventTransferLine
+            where inventTransferLine.TransferId == _inventTransferId
+            join inventBatchId from inventDim
+            where inventTransferLine.InventDimId == inventDim.InventDimId
+        {
+            InventTable inventTable = InventTable::find(inventTransferLine.ItemId);
+            // No.116399 delete inventTable.KJPSMQCTest && inventTable.KJPSMGMPJudgment
+            if(inventTable.KJPSMGQPJudgment)
+            {
+                if(_inventLocationFrom.KJPSMWarehouseGroupClassification == KJP_SM_WarehouseGroupClassification::InsideManufacturingIndustry
+                    && _inventLocationTo.KJPSMWarehouseGroupClassification == KJP_SM_WarehouseGroupClassification::OutsideManufacturingIndustry)
+                {
+                    InventBatch inventBatch = InventBatch::find(inventDim.inventBatchId, inventTransferLine.ItemId);
+                    if (inventBatch.PdsDispositionCode != pdsDispositionCode)
+                    {
+                        checkFailed(strFmt("@KJP:KJP500350", inventTransferLine.LineNum));
+                        res = false;
+                    }
+                }
+            }
+        }
+        return res;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>mergePackagingCategory</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// merge PackagingCategory
+    /// </summary>
+    /// <param name = "_inventTable">InventTable</param>
+    /// <returns>str</returns>
+    public static str mergePackagingCategory(InventTable _inventTable)
+    {
+        return _inventTable.KJPCMTransportTemperatureZoneClassification + _inventTable.KJPCMTransportMedicalItemClassification;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>check99LineFromUbeToCmoDomestic</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// check99LineFromUbeToCmoDomesticバリデーション
+    /// </summary>
+    /// <param name = "_inventTransferTable">InventTransferTable</param>
+    /// <returns>boolean</returns>
+    public static boolean check99LineFromUbeToCmoDomestic(InventTransferTable _inventTransferTable)
+    {
+        // No.114378
+        if(_inventTransferTable.KJPSM5LinesLimitTargetFlag == NoYes::No
+            && InventLocation::find(_inventTransferTable.InventLocationIdFrom).KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::UbeFactory
+            && InventLocation::find(_inventTransferTable.InventLocationIdTo).KJPSMWarehouseClassification == KJP_SM_WarehouseClassification::CMODomestic)
+        {
+            return true;
+        }
+        return false;
+        // No.114378
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

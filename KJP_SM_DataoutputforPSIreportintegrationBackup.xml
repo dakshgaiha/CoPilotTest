@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DataoutputforPSIreportintegrationBackup</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// KJP_SM_DataoutputforPSIreportintegrationBackup
+/// </summary>
+class KJP_SM_DataoutputforPSIreportintegrationBackup extends KJP_CM_IFBatchBase
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Entry point of the class
+    /// </summary>
+    public void processRun()
+    {
+        KJP_SM_DataoutputforPSIreportintegrationBackupProcess runClass = new KJP_SM_DataoutputforPSIreportintegrationBackupProcess();
+        runClass.previousMonthReplace();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>

@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_BSetInvoiceController</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+/// Controller class for B set invoice report
+/// </summary>
+//[SRSReportParameterAttribute(classStr(KJP_SM_BSetInvoiceContract))]
+public class KJP_SM_BSetInvoiceController extends SrsReportRunController
+{
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>main</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Main method to initialize the constructor of the class
+    /// </summary>
+    /// <param name = "_args">Report args</param>
+    public static void main(Args _args)
+    {
+        KJP_SM_BSetInvoiceController::construct(_args).startOperation();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>construct</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Constructor method for the class
+    /// </summary>
+    /// <param name = "_args">Report args</param>
+    /// <returns>construct for class</returns>
+    public static KJP_SM_BSetInvoiceController construct(Args _args)
+    {
+        KJP_SM_BSetInvoiceController  controller = new KJP_SM_BSetInvoiceController();
+
+        controller.parmReportName(ssrsReportStr(KJP_SM_BSetInvoiceReport, Report));
+        controller.parmArgs(_args);
+        controller.parmLoadFromSysLastValue(false);
+        controller.parmShowDialog(false);
+
+        return controller;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>runToScreen</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// set pdf file name when download from preview
+    /// </summary>
+    protected void runToScreen()
+    {
+        Filename  fileName;
+        System.DateTime outputDateTime = DateTimeUtil::applyTimeZoneOffset(DateTimeUtil::getSystemDateTime(), Timezone::GMTPLUS0900OSAKA_SAPPORO_TOKYO);
+        str dateStr = KJP_CM_Utils::convertDate2StryyyyMMdd(dateTimeUtil::date(outputDateTime), DateSeparator::None);
+        str timeStr = subStr(outputDateTime.ToString('yyyyMMddHHmmss'),9,14);
+
+        fileName = SysLabel::labelId2String(literalStr("@KJP:KJP103402")) + KJP_CM_ConstantHelper::underscore + dateStr + KJP_CM_ConstantHelper::underscore + timeStr;
+
+        this.parmDialogCaption(fileName);
+
+        super();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>prePromptModifyContract</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// modify the contract before the dialog is shown to the user
+    /// </summary>
+    protected void prePromptModifyContract()
+    {
+        KJP_SM_BSetInvoiceContract  contract;
+        KJP_SM_BSetInvoiceView      selectedRecords;
+        List recIdList = new List(Types::Int64);
+
+        MultiSelectionHelper selectionHelper = MultiSelectionHelper::construct();
+        selectionHelper.parmDatasource(args.record().dataSource());
+        selectedRecords = selectionHelper.getFirst();
+
+        while (selectedRecords)
+        {
+            recIdList.addEnd(selectedRecords.CustInvoiceJourRecId);
+            selectedRecords = selectionHelper.getNext();
+        }
+        
+        contract = this.parmReportContract().parmRdpContract() as KJP_SM_BSetInvoiceContract;
+        contract.parmRecId(recIdList);
+
+        super();
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
