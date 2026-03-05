@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityDuty xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>ARSalesOrderMaintain</Name>
+  <Label>Maintain Sales Orders</Label>
+  <Description>Enables users to view, create, update, and delete sales orders in the Accounts Receivable module</Description>
+  <Privileges>
+    <AxSecurityDutyPrivilegeReference>
+      <PrivilegeName>ARSalesOrderFormAccess</PrivilegeName>
+    </AxSecurityDutyPrivilegeReference>
+  </Privileges>
+</AxSecurityDuty>

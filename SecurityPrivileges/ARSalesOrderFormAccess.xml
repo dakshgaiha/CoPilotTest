@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>ARSalesOrderFormAccess</Name>
+  <Label>Access Sales Order Form</Label>
+  <Description>Grants access to the Sales Order form (SalesTable) in the Accounts Receivable module</Description>
+  <EntryPoints>
+    <AxSecurityEntryPointReference>
+      <EntryPointName>SalesTableListPage</EntryPointName>
+      <EntryPointType>MenuItemDisplay</EntryPointType>
+      <ObjectType>MenuItemDisplay</ObjectType>
+      <ReadAccess>Allow</ReadAccess>
+      <UpdateAccess>Allow</UpdateAccess>
+      <CreateAccess>Allow</CreateAccess>
+      <DeleteAccess>Allow</DeleteAccess>
+      <CorrectAccess>Allow</CorrectAccess>
+    </AxSecurityEntryPointReference>
+    <AxSecurityEntryPointReference>
+      <EntryPointName>SalesTable</EntryPointName>
+      <EntryPointType>MenuItemDisplay</EntryPointType>
+      <ObjectType>MenuItemDisplay</ObjectType>
+      <ReadAccess>Allow</ReadAccess>
+      <UpdateAccess>Allow</UpdateAccess>
+      <CreateAccess>Allow</CreateAccess>
+      <DeleteAccess>Allow</DeleteAccess>
+      <CorrectAccess>Allow</CorrectAccess>
+    </AxSecurityEntryPointReference>
+    <AxSecurityEntryPointReference>
+      <EntryPointName>SalesTableCreate</EntryPointName>
+      <EntryPointType>MenuItemAction</EntryPointType>
+      <ObjectType>MenuItemAction</ObjectType>
+      <UpdateAccess>Allow</UpdateAccess>
+      <CreateAccess>Allow</CreateAccess>
+      <DeleteAccess>Allow</DeleteAccess>
+      <CorrectAccess>Allow</CorrectAccess>
+    </AxSecurityEntryPointReference>
+  </EntryPoints>
+</AxSecurityPrivilege>
