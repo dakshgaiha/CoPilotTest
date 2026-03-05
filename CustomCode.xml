@@ -12,7 +12,7 @@ static void InsertSalesDataIntoCustomTable_RecordInsertList(Args _args)
     {
         // Assign values to the destination table buffer
         customTable.CustomSalesId = salesTable.SalesId;
-        customTable.CustomName = salesTable.SalesName;
+        customTable.CustomName = salesTable.CustAccount;
         customTable.CustomStatus = salesTable.SalesStatus;
         customTable.CustomInvoiceAccount = salesTable.InvoiceAccount;
         
