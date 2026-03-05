@@ -1,0 +1,889 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+	<Name>KJP_SM_DeliveryAddressInformationService</Name>
+	<SourceCode>
+		<Declaration><![CDATA[
+/// <summary>
+///Outbound IF service class
+/// </summary>
+class KJP_SM_DeliveryAddressInformationService extends KJP_CM_IFBatchBase
+{
+    KJP_SM_LastProcessedDateAndTime     lastProcessedDateTime;
+    int                                 seqNo, totalProcessedRecords;
+    boolean                             errorOccured;
+    KJP_FI_IndustryUnitCode             unitCode;
+    KJP_CM_DestinationCode languageId   = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::EcoResProductTranslationKey, KJP_CM_ConstantHelper::origCodeEcoResProductTranslationKey_LanguageId).DestinationCode;
+    RecordInsertList insertDRecords     = new RecordInsertList(tableNum(KJP_SM_DeliveryAddressInfoDRecordIfTable));
+    
+
+   
+ 
+}
+]]></Declaration>
+		<Methods>
+			<Method>
+				<Name>processRun</Name>
+				<Source><![CDATA[
+    //boolean errorOccured;
+    /// <summary>
+    ///Override processRun method of class IF base batch
+    /// </summary>
+    void processRun()
+    {
+        System.Exception ex;
+        if (KJP_CM_Utils::checkCurExtIsKKC())
+        {
+            try
+            {
+                this.processDeliveryInformationService();
+
+            }
+            catch(ex)
+            {
+                Global::exceptionTextFallThrough();
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processDeliveryInformationService</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///Prcocess service for delivery information
+    /// </summary>
+    private void processDeliveryInformationService()
+    {
+       
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+
+        select firstonly maxof(LastProcessedDateAndTime) from deliveryAddressInfoIfTransmissionHistory;
+
+        if (deliveryAddressInfoIfTransmissionHistory.LastProcessedDateAndTime != nullValueBaseType(Types::UtcDateTime))
+        {
+            lastProcessedDateTime = deliveryAddressInfoIfTransmissionHistory.LastProcessedDateAndTime;
+        }
+        else
+        {
+            lastProcessedDateTime = utcDateTimeNull();
+        }
+
+        ttsbegin;
+      
+        //Insert in S Record table
+        this.insertDeliveryInfoSRecordIfTable();
+        // Customer Delivery Address information
+        this.processCustomerPostalAddress();
+        //InventLocation address information
+        this.processInventLocationDetails();
+        //Insert D Record to database
+        insertDRecords.insertDatabase();
+        //Insert in E Record table
+        this.insertDeliveryInfoERecordIfTable();
+
+        numberOfSuccess = totalProcessedRecords;
+        ttscommit;
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertDeliveryInfoSRecordIfTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// S Record IF table
+    /// </summary>
+    private void insertDeliveryInfoSRecordIfTable()
+    {
+       
+        KJP_SM_DeliveryAddressInfoSRecordIfTable        deliveryAddressInfoSRecordIfTable;
+        System.DateTime execDateTime                                = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMTPLUS0900OSAKA_SAPPORO_TOKYO);
+        deliveryAddressInfoSRecordIfTable.RecordClassification      = KJP_CM_ConstantHelper::recordClassification_S;
+        deliveryAddressInfoSRecordIfTable.DataIdentification        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_DataIdentification).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.SenderGroupCode           = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_SenderGroupCode).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.SenderCode                = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_SenderCode).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.RecipientGroupCode        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_RecipientGroupCode).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.RecipientCode             = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_RecipientCode).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.SubfilesSequenceNumberStr = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_SubfilesSequenceNumberStr).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.DataCreationDateStr       = KJP_CM_Utils::convertDate2StryyyyMMdd(dateTimeUtil::date(execDateTime),DateSeparator::None);
+        deliveryAddressInfoSRecordIfTable.DataCreationTimeStr       = subStr(execDateTime.ToString('yyyyMMddHHmmss'),9,14);
+        deliveryAddressInfoSRecordIfTable.DataMonth                 = subStr(KJP_CM_utils::convertDate2StryyyyMMdd(dateTimeUtil::date(execDateTime),DateSeparator::None),1,6);
+        deliveryAddressInfoSRecordIfTable.PhysicalRecordSizeStr     = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_PhysicalRecordSizeStr).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.LogicalRecordSizeStr      = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoSRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoSRecordIfTableKey_LogicalRecordSizeStr).DestinationCode;
+        deliveryAddressInfoSRecordIfTable.JobId                     = jobId;
+        deliveryAddressInfoSRecordIfTable.ExecutionDateTime         = executionDateTime;
+        deliveryAddressInfoSRecordIfTable.SEQNo                     = 1;
+        deliveryAddressInfoSRecordIfTable.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertDeliveryInfoTransmissionDataCust</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Transmission History IF table Cust record
+    /// </summary>
+    /// <param name = "_custTable">CustTable</param>
+    /// <param name = "_diffClassification">Diff Classification</param>
+    private void insertDeliveryInfoTransmissionDataCust(CustTable _custTable, KJP_SM_DifferentialTransmissionClassification _diffClassification)
+    {
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+
+        deliveryAddressInfoIfTransmissionHistory.clear();
+        deliveryAddressInfoIfTransmissionHistory.AccountCode                            = _custTable.AccountNum;
+        deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType         = KJP_SM_DeliveryAddressInformationType::Customer;
+        deliveryAddressInfoIfTransmissionHistory.IndustryUnitCode                       = unitCode;
+        deliveryAddressInfoIfTransmissionHistory.InvoicingAndDeliveryOnHold             = _custTable.Blocked;
+        deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification = _diffClassification;
+        deliveryAddressInfoIfTransmissionHistory.LastProcessedDateAndTime               = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMT_COORDINATEDUNIVERSALTIME);
+        deliveryAddressInfoIfTransmissionHistory.SpecialMedicineIdentificationFlag      = _custTable.KJPCMSpecialMedicineIdentificationFlag;
+        deliveryAddressInfoIfTransmissionHistory.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateDeliveryInfoTransmissionDataCust</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Transmission history IF table cust record
+    /// </summary>
+    /// <param name = "_custTable">CustTable</param>
+    /// <param name = "_diffClassification">Diff Classification</param>
+    private void updateDeliveryInfoTransmissionDataCust(CustTable _custTable, KJP_SM_DifferentialTransmissionClassification _diffClassification)
+    {
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+
+        select firstonly forupdate deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == _custTable.AccountNum;
+
+        deliveryAddressInfoIfTransmissionHistory.selectForUpdate(true);
+        deliveryAddressInfoIfTransmissionHistory.AccountCode                            = _custTable.AccountNum;
+        deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType         = KJP_SM_DeliveryAddressInformationType::Customer;
+        deliveryAddressInfoIfTransmissionHistory.IndustryUnitCode                       = unitCode;
+        deliveryAddressInfoIfTransmissionHistory.SpecialMedicineIdentificationFlag      = _custTable.KJPCMSpecialMedicineIdentificationFlag;
+        deliveryAddressInfoIfTransmissionHistory.InvoicingAndDeliveryOnHold             = _custTable.Blocked;
+        deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification = _diffClassification;
+        deliveryAddressInfoIfTransmissionHistory.LastProcessedDateAndTime               = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMT_COORDINATEDUNIVERSALTIME);
+        deliveryAddressInfoIfTransmissionHistory.update();
+        
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertDeliveryInfoTransmissionDataInvent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Invent lcocation IF table
+    /// </summary>
+    /// <param name = "_inventLocation">Invent location</param>
+    /// <param name = "_differentialClassification">diff classification</param>
+    private void insertDeliveryInfoTransmissionDataInvent(InventLocation _inventLocation, KJP_SM_DifferentialTransmissionClassification _differentialClassification)
+    {
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+       
+
+        deliveryAddressInfoIfTransmissionHistory.clear();
+        deliveryAddressInfoIfTransmissionHistory.AccountCode                            = _inventLocation.InventLocationId;
+        deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType         = KJP_SM_DeliveryAddressInformationType::Warehouse;
+        deliveryAddressInfoIfTransmissionHistory.CountryRegion                          = _inventLocation.logisticsPostalAddress().CountryRegionId;
+        deliveryAddressInfoIfTransmissionHistory.ReturnsWarehouse                       = _inventLocation.KJPSMReturnsWarehouse;
+        deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification = _differentialClassification;
+        deliveryAddressInfoIfTransmissionHistory.LastProcessedDateAndTime               = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMT_COORDINATEDUNIVERSALTIME);
+        deliveryAddressInfoIfTransmissionHistory.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>updateDeliveryInfoTransmissionDataInvent</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Invent lcocation IF table
+    /// </summary>
+    /// <param name = "_inventLocation">Invent location</param>
+    /// <param name = "_differentialClassification">diff classification</param>
+    private void updateDeliveryInfoTransmissionDataInvent(InventLocation _inventLocation, KJP_SM_DifferentialTransmissionClassification _differentialClassification)
+    {
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+        select firstonly forupdate deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == _inventLocation.InventLocationId;
+
+        deliveryAddressInfoIfTransmissionHistory.selectForUpdate(true);
+        deliveryAddressInfoIfTransmissionHistory.AccountCode                            = _inventLocation.InventLocationId;
+        deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType         = KJP_SM_DeliveryAddressInformationType::Warehouse;
+        deliveryAddressInfoIfTransmissionHistory.CountryRegion                          = _inventLocation.logisticsPostalAddress().CountryRegionId;
+        deliveryAddressInfoIfTransmissionHistory.ReturnsWarehouse                       = _inventLocation.KJPSMReturnsWarehouse;
+        deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification = _differentialClassification;
+        deliveryAddressInfoIfTransmissionHistory.LastProcessedDateAndTime               = DateTimeUtil::applyTimeZoneOffset(executionDateTime, Timezone::GMT_COORDINATEDUNIVERSALTIME);
+        deliveryAddressInfoIfTransmissionHistory.update();
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertDeliveryInfoDRecordIfTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Insert If D table
+    /// </summary>
+    /// <param name = "_diffTransClassification">diffclassification</param>
+    /// <param name = "_accountCode">accountcode</param>
+    /// <param name = "_custNameKanji1">custnamekanji</param>
+    /// <param name = "_custName">custname</param>
+    /// <param name = "_logisticsPostalAddress">logisticspostaladdress</param>
+    /// <param name = "_state">state</param>
+    /// <param name = "_city">city</param>
+    /// <param name = "electronicAddress">electronic address</param>
+    /// <param name = "_phoneticName">phoneticName</param>
+    private void insertDeliveryInfoDRecordIfTable(KJP_SM_DifferentialTransmissionClassification _diffTransClassification,
+        KJP_SM_AccountCode _accountCode,
+        KJP_SM_CustomerNameKanji1 _custNameKanji1,
+        KJP_SM_CustomerNameAbbreviationNameKanji _custName,
+        LogisticsPostalAddress _logisticsPostalAddress,
+        LogisticsAddressState _state,
+        LogisticsAddressCity _city,
+        LogisticsElectronicAddress electronicAddress,
+        KJP_SM_CustomerNameAbbreviationNameHalfWidthKana _phoneticName = null)
+    {
+   
+        KJP_SM_DeliveryAddressInfoDRecordIfTable        deliveryAddressInfoDRecordIfTable;
+        LogisticsAddressStreet                          street;
+
+        deliveryAddressInfoDRecordIfTable.clear();
+        deliveryAddressInfoDRecordIfTable.RecordClassification                          = KJP_CM_ConstantHelper::recordClassificationDRecord;
+        deliveryAddressInfoDRecordIfTable.DataIdentification                            = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoDRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoDRecordIfTableKey_DataIdentification).DestinationCode;
+        deliveryAddressInfoDRecordIfTable.MakerCode                                     = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoDRecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoDRecordIfTableKey_MakerCode).DestinationCode;
+        switch(_diffTransClassification)
+        {
+            case KJP_SM_DifferentialTransmissionClassification::Add :
+                deliveryAddressInfoDRecordIfTable.Classification                        = KJP_CM_ConstantHelper::stringOne;
+                break;
+            case KJP_SM_DifferentialTransmissionClassification::Update :
+                deliveryAddressInfoDRecordIfTable.Classification                        = KJP_CM_ConstantHelper::stringTwo;
+                break;
+            case KJP_SM_DifferentialTransmissionClassification::Delete :
+                deliveryAddressInfoDRecordIfTable.Classification                        = KJP_CM_ConstantHelper::stringThree;
+                break;
+            default:
+                break;
+        }
+        deliveryAddressInfoDRecordIfTable.AccountCode                                   = _accountCode;
+        deliveryAddressInfoDRecordIfTable.CustomerNameKanji1                            = conPeek(this.streetNameTrunc(_custNameKanji1, 50), 1);
+        deliveryAddressInfoDRecordIfTable.CustomerNameAbbreviationNameKanji             = conPeek(this.streetNameTrunc(_custName, 30), 1);
+        deliveryAddressInfoDRecordIfTable.CustomerNameAbbreviationNameHalfWidthKana     = conPeek(this.streetNameTrunc(_phoneticName, 30), 1);
+        deliveryAddressInfoDRecordIfTable.AddressCode                                   = _state.StateCode_IN + _city.MunicipalityCode_IT;
+        deliveryAddressInfoDRecordIfTable.ZIPPostalCode                                 = strRem(_logisticsPostalAddress.ZipCode, '-');
+        deliveryAddressInfoDRecordIfTable.StateProvinceName                             = conPeek(this.streetNameTrunc(_logisticsPostalAddress.State, 8), 1);
+        deliveryAddressInfoDRecordIfTable.CityName                                      = conPeek(this.streetNameTrunc(_logisticsPostalAddress.City, 20), 1);
+        street                                                                          = _logisticsPostalAddress.Street;
+        container address                                                               = this.streetNameTrunc(street,40);
+        deliveryAddressInfoDRecordIfTable.TownNameAndNumber                             = conPeek(address, 1);
+        deliveryAddressInfoDRecordIfTable.BuildingApartmentName                         = conPeek(address, 2);
+        deliveryAddressInfoDRecordIfTable.BusinessPartnerTEL                            = strRem(electronicAddress.Locator, '-');
+        deliveryAddressInfoDRecordIfTable.JobId                                         = jobId;
+        deliveryAddressInfoDRecordIfTable.ExecutionDateTime                             = executionDateTime;
+
+        int nextSeq = seqNo + 1;
+        deliveryAddressInfoDRecordIfTable.SEQNo                                         = nextSeq;
+        if (deliveryAddressInfoDRecordIfTable.validateWrite())
+        {
+            seqNo                                                                       = nextSeq;
+            insertDRecords.add(deliveryAddressInfoDRecordIfTable);
+
+            totalProcessedRecords++;
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processInventLocationDetails</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Inventlocation data
+    /// </summary>
+    public void processInventLocationDetails()
+    {
+        
+        InventLocation                                  inventLocation;
+        LogisticsAddressState                           logisticsAddressState;
+        LogisticsAddressCity                            logisticsAddressCity;
+        LogisticsPostalAddress                          logisticsPostalAddress;
+        LogisticsElectronicAddress                      logisticsElectronicAddress;
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+        KJP_SM_DifferentialTransmissionClassification   differentialClassification;
+        LogisticsLocation                               logisticsLocation;
+        LogisticsEntityPostalAddressView                addressView;
+        KJP_CM_GeneralPurposeMaster                     generalPurposeMasterDepartment;
+       
+
+        while select inventLocation
+            where  inventLocation.InventLocationType != InventLocationType::Transit // Qualify Criteria
+             // Left Join -- LogisitcsEntityPostalAddressView
+            outer join Location, LocationName from addressView
+            where addressView.Entity == inventLocation.RecId
+            && addressView.EntityType == LogisticsLocationEntityType::Warehouse
+            && addressView.IsPrimary == NoYes::Yes
+            // Left join -- Postal Address
+            outer join ModifiedDateTime,State,City,Street,ZipCode from LogisticsPostalAddress
+            where logisticsPostalAddress.Location == addressView.Location
+            && logisticsPostalAddress.CountryRegionId ==  KJP_CM_ConstantHelper::countryRegionId // Qualify criteria
+            // Left Join -- State
+            outer join ModifiedDateTime, StateCode_IN from logisticsAddressState
+            where logisticsAddressState.StateId == logisticsPostalAddress.State
+            && logisticsAddressState.CountryRegionId == logisticsPostalAddress.CountryRegionId
+            //Left Join -- City
+            outer join ModifiedDateTime, MunicipalityCode_IT from logisticsAddressCity
+            where logisticsAddressCity.RecId == logisticsPostalAddress.CityRecId
+            //Left join - Location
+            outer join RecId,ModifiedDateTime from logisticsLocation
+            where logisticsLocation.ParentLocation == addressView.Location
+            // Left join - Electronic Address
+            outer join ModifiedDateTime, Locator from logisticsElectronicAddress
+            where logisticsElectronicAddress.Location == logisticsLocation.RecId
+            &&  logisticsElectronicAddress.Type == LogisticsElectronicAddressMethodType::Phone
+            && logisticsElectronicAddress.IsPrimary == NoYes::Yes
+            // Left join - History table incase of update
+            outer join AccountCode,DeliveryAddressInformationType,IndustryUnitCode,SpecialMedicineIdentificationFlag,
+            DifferentialTransmissionClassification,LastProcessedDateAndTime from deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == inventLocation.InventLocationId
+            && deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType == KJP_SM_DeliveryAddressInformationType::Warehouse
+            // Exists join - general purpose master
+            exists join generalPurposeMasterDepartment
+            where generalPurposeMasterDepartment.Key == KJP_CM_ConstantHelper::DeliveryAddressInformation_TargetIndustryUnitKey
+            && generalPurposeMasterDepartment.OriginalCode == KJP_CM_ConstantHelper::origCodeDeliveryAddressInformation_TargetIndustryUnitKey_Domestic
+            && generalPurposeMasterDepartment.DestinationCode == inventLocation.KJPSMJurisdictionDepartment
+        {
+            if (inventLocation.ModifiedDateTime > lastProcessedDateTime
+                || logisticsPostalAddress.ModifiedDateTime > lastProcessedDateTime
+                || logisticsAddressState.ModifiedDateTime >  lastProcessedDateTime
+                || logisticsAddressCity.ModifiedDateTime > lastProcessedDateTime
+                || logisticsLocation.ModifiedDateTime > lastProcessedDateTime
+                || logisticsElectronicAddress.ModifiedDateTime > lastProcessedDateTime
+                && this.checkRequireFields(inventLocation,
+                addressView.LocationName,
+                logisticsAddressState,
+                logisticsAddressCity,
+                logisticsPostalAddress,
+                logisticsElectronicAddress.Locator))
+            {
+                if (deliveryAddressInfoIfTransmissionHistory.AccountCode && deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Add
+                    || deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Update)
+                {
+                    differentialClassification = KJP_SM_DifferentialTransmissionClassification::Update;
+                    this.updateDeliveryInfoTransmissionDataInvent(inventLocation, differentialClassification); // Update Record in History table
+                }
+                else if (!deliveryAddressInfoIfTransmissionHistory.AccountCode)
+                {
+                    differentialClassification = KJP_SM_DifferentialTransmissionClassification::Add;
+                    this.insertDeliveryInfoTransmissionDataInvent(inventLocation, differentialClassification); //Insert Record in History table
+                }
+
+                this.insertDeliveryInfoDRecordIfTable(differentialClassification,
+                inventLocation.InventLocationId,
+                inventLocation.Name,
+                inventLocation.Name,
+                logisticsPostalAddress,
+                logisticsAddressState,
+                logisticsAddressCity,
+                logisticsElectronicAddress);
+            }
+        }
+
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>processCustomerPostalAddress</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Customer data
+    /// </summary>
+    private void processCustomerPostalAddress()
+    {
+        CustTable                                       custTable;
+        DirOrganizationBase                             dirOrganizationBase;
+        DirPartyTable                                   dirPartyTable;
+        DirPartyLocation                                dirPartyLocation;
+        LogisticsAddressState                           logisticsAddressState;
+        LogisticsAddressCity                            logisticsAddressCity;
+        LogisticsElectronicAddress                      logisticsElectronicAddress;
+        LogisticsPostalAddress                          logisticsPostalAddress;
+        KJP_SM_DeliveryAddressInfoIfTransmissionHistory deliveryAddressInfoIfTransmissionHistory;
+        KJP_SM_DifferentialTransmissionClassification   differentialClassification;
+        KJP_CM_GeneralPurposeMaster                     generalPurposeMasterCustGroup, generalPurposeMasterDepartment;
+        DirPartyLocationRole                            dirPartyLocationRole;
+        LogisticsLocationRole                           locationRole;
+        KJP_CM_DestinationCode                          specialMedicineFlag = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::CustTableKey, KJP_CM_ConstantHelper::origCodeCustTableKey_KJPCMSpecialMedicineIdentificationFlag).DestinationCode;
+
+        // Loop records that qualify and may exists in history table
+        while select ModifiedDateTime,AccountNum,DefaultDimension,Blocked,KJPCMBusinessPartnerUseDepartment,KJPCMSpecialMedicineIdentificationFlag,KJPCMAbbreviatedName from custTable
+            where custTable.KJPCMSpecialMedicineIdentificationFlag != specialMedicineFlag 
+            // Inner Join -- DirpartyTable
+            join ModifiedDateTime,Name,RecId  from dirPartyTable
+            where dirPartyTable.RecId == custTable.Party
+            // Inner Join -- DirOrganizationBase
+            join ModifiedDateTime,PhoneticName from dirOrganizationBase
+            where dirOrganizationBase.PartyNumber == dirPartyTable.PartyNumber
+            //Inner Join -- DirPartyLocation
+            join ModifiedDateTime, Location from dirPartyLocation
+            where dirPartyLocation.Party == dirPartyTable.RecId
+            // Inner Join -- DirPartyLocationRole
+            join partyLocation, RecId, ModifiedDateTime from dirPartyLocationRole 
+            where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+            // Inner join -- LogisticsLocationRole
+            join Type,ModifiedDateTime from locationRole
+            where locationRole.Type == LogisticsLocationRoleType::Delivery
+            && locationRole.RecId == dirPartyLocationRole.LocationRole
+            // Left Join -- LogisticsPostalAddress
+            outer join ModifiedDateTime,State,City,Street,ZipCode,Location from logisticsPostalAddress
+            where logisticsPostalAddress.Location == dirPartyLocation.Location
+            //  Left Join -- State
+            outer join ModifiedDateTime,StateCode_IN from logisticsAddressState
+            where logisticsAddressState.StateId == logisticsPostalAddress.State
+            && logisticsAddressState.CountryRegionId == logisticsPostalAddress.CountryRegionId
+            // Left Join -- City
+            outer join ModifiedDateTime, MunicipalityCode_IT from logisticsAddressCity
+            where logisticsAddressCity.RecId== logisticsPostalAddress.CityRecId
+            // Left Join -- Electronic Address
+            outer join ModifiedDateTime,Locator from logisticsElectronicAddress
+            where logisticsElectronicAddress.Recid == dirPartyTable.PrimaryContactTelex
+            // Left join - History table incase of update
+            outer join AccountCode,DeliveryAddressInformationType,IndustryUnitCode,SpecialMedicineIdentificationFlag,
+            DifferentialTransmissionClassification,LastProcessedDateAndTime from deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == custTable.AccountNum
+            && deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType == KJP_SM_DeliveryAddressInformationType::Customer
+            // Exists Join -- GeneralPurposeMaster-Customer Group
+            exists join generalPurposeMasterCustGroup
+            where generalPurposeMasterCustGroup.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformationSendTarget_CustGroupKey
+            && generalPurposeMasterCustGroup.DestinationCode == custTable.CustGroup
+            //Exists join GeneralPurposeMaster -- Department
+            exists join generalPurposeMasterDepartment
+            where generalPurposeMasterDepartment.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformation_TargetIndustryUnitKey
+            && generalPurposeMasterDepartment.DestinationCode == custTable.KJPCMBusinessPartnerUseDepartment
+        {
+            if (custTable.ModifiedDateTime > lastProcessedDateTime
+                ||dirPartyTable.ModifiedDateTime > lastProcessedDateTime
+                || dirOrganizationBase.ModifiedDateTime > lastProcessedDateTime
+                || logisticsElectronicAddress.ModifiedDateTime > lastProcessedDateTime
+                || dirPartyLocation.ModifiedDateTime > lastProcessedDateTime
+                || dirPartyLocationRole.ModifiedDateTime > lastProcessedDateTime
+                || locationRole.ModifiedDateTime > lastProcessedDateTime
+                || logisticsPostalAddress.ModifiedDateTime > lastProcessedDateTime
+                || logisticsAddressState.ModifiedDateTime > lastProcessedDateTime
+                || logisticsAddressCity.ModifiedDateTime > lastProcessedDateTime
+                && this.checkRequireFields(custTable, 
+                LogisticsLocation::find(dirPartyLocation.Location).Description,
+                logisticsAddressState,
+                logisticsAddressCity,
+                logisticsPostalAddress,
+                logisticsElectronicAddress.Locator))
+            {
+                boolean qualified;
+                //Condition 1: Record exists in History table and has been updated
+                if (deliveryAddressInfoIfTransmissionHistory.AccountCode && custTable.Blocked == CustVendorBlocked::No && 
+                   (deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Add || 
+                    deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Update))
+                {
+                    qualified = true;
+                    differentialClassification = KJP_SM_DifferentialTransmissionClassification::Update;
+                    this.updateDeliveryInfoTransmissionDataCust(custTable, differentialClassification); // Update Record in History table,
+                }
+                //Condition 2: Record exists in history table but the customer has been marked as blocked
+                else if (deliveryAddressInfoIfTransmissionHistory.AccountCode && custTable.Blocked == CustVendorBlocked::All)
+                {
+                    qualified = true;
+                    differentialClassification = KJP_SM_DifferentialTransmissionClassification::Delete;
+                    this.updateDeliveryInfoTransmissionDataCust(custTable, differentialClassification);
+                }
+                //Condition 3: Record exists in history table with Classification as delete but the customer has been now unblocked i.e. updated to None
+                else if(deliveryAddressInfoIfTransmissionHistory.AccountCode && custTable.Blocked == CustVendorBlocked::No && deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Delete)
+                {
+                    qualified = true;
+                    differentialClassification = KJP_SM_DifferentialTransmissionClassification::Add;
+                    this.updateDeliveryInfoTransmissionDataCust(custTable, differentialClassification);
+                }
+                //Condition 4: Record does not exists in history table
+                else if (!deliveryAddressInfoIfTransmissionHistory.AccountCode && custTable.Blocked == CustVendorBlocked::No)
+                {
+                    qualified = true;
+                    differentialClassification = KJP_SM_DifferentialTransmissionClassification::Add;
+                    this.insertDeliveryInfoTransmissionDataCust(custTable, differentialClassification); //Insert Record in History table
+                }
+                
+                if (qualified)
+                {
+                    this.insertDeliveryInfoDRecordIfTable(differentialClassification,
+                        custTable.AccountNum,
+                        LogisticsLocation::find(logisticsPostalAddress.Location).Description,
+                        CustTable.KJPCMAbbreviatedName,
+                        logisticsPostalAddress,
+                        logisticsAddressState,
+                        logisticsAddressCity,
+                        logisticsElectronicAddress,
+                        dirOrganizationBase.PhoneticName);
+                }
+            }
+        }
+
+        // Non qualified records that exists in history table
+        while select ModifiedDateTime,AccountNum,DefaultDimension,Blocked,KJPCMBusinessPartnerUseDepartment,KJPCMSpecialMedicineIdentificationFlag,KJPCMAbbreviatedName from custTable
+            where custTable.KJPCMSpecialMedicineIdentificationFlag == specialMedicineFlag //Non qualifying criteria
+            join AccountCode,DeliveryAddressInformationType,IndustryUnitCode,SpecialMedicineIdentificationFlag,
+            DifferentialTransmissionClassification,LastProcessedDateAndTime from deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == custTable.AccountNum
+            && deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType == KJP_SM_DeliveryAddressInformationType::Customer
+            && (deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Add
+            || deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Update)
+            // Inner Join -- DirpartyTable
+            join ModifiedDateTime,Name,RecId  from dirPartyTable
+            where dirPartyTable.RecId == custTable.Party
+            // Inner Join -- DirOrganizationBase
+            join ModifiedDateTime,PhoneticName from dirOrganizationBase
+            where dirOrganizationBase.PartyNumber == dirPartyTable.PartyNumber
+            // Inner Join -- DirPartyLocation
+            join ModifiedDateTime, Location from dirPartyLocation
+            where dirPartyLocation.Party == dirPartyTable.RecId
+            // Inner Join -- DirPartyLocationRole
+            join partyLocation, RecId, ModifiedDateTime from dirPartyLocationRole
+            where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+            // Inner Join -- LogisticsLocationRole
+            join Type,ModifiedDateTime from locationRole
+            where locationRole.Type == LogisticsLocationRoleType::Delivery
+            && locationRole.RecId == dirPartyLocationRole.LocationRole
+            // Left Join -- LogisticsPostalAddress
+            outer join ModifiedDateTime,State,City,Street,ZipCode,Location from logisticsPostalAddress
+            where logisticsPostalAddress.Location == dirPartyLocation.Location
+            // Left Join -- State
+            outer join ModifiedDateTime,StateCode_IN from logisticsAddressState
+            where logisticsAddressState.StateId == logisticsPostalAddress.State
+            // Left Join -- City
+            && logisticsAddressState.CountryRegionId == logisticsPostalAddress.CountryRegionId
+            outer join ModifiedDateTime, MunicipalityCode_IT from logisticsAddressCity
+            where logisticsAddressCity.RecId== logisticsPostalAddress.CityRecId
+            // Left Join -- Electronic Address
+            outer join ModifiedDateTime,Locator from logisticsElectronicAddress
+            where logisticsElectronicAddress.Recid == dirPartyTable.PrimaryContactTelex
+            // Exists Join -- GeneralPurposeMaster Customer Key
+            exists join generalPurposeMasterCustGroup
+            where generalPurposeMasterCustGroup.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformationSendTarget_CustGroupKey
+            && generalPurposeMasterCustGroup.DestinationCode == custTable.CustGroup
+            // Exists Join -- GeneralPurposeMaster Department
+            exists join generalPurposeMasterDepartment
+            where generalPurposeMasterDepartment.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformation_TargetIndustryUnitKey
+            && generalPurposeMasterDepartment.DestinationCode == custTable.KJPCMBusinessPartnerUseDepartment           
+        {
+            if (this.checkRequireFields(custTable,
+                LogisticsLocation::find(dirPartyLocation.Location).Description,
+                logisticsAddressState,
+                logisticsAddressCity,
+                logisticsPostalAddress,
+                logisticsElectronicAddress.Locator))
+            {
+                differentialClassification = KJP_SM_DifferentialTransmissionClassification::Delete;
+                this.updateDeliveryInfoTransmissionDataCust(custTable, differentialClassification); // Update Record in History table
+                this.insertDeliveryInfoDRecordIfTable(differentialClassification,
+                            custTable.AccountNum,
+                            LogisticsLocation::find(logisticsPostalAddress.Location).Description,
+                            custTable.KJPCMAbbreviatedName,
+                            logisticsPostalAddress,
+                            logisticsAddressState,
+                            logisticsAddressCity,
+                            logisticsElectronicAddress,
+                            dirOrganizationBase.PhoneticName);
+            }
+
+        }
+        // Customer group not exists in general purpose master
+        while select ModifiedDateTime,AccountNum,DefaultDimension,Blocked,KJPCMBusinessPartnerUseDepartment,KJPCMSpecialMedicineIdentificationFlag,KJPCMAbbreviatedName from custTable
+            where custTable.KJPCMSpecialMedicineIdentificationFlag != specialMedicineFlag //qualifying criteria
+            join AccountCode,DeliveryAddressInformationType,IndustryUnitCode,SpecialMedicineIdentificationFlag,
+            DifferentialTransmissionClassification,LastProcessedDateAndTime from deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == custTable.AccountNum
+            && deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType == KJP_SM_DeliveryAddressInformationType::Customer
+            && (deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Add
+            || deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Update)
+            // Inner join -- DirpartyTable
+            join ModifiedDateTime,Name,RecId  from dirPartyTable
+            where dirPartyTable.RecId == custTable.Party
+            // Inner join -- DirOrganizationBase
+            join ModifiedDateTime,PhoneticName from dirOrganizationBase
+            where dirOrganizationBase.PartyNumber == dirPartyTable.PartyNumber
+            // Inner join -- DirpartyLocation
+            join ModifiedDateTime, Location from dirPartyLocation
+            where dirPartyLocation.Party == dirPartyTable.RecId
+            // Inner join -- dirPartyLocationRole
+            join partyLocation, RecId, ModifiedDateTime from dirPartyLocationRole
+            where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+            // Inner join -- LogisticsLocationRole
+            join Type,ModifiedDateTime from locationRole
+            where locationRole.Type == LogisticsLocationRoleType::Delivery
+            && locationRole.RecId == dirPartyLocationRole.LocationRole
+            // Left Join -- LogisticsPostalAddress
+            outer join ModifiedDateTime,State,City,Street,ZipCode,Location from logisticsPostalAddress
+            where logisticsPostalAddress.Location == dirPartyLocation.Location
+            // Left join -- State
+            outer join ModifiedDateTime,StateCode_IN from logisticsAddressState
+            where logisticsAddressState.StateId == logisticsPostalAddress.State
+            && logisticsAddressState.CountryRegionId == logisticsPostalAddress.CountryRegionId
+            // Left Join -- City
+            outer join ModifiedDateTime, MunicipalityCode_IT from logisticsAddressCity
+            where logisticsAddressCity.RecId== logisticsPostalAddress.CityRecId
+            // Left join -- Electronic Address
+            outer join ModifiedDateTime,Locator from logisticsElectronicAddress
+            where logisticsElectronicAddress.Recid == dirPartyTable.PrimaryContactTelex
+            // Not Exists Join -- GeneralPurposeMaster
+            notexists join generalPurposeMasterCustGroup
+            where generalPurposeMasterCustGroup.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformationSendTarget_CustGroupKey // Non qualifying
+            && generalPurposeMasterCustGroup.DestinationCode == custTable.CustGroup
+            exists join generalPurposeMasterDepartment
+            where generalPurposeMasterDepartment.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformation_TargetIndustryUnitKey
+            && generalPurposeMasterDepartment.DestinationCode == custTable.KJPCMBusinessPartnerUseDepartment 
+        {
+            if (this.checkRequireFields(custTable,
+                LogisticsLocation::find(dirPartyLocation.Location).Description,
+                logisticsAddressState,
+                logisticsAddressCity,
+                logisticsPostalAddress,
+                logisticsElectronicAddress.Locator))
+            {
+                differentialClassification = KJP_SM_DifferentialTransmissionClassification::Delete;
+                this.updateDeliveryInfoTransmissionDataCust(custTable, differentialClassification); // Update Record in History table
+                this.insertDeliveryInfoDRecordIfTable(differentialClassification,
+                            custTable.AccountNum,
+                            LogisticsLocation::find(logisticsPostalAddress.Location).Description,
+                            custTable.KJPCMAbbreviatedName,
+                            logisticsPostalAddress,
+                            logisticsAddressState,
+                            logisticsAddressCity,
+                            logisticsElectronicAddress,
+                            dirOrganizationBase.PhoneticName);
+            }
+        }
+
+        // Industry unit department not exists in general purpose master
+        while select ModifiedDateTime,AccountNum,DefaultDimension,Blocked,KJPCMBusinessPartnerUseDepartment,KJPCMSpecialMedicineIdentificationFlag,KJPCMAbbreviatedName from custTable
+            where custTable.KJPCMSpecialMedicineIdentificationFlag != specialMedicineFlag //qualifying criteria
+            join AccountCode,DeliveryAddressInformationType,IndustryUnitCode,SpecialMedicineIdentificationFlag,
+            DifferentialTransmissionClassification,LastProcessedDateAndTime from deliveryAddressInfoIfTransmissionHistory
+            where deliveryAddressInfoIfTransmissionHistory.AccountCode == custTable.AccountNum
+            && deliveryAddressInfoIfTransmissionHistory.DeliveryAddressInformationType == KJP_SM_DeliveryAddressInformationType::Customer
+            && (deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Add
+            || deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Update)
+            // Inner join -- DirpartyTable
+            join ModifiedDateTime,Name,RecId  from dirPartyTable
+            where dirPartyTable.RecId == custTable.Party
+            // Inner join -- DirOrganizationBase
+            join ModifiedDateTime,PhoneticName from dirOrganizationBase
+            where dirOrganizationBase.PartyNumber == dirPartyTable.PartyNumber
+            // Inner join -- DirpartyLocation
+            join ModifiedDateTime, Location from dirPartyLocation
+            where dirPartyLocation.Party == dirPartyTable.RecId
+            // Inner join -- dirPartyLocationRole
+            join partyLocation, RecId, ModifiedDateTime from dirPartyLocationRole
+            where dirPartyLocationRole.PartyLocation == dirPartyLocation.RecId
+            // Inner join -- LogisticsLocationRole
+            join Type,ModifiedDateTime from locationRole
+            where locationRole.Type == LogisticsLocationRoleType::Delivery
+            && locationRole.RecId == dirPartyLocationRole.LocationRole
+            // Left Join -- LogisticsPostalAddress
+            outer join ModifiedDateTime,State,City,Street,ZipCode,Location from logisticsPostalAddress
+            where logisticsPostalAddress.Location == dirPartyLocation.Location
+            // Left join -- State
+            outer join ModifiedDateTime,StateCode_IN from logisticsAddressState
+            where logisticsAddressState.StateId == logisticsPostalAddress.State
+            && logisticsAddressState.CountryRegionId == logisticsPostalAddress.CountryRegionId
+            // Left Join -- City
+            outer join ModifiedDateTime, MunicipalityCode_IT from logisticsAddressCity
+            where logisticsAddressCity.RecId== logisticsPostalAddress.CityRecId
+            // Left join -- Electronic Address
+            outer join ModifiedDateTime,Locator from logisticsElectronicAddress
+            where logisticsElectronicAddress.Recid == dirPartyTable.PrimaryContactTelex
+            // Not Exists Join -- GeneralPurposeMaster
+            exists join generalPurposeMasterCustGroup
+            where generalPurposeMasterCustGroup.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformationSendTarget_CustGroupKey // Non qualifying
+            && generalPurposeMasterCustGroup.DestinationCode == custTable.CustGroup
+            notexists join generalPurposeMasterDepartment
+            where generalPurposeMasterDepartment.Key == KJP_CM_ConsTantHelper::DeliveryAddressInformation_TargetIndustryUnitKey
+            && generalPurposeMasterDepartment.DestinationCode == custTable.KJPCMBusinessPartnerUseDepartment
+        {
+            if (this.checkRequireFields(custTable,
+                LogisticsLocation::find(dirPartyLocation.Location).Description,
+                logisticsAddressState,
+                logisticsAddressCity,
+                logisticsPostalAddress,
+                logisticsElectronicAddress.Locator))
+            {
+                differentialClassification = KJP_SM_DifferentialTransmissionClassification::Delete;
+                this.updateDeliveryInfoTransmissionDataCust(custTable, differentialClassification); // Update Record in History table
+                this.insertDeliveryInfoDRecordIfTable(differentialClassification,
+                            custTable.AccountNum,
+                            LogisticsLocation::find(logisticsPostalAddress.Location).Description,
+                            custTable.KJPCMAbbreviatedName,
+                            logisticsPostalAddress,
+                            logisticsAddressState,
+                            logisticsAddressCity,
+                            logisticsElectronicAddress,
+                            dirOrganizationBase.PhoneticName);
+            }
+        }
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>insertDeliveryInfoERecordIfTable</Name>
+				<Source><![CDATA[
+    /// <summary>
+    ///  Insert E record
+    /// </summary>
+    private void insertDeliveryInfoERecordIfTable()
+    {
+        KJP_SM_DeliveryAddressInfoERecordIfTable  addressInfoERecordIfTable;
+        addressInfoERecordIfTable.clear();
+        addressInfoERecordIfTable.RecordClassification      = KJP_CM_ConstantHelper::recordClassification_E;
+        addressInfoERecordIfTable.DataIdentification        = KJP_CM_GeneralPurposeMaster::find(KJP_CM_ConstantHelper::KJP_SM_DeliveryAddressInfoERecordIfTableKey, KJP_CM_ConstantHelper::origCodeKJP_SM_DeliveryAddressInfoERecordIfTableKey_DataIdentification).DestinationCode;
+        addressInfoERecordIfTable.NumberOfRecordsStr        = strRFix(int2Str(totalProcessedRecords), 6, KJP_CM_ConstantHelper::zeroPaddingCharacter);
+        addressInfoERecordIfTable.NumberOfActualRecordssTr  = strRFix(int2Str(totalProcessedRecords), 6, KJP_CM_ConstantHelper::zeroPaddingCharacter);
+        addressInfoERecordIfTable.JobId                     = jobId;
+        addressInfoERecordIfTable.ExecutionDateTime         = executionDateTime;
+        addressInfoERecordIfTable.SEQNo                     = 1;
+        addressInfoERecordIfTable.insert();
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>streetNameTrunc</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Return truncated string
+    /// </summary>
+    /// <param name = "_content">Street name</param>
+    /// <param name = "_length">Street name length</param>
+    /// <returns>container</returns>
+    private container streetNameTrunc(str _content, int _length)
+    {
+        str leftStr,rtStr;
+        int strLength;
+        int i;
+        int length = _length;
+
+        System.Text.Encoding sjisEnc = System.Text.Encoding::GetEncoding('shift_jis');
+        leftStr = any2Str(_content);
+        strLength = sjisEnc.GetByteCount(leftStr);
+        if  ((length == strLength) || (length - strLength > 0))
+        {
+            return [leftStr, ''];
+        }
+        else
+        {
+            for (i = 1; i <= strLen(leftStr); i++)
+            {
+                leftStr = subStr(_content, 1, strLen(_content) - i);
+                if  (sjisEnc.GetByteCount(leftStr) <= length)
+                {
+                    i = i-1;
+                    rtStr= subStr(_content, strlen(_content)-i , strlen(_content));
+                    break;
+                }
+            }
+        }
+        return [leftStr, rtStr];
+    }
+
+]]></Source>
+			</Method>
+			<Method>
+				<Name>checkRequireFields</Name>
+				<Source><![CDATA[
+    /// <summary>
+    /// Check the validations for the required fields for the customer and warehouse
+    /// </summary>
+    /// <param name = "_common">Item or AccountNum Information</param>
+    /// <param name = "_description">Description for the Item</param>
+    /// <param name = "_logisticsAddressState">State Information</param>
+    /// <param name = "_logisitcsAddressCity">City Information</param>
+    /// <param name = "_logisticsPostalAddress">Address Information</param>
+    /// <param name = "_locator">Loator Information</param>
+    /// <returns>True/False</returns>
+    private boolean checkRequireFields(Common _common, 
+        LogisticsDescription _description,
+        LogisticsAddressState _logisticsAddressState,
+        LogisticsAddressCity _logisitcsAddressCity,
+        LogisticsPostalAddress _logisticsPostalAddress,
+        str _locator)
+    {
+      
+        CustTable custTable;
+        InventLocation inventLocation;
+        str recordPlaceHolder;
+        str tablePlaceHolder;
+
+        boolean ret = true;
+        switch(_common.TableId)
+        {
+            case tableNum(CustTable) :
+                custTable = _common;
+                recordPlaceHolder = custTable.AccountNum;
+                tablePlaceHolder = "@SYS7149";
+               
+                break;
+            case tableNum(InventLocation) :
+                inventLocation = _common;
+                recordPlaceHolder = inventLocation.InventLocationId;
+                tablePlaceHolder = "@SYS6437";
+                if (inventLocation.Name == nullValueBaseType(Types::String))
+                {
+                    ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS7122", "@SYS7399", tablePlaceHolder, recordPlaceHolder));
+                }
+                break;
+            default :
+                break;
+        }
+        if (_description == nullValueBaseType(Types::String))
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS20394", "@SYS335041", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_logisticsAddressState.StateCode_IN == nullValueBaseType(Types::String)) // State Code IN
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS21929", "@TaxGST:StateCode", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_logisitcsAddressCity.MunicipalityCode_IT ==  nullValueBaseType(Types::String)) // City Code IT
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS190534", "@SYS343580", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_logisticsPostalAddress.ZipCode == nullValueBaseType(Types::String)) // Zip Code
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS7566", "@SYS323504", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_logisticsPostalAddress.State == nullValueBaseType(Types::String)) // State
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS7566", "@SYS323506", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_logisticsPostalAddress.City == nullValueBaseType(Types::String)) // City
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS7566", "@SYS22249", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_logisticsPostalAddress.Street == nullValueBaseType(Types::String)) // Street
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS7566", "@SYS323505", tablePlaceHolder, recordPlaceHolder));
+        }
+        if (_locator == nullValueBaseType(Types::String)) // Locator
+        {
+            ret = checkFailed(strFmt("@KJP:KJP500611", "@SYS105810", "@SYS334867", tablePlaceHolder, recordPlaceHolder));
+        }
+        return ret;
+    }
+
+]]></Source>
+			</Method>
+		</Methods>
+	</SourceCode>
+</AxClass>
