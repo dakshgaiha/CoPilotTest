@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SalesOrderLifeCycleBatch – D365 Finance and Operations Batch Job
+    ================================================================
+    Processes all open Sales Orders through the full lifecycle:
+      1. Confirmation
+      2. Picking List generation
+      3. Invoicing
+
+    Error handling:
+      - Any failure on an individual Sales Order is caught, logged to the
+        Infolog, and rolled back via a savepoint.  Processing continues
+        for all remaining Sales Orders (per acceptance criteria).
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>SalesOrderLifeCycleBatch</Name>
+  <SourceCode>
+    <Declaration><![CDATA[
+/// <summary>
+/// Batch job that drives open Sales Orders through their full lifecycle:
+/// Confirmation → Picking List → Invoice.
+///
+/// Any error on an individual Sales Order is caught and rolled back
+/// for that order only; processing continues for all other orders.
+/// </summary>
+class SalesOrderLifeCycleBatch extends RunBaseBatch
+{
+    // No additional runtime parameters required for the base scenario.
+
+    /// <summary>
+    /// Returns a new instance of this batch job.
+    /// </summary>
+    public static SalesOrderLifeCycleBatch construct()
+    {
+        return new SalesOrderLifeCycleBatch();
+    }
+
+    /// <summary>
+    /// Entry point for direct (non-batch) execution.
+    /// </summary>
+    public static void main(Args _args)
+    {
+        SalesOrderLifeCycleBatch batch = SalesOrderLifeCycleBatch::construct();
+
+        if (batch.prompt())
+        {
+            batch.runOperation();
+        }
+    }
+}
+]]></Declaration>
+    <Methods>
+      <Method>
+        <Name>run</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Main processing logic executed by the batch framework.
+///
+/// Iterates over every open Sales Order and drives it through:
+///   1. Confirmation
+///   2. Picking list generation
+///   3. Invoicing
+///
+/// A per-order try/catch with a database savepoint ensures that a
+/// failure on one order does not affect any other order.
+/// </summary>
+public void run()
+{
+    SalesTable  salesTable;
+    int         processed   = 0;
+    int         failed      = 0;
+
+    // Select all Sales Orders that are still in the Open state.
+    while select salesTable
+        where salesTable.SalesStatus == SalesStatus::BackOrder
+           || salesTable.SalesStatus == SalesStatus::None
+    {
+        // Use a savepoint so that a failure can be rolled back for this
+        // order only, leaving previous successful orders committed.
+
+        try
+        {
+            ttsbegin;
+
+            // ── Step 1: Confirmation ──────────────────────────────────
+            this.confirmSalesOrder(salesTable.SalesId);
+
+            // ── Step 2: Picking List ──────────────────────────────────
+            this.processPickingList(salesTable.SalesId);
+
+            // ── Step 3: Invoice ───────────────────────────────────────
+            this.invoiceSalesOrder(salesTable.SalesId);
+
+            ttscommit;
+
+            processed++;
+            info(strFmt("@SalesOrderLifeCycle:OrderProcessed", salesTable.SalesId));
+        }
+        catch (Exception::Error)
+        {
+            // Roll back any partial work for this order.
+            ttsabort;
+
+            failed++;
+            warning(strFmt("@SalesOrderLifeCycle:OrderFailed", salesTable.SalesId));
+
+            // Clear the infolog error so the batch job does not abort.
+            infolog.clear(infolog.line());
+        }
+        catch (Exception::UpdateConflict)
+        {
+            ttsabort;
+            failed++;
+            warning(strFmt("@SalesOrderLifeCycle:OrderFailed", salesTable.SalesId));
+            infolog.clear(infolog.line());
+        }
+    }
+
+    info(strFmt("@SalesOrderLifeCycle:BatchComplete", processed, failed));
+}
+]]></Source>
+      </Method>
+      <Method>
+        <Name>confirmSalesOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Runs the Confirmation posting process for the given Sales Order.
+/// </summary>
+/// <param name="_salesId">Sales Order identifier.</param>
+protected void confirmSalesOrder(SalesId _salesId)
+{
+    SalesTable          salesTable  = SalesTable::find(_salesId, false);
+    SalesFormLetter     formLetter;
+
+    if (!salesTable)
+    {
+        throw error(strFmt("@SalesOrderLifeCycle:SalesOrderNotFound", _salesId));
+    }
+
+    formLetter = SalesFormLetter::construct(DocumentStatus::Confirmation);
+    formLetter.update(
+        salesTable,
+        systemDateGet(),          // Posting date
+        SalesUpdate::All,
+        AccountOrder::None,
+        NoYes::No,                // Print
+        NoYes::No);               // Print archive copy
+}
+]]></Source>
+      </Method>
+      <Method>
+        <Name>processPickingList</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Generates the Picking List for the given confirmed Sales Order.
+/// </summary>
+/// <param name="_salesId">Sales Order identifier.</param>
+protected void processPickingList(SalesId _salesId)
+{
+    SalesTable          salesTable  = SalesTable::find(_salesId, false);
+    SalesFormLetter     formLetter;
+
+    if (!salesTable)
+    {
+        throw error(strFmt("@SalesOrderLifeCycle:SalesOrderNotFound", _salesId));
+    }
+
+    formLetter = SalesFormLetter::construct(DocumentStatus::PickingList);
+    formLetter.update(
+        salesTable,
+        systemDateGet(),
+        SalesUpdate::All,
+        AccountOrder::None,
+        NoYes::No,
+        NoYes::No);
+}
+]]></Source>
+      </Method>
+      <Method>
+        <Name>invoiceSalesOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Posts the Invoice for the given Sales Order (after picking).
+/// </summary>
+/// <param name="_salesId">Sales Order identifier.</param>
+protected void invoiceSalesOrder(SalesId _salesId)
+{
+    SalesTable          salesTable  = SalesTable::find(_salesId, false);
+    SalesFormLetter     formLetter;
+
+    if (!salesTable)
+    {
+        throw error(strFmt("@SalesOrderLifeCycle:SalesOrderNotFound", _salesId));
+    }
+
+    formLetter = SalesFormLetter::construct(DocumentStatus::Invoice);
+    formLetter.update(
+        salesTable,
+        systemDateGet(),
+        SalesUpdate::All,
+        AccountOrder::None,
+        NoYes::No,
+        NoYes::No);
+}
+]]></Source>
+      </Method>
+      <Method>
+        <Name>description</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Returns the description shown in the Batch Job dialog.
+/// </summary>
+public static ClassDescription description()
+{
+    return "@SalesOrderLifeCycle:BatchDescription";
+}
+]]></Source>
+      </Method>
+      <Method>
+        <Name>canGoBatchJournal</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Allows this task to be saved in the batch journal for re-execution.
+/// </summary>
+public boolean canGoBatchJournal()
+{
+    return true;
+}
+]]></Source>
+      </Method>
+    </Methods>
+  </SourceCode>
+</AxClass>

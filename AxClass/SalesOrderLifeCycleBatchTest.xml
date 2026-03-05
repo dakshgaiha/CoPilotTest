@@ -1,0 +1,651 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SalesOrderLifeCycleBatchTest – Unit / Integration Tests
+    =======================================================
+    Covers the following test scenarios for SalesOrderLifeCycleBatch:
+
+    TC-01  Happy path – single open order goes through all three steps.
+    TC-02  Happy path – multiple open orders are all processed.
+    TC-03  Error isolation – one failing order does not prevent others
+           from being processed (core acceptance-criteria test).
+    TC-04  Only open orders are selected (confirmed / invoiced orders
+           are skipped).
+    TC-05  confirmSalesOrder – SalesFormLetter called with correct
+           DocumentStatus::Confirmation.
+    TC-06  processPickingList – SalesFormLetter called with correct
+           DocumentStatus::PickingList.
+    TC-07  invoiceSalesOrder – SalesFormLetter called with correct
+           DocumentStatus::Invoice.
+    TC-08  confirmSalesOrder throws when the Sales Order does not exist.
+    TC-09  processPickingList throws when the Sales Order does not exist.
+    TC-10  invoiceSalesOrder throws when the Sales Order does not exist.
+    TC-11  Infolog contains a success message for each processed order.
+    TC-12  Infolog contains a warning message for each failed order.
+    TC-13  Batch summary message reports correct processed / failed
+           counts after a mixed run.
+    TC-14  UpdateConflict exceptions are caught and do not abort the
+           batch.
+    TC-15  canGoBatchJournal returns true.
+    TC-16  description() returns a non-empty label string.
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>SalesOrderLifeCycleBatchTest</Name>
+  <SourceCode>
+    <Declaration><![CDATA[
+/// <summary>
+/// Unit and integration tests for <c>SalesOrderLifeCycleBatch</c>.
+///
+/// Tests use the SysTestCase framework and a lightweight stub/mock
+/// pattern that overrides the protected helper methods so that no real
+/// D365 FNO documents are posted during automated testing.
+/// </summary>
+[TestClassAttribute]
+class SalesOrderLifeCycleBatchTest extends SysTestCase
+{
+    // Tracks which SalesIds were passed to each processing step.
+    List confirmedOrders;
+    List pickedOrders;
+    List invoicedOrders;
+
+    // Controls which SalesIds should simulate a failure.
+    Set  failOnConfirm;
+    Set  failOnPickingList;
+    Set  failOnInvoice;
+}
+]]></Declaration>
+    <Methods>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           Test fixture helpers
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>setUp</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Initialises state before each test method.
+/// </summary>
+public void setUp()
+{
+    super();
+
+    confirmedOrders   = new List(Types::String);
+    pickedOrders      = new List(Types::String);
+    invoicedOrders    = new List(Types::String);
+
+    failOnConfirm     = new Set(Types::String);
+    failOnPickingList = new Set(Types::String);
+    failOnInvoice     = new Set(Types::String);
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           Helper: testable subclass
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>createBatchUnderTest</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Returns a <c>SalesOrderLifeCycleBatchStub</c> wired to the test's
+/// tracking lists and failure sets.
+/// </summary>
+private SalesOrderLifeCycleBatchStub createBatchUnderTest()
+{
+    SalesOrderLifeCycleBatchStub stub = new SalesOrderLifeCycleBatchStub();
+
+    stub.setConfirmedOrdersList(confirmedOrders);
+    stub.setPickedOrdersList(pickedOrders);
+    stub.setInvoicedOrdersList(invoicedOrders);
+    stub.setFailOnConfirm(failOnConfirm);
+    stub.setFailOnPickingList(failOnPickingList);
+    stub.setFailOnInvoice(failOnInvoice);
+
+    return stub;
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-01 Happy path – single open order
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testSingleOpenOrderIsFullyProcessed</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-01: A single open Sales Order must pass through all three steps.
+/// </summary>
+[TestMethodAttribute]
+public void testSingleOpenOrderIsFullyProcessed()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    // Seed one open order.
+    batch.addOpenOrder("SO-001");
+
+    batch.run();
+
+    // All three steps must have been called for the same order.
+    this.assertEquals(1, confirmedOrders.elements(),
+        "Confirmation must be called once");
+    this.assertEquals(1, pickedOrders.elements(),
+        "Picking list must be called once");
+    this.assertEquals(1, invoicedOrders.elements(),
+        "Invoice must be called once");
+
+    ListEnumerator confirmedLe = confirmedOrders.getEnumerator();
+    confirmedLe.moveNext();
+    this.assertEquals("SO-001", confirmedLe.current(),
+        "Correct SalesId must be confirmed");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-02 Happy path – multiple open orders
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testMultipleOpenOrdersAreAllProcessed</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-02: All open Sales Orders must be processed when none fail.
+/// </summary>
+[TestMethodAttribute]
+public void testMultipleOpenOrdersAreAllProcessed()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.addOpenOrder("SO-002");
+    batch.addOpenOrder("SO-003");
+
+    batch.run();
+
+    this.assertEquals(3, confirmedOrders.elements(),
+        "All 3 orders must be confirmed");
+    this.assertEquals(3, pickedOrders.elements(),
+        "All 3 orders must be picked");
+    this.assertEquals(3, invoicedOrders.elements(),
+        "All 3 orders must be invoiced");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-03 Error isolation (acceptance criteria)
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testFailingOrderDoesNotBlockOtherOrders</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-03: When one order fails during confirmation the remaining orders
+/// must still be processed in full (acceptance criteria).
+/// </summary>
+[TestMethodAttribute]
+public void testFailingOrderDoesNotBlockOtherOrders()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.addOpenOrder("SO-002");  // <-- will fail
+    batch.addOpenOrder("SO-003");
+
+    failOnConfirm.add("SO-002");
+
+    batch.run();
+
+    // SO-001 and SO-003 must complete all steps.
+    this.assertEquals(2, confirmedOrders.elements(),
+        "2 orders must be confirmed (SO-002 fails)");
+    this.assertEquals(2, pickedOrders.elements(),
+        "2 orders must be picked");
+    this.assertEquals(2, invoicedOrders.elements(),
+        "2 orders must be invoiced");
+
+    // SO-002 must NOT appear in the confirmed list.
+    this.assertFalse(this.listContains(confirmedOrders, "SO-002"),
+        "Failed order must not be in confirmed list");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-04 Only open orders are selected
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testOnlyOpenOrdersAreSelected</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-04: Orders whose status is Confirmed, Invoiced, or Cancelled must
+/// be skipped; only orders in the "open" state are processed.
+/// </summary>
+[TestMethodAttribute]
+public void testOnlyOpenOrdersAreSelected()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    // Open orders (should be processed).
+    batch.addOpenOrder("SO-OPEN-1");
+    batch.addOpenOrder("SO-OPEN-2");
+
+    // Non-open orders (should NOT be processed).
+    batch.addNonOpenOrder("SO-INVOICED-1");
+    batch.addNonOpenOrder("SO-CONFIRMED-1");
+
+    batch.run();
+
+    this.assertEquals(2, confirmedOrders.elements(),
+        "Only 2 open orders must be processed");
+    this.assertFalse(this.listContains(confirmedOrders, "SO-INVOICED-1"),
+        "Invoiced order must be skipped");
+    this.assertFalse(this.listContains(confirmedOrders, "SO-CONFIRMED-1"),
+        "Already-confirmed order must be skipped");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-05 confirmSalesOrder uses DocumentStatus::Confirmation
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testConfirmStepUsesCorrectDocumentStatus</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-05: confirmSalesOrder must invoke the posting process with
+/// DocumentStatus::Confirmation.
+/// </summary>
+[TestMethodAttribute]
+public void testConfirmStepUsesCorrectDocumentStatus()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.run();
+
+    // The stub records the DocumentStatus used for each call.
+    this.assertEquals(DocumentStatus::Confirmation,
+        batch.getLastConfirmDocumentStatus(),
+        "Confirmation step must use DocumentStatus::Confirmation");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-06 processPickingList uses DocumentStatus::PickingList
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testPickingListStepUsesCorrectDocumentStatus</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-06: processPickingList must invoke the posting process with
+/// DocumentStatus::PickingList.
+/// </summary>
+[TestMethodAttribute]
+public void testPickingListStepUsesCorrectDocumentStatus()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.run();
+
+    this.assertEquals(DocumentStatus::PickingList,
+        batch.getLastPickingListDocumentStatus(),
+        "Picking list step must use DocumentStatus::PickingList");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-07 invoiceSalesOrder uses DocumentStatus::Invoice
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testInvoiceStepUsesCorrectDocumentStatus</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-07: invoiceSalesOrder must invoke the posting process with
+/// DocumentStatus::Invoice.
+/// </summary>
+[TestMethodAttribute]
+public void testInvoiceStepUsesCorrectDocumentStatus()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.run();
+
+    this.assertEquals(DocumentStatus::Invoice,
+        batch.getLastInvoiceDocumentStatus(),
+        "Invoice step must use DocumentStatus::Invoice");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-08 confirmSalesOrder throws for missing order
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testConfirmThrowsWhenOrderNotFound</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-08: confirmSalesOrder must throw an error when the Sales Order
+/// does not exist in the database.
+/// </summary>
+[TestMethodAttribute]
+public void testConfirmThrowsWhenOrderNotFound()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+    boolean exceptionThrown = false;
+
+    try
+    {
+        // Ask the stub to simulate a "not found" scenario.
+        batch.confirmNonExistentOrder("SO-MISSING");
+    }
+    catch (Exception::Error)
+    {
+        exceptionThrown = true;
+    }
+
+    this.assertTrue(exceptionThrown,
+        "confirmSalesOrder must throw when the order does not exist");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-09 processPickingList throws for missing order
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testPickingListThrowsWhenOrderNotFound</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-09: processPickingList must throw an error when the Sales Order
+/// does not exist in the database.
+/// </summary>
+[TestMethodAttribute]
+public void testPickingListThrowsWhenOrderNotFound()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+    boolean exceptionThrown = false;
+
+    try
+    {
+        batch.pickNonExistentOrder("SO-MISSING");
+    }
+    catch (Exception::Error)
+    {
+        exceptionThrown = true;
+    }
+
+    this.assertTrue(exceptionThrown,
+        "processPickingList must throw when the order does not exist");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-10 invoiceSalesOrder throws for missing order
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testInvoiceThrowsWhenOrderNotFound</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-10: invoiceSalesOrder must throw an error when the Sales Order
+/// does not exist in the database.
+/// </summary>
+[TestMethodAttribute]
+public void testInvoiceThrowsWhenOrderNotFound()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+    boolean exceptionThrown = false;
+
+    try
+    {
+        batch.invoiceNonExistentOrder("SO-MISSING");
+    }
+    catch (Exception::Error)
+    {
+        exceptionThrown = true;
+    }
+
+    this.assertTrue(exceptionThrown,
+        "invoiceSalesOrder must throw when the order does not exist");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-11 Infolog contains a success message per processed order
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testInfologContainsSuccessMessageForProcessedOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-11: After a successful run the infolog must contain an
+/// Info-level message that references the processed Sales Order Id.
+/// </summary>
+[TestMethodAttribute]
+public void testInfologContainsSuccessMessageForProcessedOrder()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+    int infoCountBefore = infolog.line();
+
+    batch.addOpenOrder("SO-001");
+    batch.run();
+
+    // At least one Info message must have been added.
+    this.assertTrue(infolog.line() > infoCountBefore,
+        "Infolog must contain at least one message after processing");
+
+    // The message text must reference the Sales Order Id.
+    this.assertTrue(this.infologContains("SO-001"),
+        "Infolog must reference the processed Sales Order Id");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-12 Infolog contains a warning for each failed order
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testInfologContainsWarningForFailedOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-12: When an order fails the infolog must contain a Warning-level
+/// message that references that Sales Order Id.
+/// </summary>
+[TestMethodAttribute]
+public void testInfologContainsWarningForFailedOrder()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-FAIL");
+    failOnConfirm.add("SO-FAIL");
+
+    batch.run();
+
+    // A warning referencing the failed order must appear.
+    this.assertTrue(this.infologContains("SO-FAIL"),
+        "Infolog must reference the failed Sales Order Id");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-13 Batch summary: correct processed / failed counts
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testBatchSummaryReportsCorrectCounts</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-13: The final infolog summary message must report the correct
+/// number of processed and failed orders.
+/// </summary>
+[TestMethodAttribute]
+public void testBatchSummaryReportsCorrectCounts()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.addOpenOrder("SO-002");   // will fail
+    batch.addOpenOrder("SO-003");
+
+    failOnConfirm.add("SO-002");
+
+    batch.run();
+
+    // processed = 2, failed = 1
+    this.assertEquals(2, batch.getProcessedCount(),
+        "Processed count must be 2");
+    this.assertEquals(1, batch.getFailedCount(),
+        "Failed count must be 1");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-14 UpdateConflict does not abort the batch
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testUpdateConflictIsCaughtAndBatchContinues</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-14: An UpdateConflict exception on one order must be caught and
+/// must not prevent other orders from being processed.
+/// </summary>
+[TestMethodAttribute]
+public void testUpdateConflictIsCaughtAndBatchContinues()
+{
+    SalesOrderLifeCycleBatchStub batch = this.createBatchUnderTest();
+
+    batch.addOpenOrder("SO-001");
+    batch.addOpenOrder("SO-CONFLICT");
+    batch.addOpenOrder("SO-003");
+
+    // Simulate an UpdateConflict on the second order.
+    batch.setThrowUpdateConflictFor("SO-CONFLICT");
+
+    batch.run();
+
+    // The non-conflicting orders must still be processed.
+    this.assertEquals(2, confirmedOrders.elements(),
+        "2 non-conflicting orders must still be processed");
+    this.assertEquals(1, batch.getFailedCount(),
+        "Conflicting order must be counted as failed");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-15 canGoBatchJournal returns true
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testCanGoBatchJournalReturnsTrue</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-15: canGoBatchJournal must return true so this job can be
+/// saved in the batch journal.
+/// </summary>
+[TestMethodAttribute]
+public void testCanGoBatchJournalReturnsTrue()
+{
+    SalesOrderLifeCycleBatch batch = SalesOrderLifeCycleBatch::construct();
+
+    this.assertTrue(batch.canGoBatchJournal(),
+        "canGoBatchJournal must return true");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           TC-16 description() returns a non-empty string
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>testDescriptionIsNotEmpty</Name>
+        <Source><![CDATA[
+/// <summary>
+/// TC-16: description() must return a non-empty string that is
+/// displayed in the Batch Job dialog.
+/// </summary>
+[TestMethodAttribute]
+public void testDescriptionIsNotEmpty()
+{
+    ClassDescription desc = SalesOrderLifeCycleBatch::description();
+
+    this.assertNotEqual("", desc,
+        "description() must return a non-empty label/string");
+}
+]]></Source>
+      </Method>
+
+      <!-- ═══════════════════════════════════════════════════════════════
+           Private helper utilities
+           ═══════════════════════════════════════════════════════════════ -->
+
+      <Method>
+        <Name>listContains</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Returns true when <paramref name="_list"/> contains
+/// <paramref name="_value"/>.
+/// </summary>
+private boolean listContains(List _list, str _value)
+{
+    ListEnumerator le = _list.getEnumerator();
+
+    while (le.moveNext())
+    {
+        if (le.current() == _value)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>infologContains</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Returns true when any infolog message contains <paramref name="_text"/>.
+/// </summary>
+private boolean infologContains(str _text)
+{
+    int i;
+
+    for (i = 1; i <= infolog.line(); i++)
+    {
+        if (strContains(infolog.text(i), _text))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+]]></Source>
+      </Method>
+
+    </Methods>
+  </SourceCode>
+</AxClass>
