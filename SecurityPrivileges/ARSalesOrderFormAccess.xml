@@ -1,9 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Security Privilege: ARSalesOrderFormAccess
+  ==========================================
+  Purpose : Grants access to the Sales Order form entry points in the
+            Accounts Receivable (AR) module of D365 Finance and Operations.
+
+  Entry Points covered:
+    1. SalesTableListPage  (MenuItemDisplay) – "All sales orders" list page.
+       Access: Read, Update, Create, Delete, Correct
+    2. SalesTable          (MenuItemDisplay) – Individual Sales Order form.
+       Access: Read, Update, Create, Delete, Correct
+    3. SalesTableCreate    (MenuItemAction)  – "New sales order" action button.
+       Access: Update, Create, Delete, Correct (Read is implicit for actions)
+
+  Usage  : Referenced by the duty ARSalesOrderMaintain.
+  Change log:
+    - Initial creation: enables full CRUD access to the Sales Order form.
+-->
 <AxSecurityPrivilege xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
   <Name>ARSalesOrderFormAccess</Name>
   <Label>Access Sales Order Form</Label>
-  <Description>Grants access to the Sales Order form (SalesTable) in the Accounts Receivable module</Description>
+  <Description>Grants full CRUD access to the Sales Order form (SalesTable) and list page in the Accounts Receivable module, including the ability to create new sales orders via the SalesTableCreate action.</Description>
   <EntryPoints>
+    <!-- Entry point 1: All Sales Orders list page -->
     <AxSecurityEntryPointReference>
       <EntryPointName>SalesTableListPage</EntryPointName>
       <EntryPointType>MenuItemDisplay</EntryPointType>
@@ -14,6 +33,7 @@
       <DeleteAccess>Allow</DeleteAccess>
       <CorrectAccess>Allow</CorrectAccess>
     </AxSecurityEntryPointReference>
+    <!-- Entry point 2: Individual Sales Order form (detail view) -->
     <AxSecurityEntryPointReference>
       <EntryPointName>SalesTable</EntryPointName>
       <EntryPointType>MenuItemDisplay</EntryPointType>
@@ -24,6 +44,7 @@
       <DeleteAccess>Allow</DeleteAccess>
       <CorrectAccess>Allow</CorrectAccess>
     </AxSecurityEntryPointReference>
+    <!-- Entry point 3: New Sales Order action (toolbar button) -->
     <AxSecurityEntryPointReference>
       <EntryPointName>SalesTableCreate</EntryPointName>
       <EntryPointType>MenuItemAction</EntryPointType>

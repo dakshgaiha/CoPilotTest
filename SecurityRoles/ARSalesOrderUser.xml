@@ -1,9 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Security Role: ARSalesOrderUser
+  ================================
+  Purpose : A ready-to-assign security role that grants users the ability to
+            work with Sales Orders in the Accounts Receivable (AR) module of
+            D365 Finance and Operations.
+
+  Included Duties:
+    - ARSalesOrderMaintain : Covers viewing, creating, updating, and deleting
+                             sales orders via the SalesTable form and list page.
+
+  Assignment:
+    System administration > Users > Users
+      → Select user → User's roles → Assign roles → "AR Sales Order User"
+
+  Verification:
+    Log in as the target user and navigate to:
+      Accounts receivable > Orders > All sales orders
+
+  Change log:
+    - Initial creation: role containing the ARSalesOrderMaintain duty.
+-->
 <AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
   <Name>ARSalesOrderUser</Name>
   <Label>AR Sales Order User</Label>
-  <Description>Grants users access to the Sales Order form in the Accounts Receivable (AR) module of D365 Finance and Operations</Description>
+  <Description>Grants users the ability to view, create, update, and delete sales orders in the Accounts Receivable (AR) module of D365 Finance and Operations. Assign this role to users who need access to the Sales Order form.</Description>
   <Duties>
+    <!-- Duty: maintain (full CRUD) access to the Sales Order form -->
     <AxSecurityRoleDutyReference>
       <DutyName>ARSalesOrderMaintain</DutyName>
     </AxSecurityRoleDutyReference>
