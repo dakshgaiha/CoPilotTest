@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AxSecurityRole xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>ARSalesOrderUser</Name>
+  <Label>AR Sales Order User</Label>
+  <Description>Grants users access to the Sales Order form in the Accounts Receivable (AR) module of D365 Finance and Operations</Description>
+  <Duties>
+    <AxSecurityRoleDutyReference>
+      <DutyName>ARSalesOrderMaintain</DutyName>
+    </AxSecurityRoleDutyReference>
+  </Duties>
+</AxSecurityRole>
