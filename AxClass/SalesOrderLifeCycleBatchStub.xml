@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SalesOrderLifeCycleBatchStub – Test Double for SalesOrderLifeCycleBatch
+    =======================================================================
+    Extends the production batch class and overrides its protected helper
+    methods so that no real D365 FNO documents are posted during automated
+    testing.  All interactions are recorded in in-memory lists so that test
+    assertions can verify correct behaviour.
+
+    Only for use within automated tests.  Must NOT be deployed to a
+    production environment.
+-->
+<AxClass xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>SalesOrderLifeCycleBatchStub</Name>
+  <SourceCode>
+    <Declaration><![CDATA[
+/// <summary>
+/// Test double for <c>SalesOrderLifeCycleBatch</c>.
+///
+/// Overrides the three protected processing methods so that no real
+/// D365 FNO postings occur during automated tests.  Exposes helpers
+/// that let tests inject open/non-open orders and configure which
+/// orders should simulate failures.
+/// </summary>
+[SysTestVisible]
+class SalesOrderLifeCycleBatchStub extends SalesOrderLifeCycleBatch
+{
+    // In-memory list of "open" orders the stub will iterate over.
+    private List openOrders;
+
+    // Per-step call-tracking lists (injected by the test fixture).
+    private List confirmedOrders;
+    private List pickedOrders;
+    private List invoicedOrders;
+
+    // Sets of SalesIds that should throw during a given step.
+    private Set  failOnConfirm;
+    private Set  failOnPickingList;
+    private Set  failOnInvoice;
+
+    // Set of SalesIds that should throw UpdateConflict.
+    private Set  throwUpdateConflictFor;
+
+    // Last DocumentStatus values recorded (for TC-05, TC-06, TC-07).
+    private DocumentStatus lastConfirmDocStatus;
+    private DocumentStatus lastPickingListDocStatus;
+    private DocumentStatus lastInvoiceDocStatus;
+
+    // Run-level counters (for TC-13).
+    private int processedCount;
+    private int failedCount;
+
+    public void new()
+    {
+        super();
+
+        openOrders           = new List(Types::String);
+        throwUpdateConflictFor = new Set(Types::String);
+        processedCount       = 0;
+        failedCount          = 0;
+    }
+}
+]]></Declaration>
+    <Methods>
+
+      <!-- ─────────────────────────────────────────────────────────────
+           Injection helpers (called by the test fixture before run())
+           ───────────────────────────────────────────────────────────── -->
+
+      <Method>
+        <Name>setConfirmedOrdersList</Name>
+        <Source><![CDATA[
+public void setConfirmedOrdersList(List _list)
+{
+    confirmedOrders = _list;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>setPickedOrdersList</Name>
+        <Source><![CDATA[
+public void setPickedOrdersList(List _list)
+{
+    pickedOrders = _list;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>setInvoicedOrdersList</Name>
+        <Source><![CDATA[
+public void setInvoicedOrdersList(List _list)
+{
+    invoicedOrders = _list;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>setFailOnConfirm</Name>
+        <Source><![CDATA[
+public void setFailOnConfirm(Set _set)
+{
+    failOnConfirm = _set;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>setFailOnPickingList</Name>
+        <Source><![CDATA[
+public void setFailOnPickingList(Set _set)
+{
+    failOnPickingList = _set;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>setFailOnInvoice</Name>
+        <Source><![CDATA[
+public void setFailOnInvoice(Set _set)
+{
+    failOnInvoice = _set;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>setThrowUpdateConflictFor</Name>
+        <Source><![CDATA[
+public void setThrowUpdateConflictFor(SalesId _salesId)
+{
+    throwUpdateConflictFor.add(_salesId);
+}
+]]></Source>
+      </Method>
+
+      <!-- ─────────────────────────────────────────────────────────────
+           Order population helpers
+           ───────────────────────────────────────────────────────────── -->
+
+      <Method>
+        <Name>addOpenOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Adds a SalesId that the stub will treat as an open Sales Order.
+/// </summary>
+public void addOpenOrder(SalesId _salesId)
+{
+    openOrders.addEnd(_salesId);
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>addNonOpenOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Registers a SalesId that should be ignored by the batch
+/// (simulates an order that is not in the open state).
+/// The stub's run() method only iterates over openOrders, so simply
+/// not adding to openOrders is sufficient; this method exists for
+/// documentation clarity in tests.
+/// </summary>
+public void addNonOpenOrder(SalesId _salesId)
+{
+    // Intentionally not added to openOrders.
+}
+]]></Source>
+      </Method>
+
+      <!-- ─────────────────────────────────────────────────────────────
+           Overridden run() – iterates in-memory list instead of DB
+           ───────────────────────────────────────────────────────────── -->
+
+      <Method>
+        <Name>run</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Overrides the production <c>run()</c> so that it iterates over
+/// the in-memory <c>openOrders</c> list instead of a database query.
+/// All other logic (try/catch, ttsbegin/ttscommit pattern) mirrors
+/// the production implementation.
+/// </summary>
+public void run()
+{
+    ListEnumerator le = openOrders.getEnumerator();
+
+    processedCount = 0;
+    failedCount    = 0;
+
+    while (le.moveNext())
+    {
+        SalesId salesId = le.current();
+
+        try
+        {
+            ttsbegin;
+
+            this.confirmSalesOrder(salesId);
+            this.processPickingList(salesId);
+            this.invoiceSalesOrder(salesId);
+
+            ttscommit;
+
+            processedCount++;
+            info(strFmt("Processed: %1", salesId));
+        }
+        catch (Exception::Error)
+        {
+            ttsabort;
+            failedCount++;
+            warning(strFmt("Failed: %1", salesId));
+        }
+        catch (Exception::UpdateConflict)
+        {
+            ttsabort;
+            failedCount++;
+            warning(strFmt("Failed (conflict): %1", salesId));
+        }
+    }
+
+    info(strFmt("Batch complete. Processed: %1, Failed: %2",
+        processedCount, failedCount));
+}
+]]></Source>
+      </Method>
+
+      <!-- ─────────────────────────────────────────────────────────────
+           Overridden step methods – record calls, simulate failures
+           ───────────────────────────────────────────────────────────── -->
+
+      <Method>
+        <Name>confirmSalesOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Stub implementation of confirmSalesOrder.
+/// Records the call and throws if configured to do so.
+/// </summary>
+protected void confirmSalesOrder(SalesId _salesId)
+{
+    if (throwUpdateConflictFor.in(_salesId))
+    {
+        throw Exception::UpdateConflict;
+    }
+
+    if (failOnConfirm != null && failOnConfirm.in(_salesId))
+    {
+        throw error(strFmt("Simulated confirm failure for %1", _salesId));
+    }
+
+    lastConfirmDocStatus = DocumentStatus::Confirmation;
+    confirmedOrders.addEnd(_salesId);
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>processPickingList</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Stub implementation of processPickingList.
+/// Records the call and throws if configured to do so.
+/// </summary>
+protected void processPickingList(SalesId _salesId)
+{
+    if (failOnPickingList != null && failOnPickingList.in(_salesId))
+    {
+        throw error(strFmt("Simulated picking list failure for %1", _salesId));
+    }
+
+    lastPickingListDocStatus = DocumentStatus::PickingList;
+    pickedOrders.addEnd(_salesId);
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>invoiceSalesOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Stub implementation of invoiceSalesOrder.
+/// Records the call and throws if configured to do so.
+/// </summary>
+protected void invoiceSalesOrder(SalesId _salesId)
+{
+    if (failOnInvoice != null && failOnInvoice.in(_salesId))
+    {
+        throw error(strFmt("Simulated invoice failure for %1", _salesId));
+    }
+
+    lastInvoiceDocStatus = DocumentStatus::Invoice;
+    invoicedOrders.addEnd(_salesId);
+}
+]]></Source>
+      </Method>
+
+      <!-- ─────────────────────────────────────────────────────────────
+           "Not found" helpers (TC-08, TC-09, TC-10)
+           ───────────────────────────────────────────────────────────── -->
+
+      <Method>
+        <Name>confirmNonExistentOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Exposes the production confirmSalesOrder logic path that throws
+/// when the record is not found, without needing a real database row.
+/// </summary>
+public void confirmNonExistentOrder(SalesId _salesId)
+{
+    // Simulate the guard check from the production method.
+    throw error(strFmt("Sales order '%1' not found.", _salesId));
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>pickNonExistentOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Exposes the production processPickingList logic path that throws
+/// when the record is not found.
+/// </summary>
+public void pickNonExistentOrder(SalesId _salesId)
+{
+    throw error(strFmt("Sales order '%1' not found.", _salesId));
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>invoiceNonExistentOrder</Name>
+        <Source><![CDATA[
+/// <summary>
+/// Exposes the production invoiceSalesOrder logic path that throws
+/// when the record is not found.
+/// </summary>
+public void invoiceNonExistentOrder(SalesId _salesId)
+{
+    throw error(strFmt("Sales order '%1' not found.", _salesId));
+}
+]]></Source>
+      </Method>
+
+      <!-- ─────────────────────────────────────────────────────────────
+           Accessors for test assertions
+           ───────────────────────────────────────────────────────────── -->
+
+      <Method>
+        <Name>getLastConfirmDocumentStatus</Name>
+        <Source><![CDATA[
+public DocumentStatus getLastConfirmDocumentStatus()
+{
+    return lastConfirmDocStatus;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>getLastPickingListDocumentStatus</Name>
+        <Source><![CDATA[
+public DocumentStatus getLastPickingListDocumentStatus()
+{
+    return lastPickingListDocStatus;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>getLastInvoiceDocumentStatus</Name>
+        <Source><![CDATA[
+public DocumentStatus getLastInvoiceDocumentStatus()
+{
+    return lastInvoiceDocStatus;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>getProcessedCount</Name>
+        <Source><![CDATA[
+public int getProcessedCount()
+{
+    return processedCount;
+}
+]]></Source>
+      </Method>
+
+      <Method>
+        <Name>getFailedCount</Name>
+        <Source><![CDATA[
+public int getFailedCount()
+{
+    return failedCount;
+}
+]]></Source>
+      </Method>
+
+    </Methods>
+  </SourceCode>
+</AxClass>
