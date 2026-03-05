@@ -370,7 +370,7 @@ class KJP_SM_DeliveryAddressInformationService extends KJP_CM_IFBatchBase
                 logisticsAddressState,
                 logisticsAddressCity,
                 logisticsPostalAddress,
-                logisticsElectronicAddress.Locator))
+                ''))
             {
                 if (deliveryAddressInfoIfTransmissionHistory.AccountCode && deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Add
                     || deliveryAddressInfoIfTransmissionHistory.DifferentialTransmissionClassification == KJP_SM_DifferentialTransmissionClassification::Update)
@@ -886,4 +886,5 @@ class KJP_SM_DeliveryAddressInformationService extends KJP_CM_IFBatchBase
 			</Method>
 		</Methods>
 	</SourceCode>
+
 </AxClass>
