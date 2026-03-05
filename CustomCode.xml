@@ -1,0 +1,27 @@
+static void InsertSalesDataIntoCustomTable_RecordInsertList(Args _args)
+{
+    SalesTable salesTable;
+    YourCustomTable customTable;
+    
+    // Initialize RecordInsertList for the custom table
+    RecordInsertList recordInsertList = new RecordInsertList(tableNum(YourCustomTable));
+
+    // Loop through source records
+    while select salesTable
+        where salesTable.SalesStatus == SalesStatus::Invoiced // Example condition
+    {
+        // Assign values to the destination table buffer
+        customTable.CustomSalesId = salesTable.SalesId;
+        customTable.CustomName = salesTable.SalesName;
+        customTable.CustomStatus = salesTable.SalesStatus;
+        customTable.CustomInvoiceAccount = salesTable.InvoiceAccount;
+        
+        // Add the buffer to the insert list (no insert() called here)
+        recordInsertList.add(customTable);
+    }
+    
+    // Commit all records in the list to the database with one call
+    recordInsertList.insertDatabase();
+
+    Info(strFmt("Inserted records into YourCustomTable."));
+}
